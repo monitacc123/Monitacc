@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRightLeft, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -40,6 +40,13 @@ import {
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 
 // --- Helpers ---
+
+const ASSET_LIABILITY_SET = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+const isAssetLiabilityCategory = (cat: string) => ASSET_LIABILITY_SET.has((cat || '').trim().toUpperCase());
+const isCashInHandCategory = (cat: string) => {
+  const upper = (cat || '').trim().toUpperCase();
+  return upper === 'CASH IN HAND' || upper === 'TUNAI DI TANGAN';
+};
 
 const SearchableSelect = ({ 
   value, 
@@ -1207,8 +1214,8 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
     return true;
   });
 
-  const income = filteredRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const expense = filteredRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
+  const income = filteredRecords.filter(r => r.type === 'income' && !isAssetLiabilityCategory(r.category)).reduce((sum, r) => sum + r.amount, 0);
+  const expense = filteredRecords.filter(r => r.type === 'expense' && !isAssetLiabilityCategory(r.category)).reduce((sum, r) => sum + r.amount, 0);
 
   const chartData = [
     { name: 'Masuk', value: income, fill: '#10b981' },
@@ -1343,8 +1350,10 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               return (
                 <div key={i} className="flex items-center justify-between group cursor-pointer p-2 -mx-2 hover:bg-slate-50 rounded-2xl transition-all">
                   <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm border transition-transform group-hover:scale-105 ${record.type === 'income' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                      <Icon size={20} strokeWidth={2} />
+                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm border transition-transform group-hover:scale-105 ${
+                      isAssetLiabilityCategory(record.category) ? 'bg-amber-50 text-amber-600 border-amber-100' : record.type === 'income' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'
+                    }`}>
+                      {isAssetLiabilityCategory(record.category) ? <ArrowRightLeft size={20} strokeWidth={2} /> : <Icon size={20} strokeWidth={2} />}
                     </div>
                     <div>
                       <p className="text-sm font-bold text-slate-900 truncate max-w-[140px] leading-tight">{record.category}</p>
@@ -1352,11 +1361,15 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${record.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
-                      {record.type === 'income' ? 'Masuk' : 'Keluar'}
+                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${
+                      isAssetLiabilityCategory(record.category) ? 'text-amber-500' : record.type === 'income' ? 'text-emerald-500' : 'text-rose-500'
+                    }`}>
+                      {isAssetLiabilityCategory(record.category) ? 'Pindahan' : record.type === 'income' ? 'Masuk' : 'Keluar'}
                     </p>
-                    <p className={`text-sm font-bold font-display ${record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {record.type === 'income' ? '+' : '-'} RM {(record.amount || 0).toLocaleString()}
+                    <p className={`text-sm font-bold font-display ${
+                      isAssetLiabilityCategory(record.category) ? 'text-amber-600' : record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
+                    }`}>
+                      {isAssetLiabilityCategory(record.category) ? '' : (record.type === 'income' ? '+' : '-')} RM {(record.amount || 0).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -1713,15 +1726,16 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
     const newResults = [...results];
     newResults[index] = { ...newResults[index], [field]: value };
     if (field === 'category') {
-      const isCashInHand = (value as string).trim().toUpperCase() === 'CASH IN HAND' || (value as string).trim().toUpperCase() === 'TUNAI DI TANGAN';
-      if (newResults[index].type === 'income' && isCashInHand) {
+      const cashInHand = isCashInHandCategory(value as string);
+      if (newResults[index].type === 'income' && cashInHand) {
         newResults[index].payment_method = 'bank';
+        newResults[index].docType = 'Pindahan Bank > Tunai';
       }
     }
     if (field === 'type' && value === 'income') {
-      const cat = (newResults[index].category || '').trim().toUpperCase();
-      if (cat === 'CASH IN HAND' || cat === 'TUNAI DI TANGAN') {
+      if (isCashInHandCategory(newResults[index].category || '')) {
         newResults[index].payment_method = 'bank';
+        newResults[index].docType = 'Pindahan Bank > Tunai';
       }
     }
     setResults(newResults);
@@ -2162,8 +2176,14 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               <SearchableSelect
                 value={formData.category}
                 onChange={(val) => {
-                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND' || val.trim().toUpperCase() === 'TUNAI DI TANGAN';
-                  setFormData({...formData, category: val, payment_method: (formData.type === 'income' && isCashInHand) ? 'bank' : formData.payment_method});
+                  const cashInHand = isCashInHandCategory(val);
+                  const isTransfer = formData.type === 'income' && cashInHand;
+                  setFormData({
+                    ...formData,
+                    category: val,
+                    payment_method: isTransfer ? 'bank' : formData.payment_method,
+                    docType: isTransfer ? 'Pindahan Bank > Tunai' : (formData.type === 'income' ? 'Duit Masuk Manual' : 'Duit Keluar Manual'),
+                  });
                 }}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
@@ -2176,6 +2196,11 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 ])).sort()}
                 onAddNew={(val) => onAddNewCategory(val, formData.type)}
               />
+              {formData.type === 'income' && isCashInHandCategory(formData.category) && (
+                <p className="text-[10px] font-bold text-amber-600 mt-1 ml-1 flex items-center gap-1">
+                  <ArrowRightLeft size={10} /> Pindahan: Bank berkurang, Tunai Di Tangan bertambah
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -2457,8 +2482,14 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               <SearchableSelect
                 value={formData.category}
                 onChange={(val) => {
-                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND' || val.trim().toUpperCase() === 'TUNAI DI TANGAN';
-                  setFormData({...formData, category: val, payment_method: (formData.type === 'income' && isCashInHand) ? 'bank' : formData.payment_method});
+                  const cashInHand = isCashInHandCategory(val);
+                  const isTransfer = formData.type === 'income' && cashInHand;
+                  setFormData({
+                    ...formData,
+                    category: val,
+                    payment_method: isTransfer ? 'bank' : formData.payment_method,
+                    docType: isTransfer ? 'Pindahan Bank > Tunai' : formData.docType,
+                  });
                 }}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
@@ -2471,6 +2502,11 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                 ])).sort()}
                 onAddNew={(val) => onAddNewCategory(val, formData.type)}
               />
+              {formData.type === 'income' && isCashInHandCategory(formData.category) && (
+                <p className="text-[10px] font-bold text-amber-600 mt-1 ml-1 flex items-center gap-1">
+                  <ArrowRightLeft size={10} /> Pindahan: Bank berkurang, Tunai Di Tangan bertambah
+                </p>
+              )}
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -3164,8 +3200,8 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 };
 
 const TransactionReportTemplate = ({ records, user }: { records: any[], user: UserType | null }) => {
-  const income = records.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const expense = records.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
+  const income = records.filter(r => r.type === 'income' && !isAssetLiabilityCategory(r.category)).reduce((sum, r) => sum + r.amount, 0);
+  const expense = records.filter(r => r.type === 'expense' && !isAssetLiabilityCategory(r.category)).reduce((sum, r) => sum + r.amount, 0);
   const balance = income - expense;
 
   return (
@@ -4621,19 +4657,21 @@ const RecordsView = ({
                     </td>
                     <td className="px-2 py-4">
                       <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border inline-block truncate max-w-full ${
-                        record.origin === 'sale' 
-                          ? 'bg-blue-50 text-blue-700 border-blue-100' 
-                          : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                        isAssetLiabilityCategory(record.category)
+                          ? 'bg-amber-50 text-amber-700 border-amber-100'
+                          : record.origin === 'sale'
+                            ? 'bg-blue-50 text-blue-700 border-blue-100'
+                            : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                       }`}>
-                        {record.docType || 'Rekod'}
+                        {isAssetLiabilityCategory(record.category) ? (isCashInHandCategory(record.category) ? 'Pindahan Bank > Tunai' : 'Pindahan Aset') : (record.docType || 'Rekod')}
                       </span>
                     </td>
                     <td className="px-2 py-4">
                       <div className="flex items-center gap-2 min-w-0">
                         <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 shadow-sm ${
-                          record.origin === 'sale' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white'
+                          isAssetLiabilityCategory(record.category) ? 'bg-amber-500 text-white' : record.origin === 'sale' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white'
                         }`}>
-                          {record.origin === 'sale' ? <ShoppingCart size={12} strokeWidth={2} /> : <CategoryIcon size={12} strokeWidth={2} />}
+                          {isAssetLiabilityCategory(record.category) ? <ArrowRightLeft size={12} strokeWidth={2} /> : record.origin === 'sale' ? <ShoppingCart size={12} strokeWidth={2} /> : <CategoryIcon size={12} strokeWidth={2} />}
                         </div>
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-1.5">
@@ -4670,9 +4708,9 @@ const RecordsView = ({
                       </span>
                     </td>
                     <td className={`px-2 py-4 font-bold text-sm font-display text-right whitespace-nowrap ${
-                      record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-600')
+                      isAssetLiabilityCategory(record.category) ? 'text-amber-600' : record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-600')
                     }`}>
-                      {record.type === 'income' ? '+' : '-'} RM {record.amount.toLocaleString()}
+                      {isAssetLiabilityCategory(record.category) ? '' : (record.type === 'income' ? '+' : '-')} RM {record.amount.toLocaleString()}
                     </td>
                     <td className="px-2 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
