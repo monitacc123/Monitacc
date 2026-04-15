@@ -1,0 +1,73 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Inter", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+body {
+  @apply bg-[#F1F5F9] text-[#1E293B] font-sans antialiased;
+}
+
+.glass {
+  @apply bg-white border-r border-slate-200;
+}
+
+.card-premium {
+  @apply rounded-xl border border-slate-200 shadow-sm transition-all duration-300;
+}
+
+.nav-item {
+  @apply flex items-center gap-3 px-4 py-2.5 rounded-lg font-semibold text-[13px] transition-all duration-200;
+}
+
+.nav-item-active {
+  @apply bg-emerald-600 text-white shadow-sm;
+}
+
+.nav-item-inactive {
+  @apply text-slate-500 hover:bg-slate-100 hover:text-slate-900;
+}
+
+.btn-primary {
+  @apply bg-emerald-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm hover:bg-emerald-700 shadow-sm transition-all duration-200 active:scale-[0.98];
+}
+
+.label-micro {
+  @apply text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 block;
+}
+
+.ink-text {
+  @apply text-[#0F172A] tracking-tight;
+}
+
+/* Standard Table Styles */
+.table-container {
+  @apply bg-white border border-slate-200 rounded-lg overflow-hidden;
+}
+
+.table-header {
+  @apply bg-slate-50 border-b border-slate-200 text-slate-500 text-[11px] font-bold uppercase tracking-wider;
+}
+
+.table-row {
+  @apply border-b border-slate-100 last:border-0 hover:bg-slate-50/50 transition-colors;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-behavior: smooth;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-200 rounded-full hover:bg-slate-300 transition-colors;
+}

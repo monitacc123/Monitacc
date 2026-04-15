@@ -1,0 +1,7 @@
+{
+  "name": "Remix: SmartMonitAcc",
+  "description": "SmartMonitAcc - Sistem perakaunan perniagaan pintar dengan imbasan resit AI, laporan P\u0026L, dan pengurusan invois mesra peranti mudah alih.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
