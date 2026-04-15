@@ -4855,12 +4855,11 @@ const ProfitLossReport = ({
     // Process Records
     records.forEach(r => {
       if (r.sale_id) return;
-      if (r.payment_method === 'cash_in_hand') return;
 
       const category = r.category.trim().toUpperCase();
       const type = categoryMappings[category] || 'EXPENSE';
 
-      // Skip Asset/Liability categories in P&L
+      // Skip Asset/Liability categories in P&L (includes bank-to-cash transfers)
       if (type === 'ASSET_LIABILITY') return;
 
       const date = parseISO(r.date);
@@ -5074,7 +5073,6 @@ const ProfitLossReport = ({
                 });
                 records.filter(r => {
                   if (r.sale_id) return false;
-                  if (r.payment_method === 'cash_in_hand') return false;
                   const d = parseISO(r.date);
                   return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
                 }).forEach(r => {
@@ -6537,7 +6535,6 @@ const BalanceSheetReport = ({
 
     periodRecords.forEach(r => {
       if (r.sale_id) return;
-      if (r.payment_method === 'cash_in_hand') return;
       const category = r.category.trim().toUpperCase();
       const type = categoryMappings[category] || 'EXPENSE';
 
@@ -6676,11 +6673,17 @@ const BalanceSheetReport = ({
       return sum + (r.type === 'income' ? r.amount : -r.amount);
     }
 
-    // 2. Cash In Hand payment method: bank-to-cash or cash-to-bank transfer
-    // Duit Keluar (expense) via cash_in_hand = money withdrawn FROM bank TO hand (cash increases, bank decreases)
-    // Duit Masuk (income) via cash_in_hand = cash deposited FROM hand TO bank (cash decreases, bank increases)
+    // 2. Cash In Hand payment method
     if (r.payment_method === 'cash_in_hand') {
-      return sum + (r.type === 'expense' ? r.amount : -r.amount);
+      if (isAssetLiability) {
+        // Bank-to-cash or cash-to-bank transfer (ASSET_LIABILITY category):
+        // Expense = money withdrawn FROM bank TO hand (cash increases)
+        // Income = cash deposited FROM hand TO bank (cash decreases)
+        return sum + (r.type === 'expense' ? r.amount : -r.amount);
+      } else {
+        // P&L category paid/received as cash: income increases cash, expense decreases cash
+        return sum + (r.type === 'income' ? r.amount : -r.amount);
+      }
     }
 
     // 3. Transactions where Tunai (Cash) is the payment method but NOT the category
