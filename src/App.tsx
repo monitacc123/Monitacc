@@ -1963,6 +1963,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                             >
                               <option value="bank">Bank / Online</option>
                               <option value="cash">Tunai (Cash)</option>
+                              <option value="cash_in_hand">Cash In Hand (Duit Di Tangan)</option>
                             </select>
                             <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
@@ -2196,6 +2197,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                   >
                     <option value="bank">Bank / Online</option>
                     <option value="cash">Tunai (Cash)</option>
+                    <option value="cash_in_hand">Cash In Hand (Duit Di Tangan)</option>
                   </select>
                   <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
@@ -2485,6 +2487,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                   >
                     <option value="bank">Bank / Online</option>
                     <option value="cash">Tunai (Cash)</option>
+                    <option value="cash_in_hand">Cash In Hand (Duit Di Tangan)</option>
                   </select>
                   <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
@@ -3115,6 +3118,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                       >
                         <option value="bank">Bank / Online</option>
                         <option value="cash">Tunai (Cash)</option>
+                        <option value="cash_in_hand">Cash In Hand (Duit Di Tangan)</option>
                       </select>
                       <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                     </div>
@@ -3206,7 +3210,7 @@ const TransactionReportTemplate = ({ records, user }: { records: any[], user: Us
                 <td className="py-2 px-2 border-r border-black uppercase">{record.type === 'income' ? 'MASUK' : 'KELUAR'}</td>
                 <td className="py-2 px-2 border-r border-black">{record.category}</td>
                 <td className="py-2 px-2 border-r border-black truncate max-w-[150px]">{record.description}</td>
-                <td className="py-2 px-2 border-r border-black uppercase">{record.payment_method === 'cash' ? 'TUNAI' : 'BANK'}</td>
+                <td className="py-2 px-2 border-r border-black uppercase">{record.payment_method === 'cash' ? 'TUNAI' : record.payment_method === 'cash_in_hand' ? 'CASH IN HAND' : 'BANK'}</td>
                 <td className={`py-2 px-2 text-right font-bold ${record.type === 'income' ? 'text-black' : 'text-red-600'}`}>
                   {record.type === 'income' ? '+' : '-'} {record.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
                 </td>
@@ -4643,12 +4647,14 @@ const RecordsView = ({
                     </td>
                     <td className="px-2 py-4">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border inline-flex items-center gap-1 ${
-                        record.payment_method === 'cash' 
-                          ? 'bg-amber-50 text-amber-700 border-amber-100' 
-                          : 'bg-indigo-50 text-indigo-700 border-indigo-100'
+                        record.payment_method === 'cash'
+                          ? 'bg-amber-50 text-amber-700 border-amber-100'
+                          : record.payment_method === 'cash_in_hand'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                          : 'bg-blue-50 text-blue-700 border-blue-100'
                       }`}>
-                        {record.payment_method === 'cash' ? <DollarSign size={10} className="mr-0.5" /> : <Landmark size={10} className="mr-0.5" />}
-                        {record.payment_method === 'cash' ? 'Tunai' : 'Bank'}
+                        {record.payment_method === 'cash' ? <DollarSign size={10} className="mr-0.5" /> : record.payment_method === 'cash_in_hand' ? <DollarSign size={10} className="mr-0.5" /> : <Landmark size={10} className="mr-0.5" />}
+                        {record.payment_method === 'cash' ? 'Tunai' : record.payment_method === 'cash_in_hand' ? 'Cash In Hand' : 'Bank'}
                       </span>
                     </td>
                     <td className={`px-2 py-4 font-bold text-sm font-display text-right whitespace-nowrap ${
@@ -4849,6 +4855,7 @@ const ProfitLossReport = ({
     // Process Records
     records.forEach(r => {
       if (r.sale_id) return;
+      if (r.payment_method === 'cash_in_hand') return;
 
       const category = r.category.trim().toUpperCase();
       const type = categoryMappings[category] || 'EXPENSE';
@@ -5067,6 +5074,7 @@ const ProfitLossReport = ({
                 });
                 records.filter(r => {
                   if (r.sale_id) return false;
+                  if (r.payment_method === 'cash_in_hand') return false;
                   const d = parseISO(r.date);
                   return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
                 }).forEach(r => {
@@ -6529,6 +6537,7 @@ const BalanceSheetReport = ({
 
     periodRecords.forEach(r => {
       if (r.sale_id) return;
+      if (r.payment_method === 'cash_in_hand') return;
       const category = r.category.trim().toUpperCase();
       const type = categoryMappings[category] || 'EXPENSE';
 
@@ -6661,28 +6670,35 @@ const BalanceSheetReport = ({
     const mappingType = categoryMappings[category] || 'EXPENSE';
     const isAssetLiability = mappingType === 'ASSET_LIABILITY';
     const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
-    
+
     // 1. Direct adjustments where Cash is the category
     if (isCashCategory) {
       return sum + (r.type === 'income' ? r.amount : -r.amount);
     }
-    
-    // 2. Transactions where Cash is the payment method but NOT the category
+
+    // 2. Cash In Hand payment method: bank-to-cash or cash-to-bank transfer
+    // Duit Keluar (expense) via cash_in_hand = money withdrawn FROM bank TO hand (cash increases, bank decreases)
+    // Duit Masuk (income) via cash_in_hand = cash deposited FROM hand TO bank (cash decreases, bank increases)
+    if (r.payment_method === 'cash_in_hand') {
+      return sum + (r.type === 'expense' ? r.amount : -r.amount);
+    }
+
+    // 3. Transactions where Tunai (Cash) is the payment method but NOT the category
     if (!isCashCategory && r.payment_method === 'cash') {
       if (!isAssetLiability) {
         // Regular P&L items: Income increases cash, Expense decreases cash
         return sum + (r.type === 'income' ? r.amount : -r.amount);
       } else {
-        // Asset/Liability transfers: 
-        // Income into another asset decreases cash. 
+        // Asset/Liability transfers:
+        // Income into another asset decreases cash.
         // Expense from another asset increases cash.
         return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
     }
-    
+
     return sum;
   }, 0) + filteredSales.reduce((sum, s) => {
-    if (s.payment_method === 'cash') {
+    if (s.payment_method === 'cash' || s.payment_method === 'cash_in_hand') {
       return sum + s.total;
     }
     return sum;

@@ -14,7 +14,7 @@ export interface Record {
   origin?: 'manual' | 'scan' | 'sale';
   sale_id?: number;
   reconciled?: boolean;
-  payment_method?: 'cash' | 'bank';
+  payment_method?: 'cash' | 'bank' | 'cash_in_hand';
 }
 
 export interface Stats {
@@ -57,7 +57,7 @@ export interface Sale {
   customer_name?: string;
   created_at: string;
   reconciled?: boolean;
-  payment_method?: 'cash' | 'bank';
+  payment_method?: 'cash' | 'bank' | 'cash_in_hand';
 }
 
 export type AppView = 'landing' | 'auth' | 'welcome' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard';
