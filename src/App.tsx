@@ -6669,8 +6669,10 @@ const BalanceSheetReport = ({
     const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
 
     // 1. Direct adjustments where Cash is the category
+    // Expense with cash category = money FROM bank TO hand (cash increases)
+    // Income with cash category = money FROM hand TO bank (cash decreases)
     if (isCashCategory) {
-      return sum + (r.type === 'income' ? r.amount : -r.amount);
+      return sum + (r.type === 'expense' ? r.amount : -r.amount);
     }
 
     // 2. Cash In Hand payment method
