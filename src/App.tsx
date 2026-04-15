@@ -187,6 +187,8 @@ const getCategoryIcon = (category: string) => {
   return Package;
 };
 
+const fmt2 = (val: number) => val === 0 ? '-' : val.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 const generatePDFReport = (
   user: UserType | null,
   reportType: 'monthly' | 'yearly' | 'custom',
@@ -200,107 +202,276 @@ const generatePDFReport = (
   totalExpense: number,
   totalSales: number,
   startDate?: string,
-  endDate?: string
+  endDate?: string,
+  monthlyData?: any,
+  categoryMappings?: Record<string, string>
 ) => {
   const doc = new jsPDF();
-  const months = [
+  const monthNames = [
     'Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun',
     'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'
   ];
+  const shortMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-  const businessName = user?.company_name || 'Monitacc User';
+  const businessName = user?.company_name || 'MONITACC ENTERPRISE';
+  const ssmNo = user?.ssm_number || '-';
+
+  // ── Yearly: formal Penyata Untung Rugi ────────────────────────────────────
+  if (reportType === 'yearly' && monthlyData && categoryMappings) {
+    const calcTotal = (path: string) =>
+      shortMonths.reduce((sum, m) => {
+        const parts = path.split('.');
+        let val: any = monthlyData[m];
+        parts.forEach(p => { val = val?.[p]; });
+        return sum + (Number(val) || 0);
+      }, 0);
+
+    const salesCats = Array.from(new Set([
+      ...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'),
+      'JUALAN (REKOD)'
+    ])).filter(cat => calcTotal(`salesByCategory.${cat}`) !== 0);
+
+    const cogsCats = Object.keys(categoryMappings)
+      .filter(c => categoryMappings[c] === 'COGS' && calcTotal(`cogs.${c}`) !== 0);
+
+    const otherIncomeCats = Object.keys(categoryMappings)
+      .filter(c => categoryMappings[c] === 'OTHER_INCOME' && calcTotal(`otherIncome.${c}`) !== 0);
+
+    const expenseCats = Object.keys(categoryMappings)
+      .filter(c => categoryMappings[c] === 'EXPENSE' && calcTotal(`expenses.${c}`) !== 0);
+
+    const totalSalesAmt = calcTotal('sales') + calcTotal('salesAdjustments');
+    const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0);
+    const grossProfit = totalSalesAmt - totalCogsAmt;
+    const totalOtherIncome = otherIncomeCats.reduce((s, c) => s + calcTotal(`otherIncome.${c}`), 0);
+    const totalExpensesAmt = expenseCats.reduce((s, c) => s + calcTotal(`expenses.${c}`), 0);
+    const taxation = calcTotal('taxation');
+    const netProfitAmt = grossProfit + totalOtherIncome - totalExpensesAmt - taxation;
+
+    const pageW = 210;
+    const colCode = 14;
+    const colDesc = 50;
+    const colAmt = 160;
+    const lineH = 6;
+    let y = 20;
+
+    const drawPageHeader = () => {
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(businessName.toUpperCase(), pageW / 2, y, { align: 'center' });
+      y += lineH;
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(100, 116, 139);
+      doc.text(`No. SSM: ${ssmNo}`, pageW / 2, y, { align: 'center' });
+      y += lineH;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(15, 23, 42);
+      doc.text(`PENYATA UNTUNG RUGI BAGI TAHUN BERAKHIR 31 DISEMBER ${year}`, pageW / 2, y, { align: 'center' });
+      y += lineH + 2;
+      doc.setDrawColor(200, 200, 200);
+      doc.line(colCode, y, pageW - colCode, y);
+      y += lineH;
+    };
+
+    const drawColHeaders = () => {
+      doc.setFontSize(7.5);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(100, 116, 139);
+      doc.text('KOD', colCode, y);
+      doc.text('KETERANGAN', colDesc, y);
+      doc.text(`JUMLAH (RM) ${year}`, colAmt, y, { align: 'right' });
+      y += lineH - 1;
+      doc.setDrawColor(220, 220, 220);
+      doc.line(colCode, y, pageW - colCode, y);
+      y += lineH - 1;
+    };
+
+    const checkPage = () => {
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+        drawColHeaders();
+      }
+    };
+
+    const drawRow = (code: string, label: string, value: number | null, bold = false, indent = false, highlight = false) => {
+      checkPage();
+      if (highlight) {
+        doc.setFillColor(240, 253, 244);
+        doc.rect(colCode - 1, y - 4, pageW - 2 * colCode + 2, lineH + 1, 'F');
+      }
+      doc.setFont('helvetica', bold ? 'bold' : 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(bold ? 15 : 71, bold ? 23 : 85, bold ? 42 : 105);
+      doc.text(code, colCode, y);
+      doc.text(indent ? `   ${label}` : label, colDesc, y);
+      if (value !== null) {
+        const text = fmt2(value);
+        doc.setTextColor(value < 0 ? 220 : bold ? 15 : 71, value < 0 ? 38 : bold ? 23 : 85, value < 0 ? 38 : bold ? 42 : 105);
+        doc.text(text, colAmt, y, { align: 'right' });
+      }
+      y += lineH;
+    };
+
+    const drawDivider = (light = false) => {
+      checkPage();
+      doc.setDrawColor(light ? 230 : 180, light ? 230 : 180, light ? 230 : 180);
+      doc.line(colCode, y - 2, pageW - colCode, y - 2);
+      y += 1;
+    };
+
+    drawPageHeader();
+    drawColHeaders();
+
+    // SALES
+    salesCats.forEach(cat => {
+      drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), false, true);
+    });
+    const adjTotal = calcTotal('salesAdjustments');
+    if (adjTotal !== 0) drawRow('-', 'SALES ADJUSTMENTS', adjTotal, false, true);
+    drawDivider();
+    drawRow(CHART_OF_ACCOUNTS['SALES'] || '5000/000', 'JUMLAH JUALAN (TOTAL)', totalSalesAmt, true);
+    y += 2;
+
+    // COGS
+    if (cogsCats.length > 0) {
+      cogsCats.forEach(cat => {
+        drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), false, true);
+      });
+      drawDivider();
+      drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, true);
+      y += 2;
+    } else {
+      drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', 0, true);
+      y += 2;
+    }
+
+    // GROSS PROFIT
+    drawDivider();
+    drawRow('', 'GROSS PROFIT/(LOSS)', grossProfit, true, false, true);
+    y += 3;
+
+    // OTHER INCOME
+    if (otherIncomeCats.length > 0) {
+      otherIncomeCats.forEach(cat => {
+        drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), false, true);
+      });
+      drawDivider();
+    }
+    drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, true);
+    y += 2;
+
+    // EXPENSES
+    expenseCats.forEach(cat => {
+      drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), false, true);
+    });
+    if (taxation !== 0) {
+      drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'PROVISION FOR TAXATION', taxation, false, true);
+    }
+    drawDivider();
+    drawRow('', 'JUMLAH PERBELANJAAN (TOTAL)', totalExpensesAmt + taxation, true);
+    y += 3;
+
+    // NET PROFIT
+    drawDivider();
+    drawRow('', `NET PROFIT/(LOSS) ${year}`, netProfitAmt, true, false, true);
+    y += 4;
+
+    // Footer on all pages
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(7);
+      doc.setTextColor(148, 163, 184);
+      doc.text(`Dijana oleh Monitacc pada ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, colCode, 290);
+      doc.text(`Halaman ${i} daripada ${pageCount}`, pageW - colCode, 290, { align: 'right' });
+    }
+
+    doc.save(`Penyata_Untung_Rugi_${businessName.replace(/\s+/g, '_')}_${year}.pdf`);
+    return;
+  }
+
+  // ── Monthly / Custom: standard summary report ─────────────────────────────
   let reportTitle = '';
-  
   if (reportType === 'monthly') {
-    reportTitle = `Laporan Kewangan Bulanan - ${months[month]} ${year}`;
-  } else if (reportType === 'yearly') {
-    reportTitle = `Laporan Kewangan Tahunan - ${year}`;
+    reportTitle = `Laporan Kewangan Bulanan - ${monthNames[month]} ${year}`;
   } else {
     reportTitle = `Laporan Kewangan Khas (${format(parseISO(startDate!), 'dd/MM/yyyy')} - ${format(parseISO(endDate!), 'dd/MM/yyyy')})`;
   }
 
-  // Header
   doc.setFontSize(22);
-  doc.setTextColor(16, 185, 129); // Emerald-600
+  doc.setTextColor(16, 185, 129);
   doc.text('Monitacc', 14, 20);
-  
   doc.setFontSize(10);
-  doc.setTextColor(100, 116, 139); // Slate-500
+  doc.setTextColor(100, 116, 139);
   doc.text('Sistem Perakaunan Pintar AI', 14, 25);
-
   doc.setFontSize(16);
-  doc.setTextColor(15, 23, 42); // Slate-900
+  doc.setTextColor(15, 23, 42);
   doc.text(businessName, 14, 40);
-  
   doc.setFontSize(12);
   doc.text(reportTitle, 14, 48);
-  
-  doc.setDrawColor(226, 232, 240); // Slate-200
+  doc.setDrawColor(226, 232, 240);
   doc.line(14, 55, 196, 55);
 
-  // Summary Cards
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139);
   doc.text('Ringkasan Prestasi', 14, 65);
 
-  // Income Card
-  doc.setFillColor(240, 253, 244); // Emerald-50
+  doc.setFillColor(240, 253, 244);
   doc.rect(14, 70, 55, 25, 'F');
   doc.setTextColor(16, 185, 129);
   doc.setFontSize(8);
   doc.text('JUMLAH JUALAN', 18, 77);
   doc.setFontSize(12);
-  doc.text(`RM ${(totalSales || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 18, 87);
+  doc.text(`RM ${fmt2(totalSales || 0)}`, 18, 87);
 
-  // Expense Card
-  doc.setFillColor(254, 242, 242); // Red-50
+  doc.setFillColor(254, 242, 242);
   doc.rect(75, 70, 55, 25, 'F');
   doc.setTextColor(244, 63, 94);
   doc.setFontSize(8);
   doc.text('DUIT KELUAR', 79, 77);
   doc.setFontSize(12);
-  doc.text(`RM ${(totalExpense || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 79, 87);
+  doc.text(`RM ${fmt2(totalExpense || 0)}`, 79, 87);
 
-  // Profit Card
   const netProfit = totalIncome - totalExpense;
-  doc.setFillColor(239, 246, 255); // Blue-50
+  doc.setFillColor(239, 246, 255);
   doc.rect(136, 70, 60, 25, 'F');
   doc.setTextColor(59, 130, 246);
   doc.setFontSize(8);
   doc.text('UNTUNG/RUGI BERSIH', 140, 77);
   doc.setFontSize(12);
-  doc.text(`RM ${(netProfit || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 140, 87);
+  doc.text(`RM ${fmt2(netProfit || 0)}`, 140, 87);
 
-  // Category Breakdown Table
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
   doc.text('Ringkasan Kategori', 14, 110);
 
   const breakdownData = [
-    ...incomeByCategory.map(item => [item.category, 'Duit Masuk', `RM ${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`]),
-    ...expenseByCategory.map(item => [item.category, 'Duit Keluar', `RM ${item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}`])
+    ...incomeByCategory.map(item => [CHART_OF_ACCOUNTS[item.category] || '-', item.category, 'Duit Masuk', `RM ${fmt2(item.total)}`]),
+    ...expenseByCategory.map(item => [CHART_OF_ACCOUNTS[item.category] || '-', item.category, 'Duit Keluar', `RM ${fmt2(item.total)}`])
   ];
 
   autoTable(doc, {
     startY: 115,
-    head: [['Kategori', 'Jenis', 'Jumlah']],
+    head: [['Kod', 'Kategori', 'Jenis', 'Jumlah']],
     body: breakdownData,
     headStyles: { fillColor: [71, 85, 105], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     margin: { top: 10 },
   });
 
-  // Transactions Table
   const finalY = (doc as any).lastAutoTable.finalY || 115;
   doc.setFontSize(12);
   doc.setTextColor(15, 23, 42);
   doc.text('Perincian Transaksi', 14, finalY + 15);
 
-  // Sort records by date ascending for the report
   const sortedRecords = [...records].sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
-
   const tableData = sortedRecords.map(r => [
     format(parseISO(r.date), 'dd/MM/yyyy'),
+    CHART_OF_ACCOUNTS[r.category] || '-',
     r.category,
     r.description,
     r.type === 'income' ? `+RM ${r.amount.toFixed(2)}` : `-RM ${r.amount.toFixed(2)}`
@@ -308,26 +479,25 @@ const generatePDFReport = (
 
   autoTable(doc, {
     startY: finalY + 20,
-    head: [['Tarikh', 'Kategori', 'Keterangan', 'Jumlah']],
+    head: [['Tarikh', 'Kod', 'Kategori', 'Keterangan', 'Jumlah']],
     body: tableData,
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255] },
     alternateRowStyles: { fillColor: [248, 250, 252] },
     margin: { top: 10 },
   });
 
-  // Footer
-  const pageCount = (doc as any).internal.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i++) {
+  const pageCount2 = (doc as any).internal.getNumberOfPages();
+  for (let i = 1; i <= pageCount2; i++) {
     doc.setPage(i);
     doc.setFontSize(8);
     doc.setTextColor(148, 163, 184);
     doc.text(`Dijana secara automatik oleh Monitacc pada ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, 14, 285);
-    doc.text(`Halaman ${i} daripada ${pageCount}`, 170, 285);
+    doc.text(`Halaman ${i} daripada ${pageCount2}`, 170, 285);
   }
 
-  const fileName = reportType === 'custom' 
+  const fileName = reportType === 'custom'
     ? `Laporan_Monitacc_${businessName.replace(/\s+/g, '_')}_Khas_${startDate}_ke_${endDate}.pdf`
-    : `Laporan_Monitacc_${businessName.replace(/\s+/g, '_')}_${months[month]}_${year}.pdf`;
+    : `Laporan_Monitacc_${businessName.replace(/\s+/g, '_')}_${monthNames[month]}_${year}.pdf`;
 
   doc.save(fileName);
 };
@@ -5630,7 +5800,39 @@ const ReportsView = ({
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           <button
-            onClick={() => generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate)}
+            onClick={() => {
+              if (reportType === 'yearly') {
+                const sm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                const md: any = {};
+                sm.forEach(m => {
+                  md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 };
+                });
+                sales.filter(s => parseISO(s.date).getFullYear() === selectedYear).forEach(s => {
+                  const mi = sm[parseISO(s.date).getMonth()];
+                  md[mi].sales += s.total;
+                  const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
+                  md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
+                });
+                records.filter(r => !r.sale_id && parseISO(r.date).getFullYear() === selectedYear).forEach(r => {
+                  const mi = sm[parseISO(r.date).getMonth()];
+                  const cat = r.category.trim().toUpperCase();
+                  const type = categoryMappings[cat] || 'EXPENSE';
+                  if (type === 'ASSET_LIABILITY') return;
+                  if (r.type === 'income') {
+                    if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
+                    else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
+                    else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
+                  } else {
+                    if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
+                    else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
+                    else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
+                  }
+                });
+                generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate, md, categoryMappings);
+              } else {
+                generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate);
+              }
+            }}
             className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-sm"
           >
             <Download size={16} />
