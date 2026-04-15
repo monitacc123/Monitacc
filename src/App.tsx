@@ -3285,11 +3285,9 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       const cat = (r.category || '').trim().toLowerCase();
       const sel = selectedCategory.toLowerCase();
       
-      // Balance Sheet Groupings — match by CATEGORY only, not payment_method,
-      // so that e.g. a TUNAI DI TANGAN income entry paid via bank does NOT
-      // appear in the Bank ledger.
-      if (sel === 'bank') return cat === 'bank' || cat.includes('bank');
-      if (sel === 'cash in hand') return cat === 'cash in hand' || cat === 'tunai di tangan' || cat.includes('tunai') || cat.includes('cash in hand');
+      // Balance Sheet Groupings
+      if (sel === 'bank') return (r as any).payment_method === 'bank' || cat === 'bank' || cat.includes('bank');
+      if (sel === 'cash in hand') return (r as any).payment_method === 'cash' || cat === 'cash in hand' || cat.includes('tunai') || cat.includes('cash');
       
       const fixedAssetCats = ["fixed assets", "motor vehicles", "furniture and fittings", "office equipment", "computer and software", "kitchen utensil", "renovation", "signboard", "building", "goodwill"];
       if (sel === 'fixed assets') return cat === sel || fixedAssetCats.includes(cat) || cat.includes('aset tetap') || cat.includes('kenderaan') || cat.includes('perabot') || cat.includes('pejabat') || cat.includes('komputer');
@@ -6596,7 +6594,7 @@ const BalanceSheetReport = ({
     "ACCUM. DEPRN - KITCHEN UTENSIL", "ACCUM. DEPRN - RENOVATION", "PROVISION FOR DOUBTFUL DEBT"
   ];
   const bankCats = ["BANK", ...BANK_LIST];
-  const cashCats = ["CASH IN HAND", "TUNAI DI TANGAN"];
+  const cashCats = ["CASH IN HAND"];
   const debtorCats = ["TRADE DEBTORS", "OTHER DEBTORS", "EN SALLEH", "MORGAN SDN BHD"];
   const stockCats = ["STOCK"];
   const depositCats = ["DEPOSIT & PREPAYMENT", "DEPOSIT - RENTAL", "PREPAYMENT - UTILITIES"];
@@ -6671,18 +6669,12 @@ const BalanceSheetReport = ({
     
     // 2. Transactions where Cash is the payment method but NOT the category
     if (!isCashCategory && r.payment_method === 'cash') {
-      const isBankCategory = bankCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
-      // Bank category transactions must NOT directly affect cash — bank is already
-      // derived as the accounting-equation balancing figure, so touching cash here
-      // would double-count the movement.
-      if (isBankCategory) return sum;
-
       if (!isAssetLiability) {
         // Regular P&L items: Income increases cash, Expense decreases cash
         return sum + (r.type === 'income' ? r.amount : -r.amount);
       } else {
-        // Asset/Liability transfers (non-bank, non-cash):
-        // Income into another asset decreases cash.
+        // Asset/Liability transfers: 
+        // Income into another asset decreases cash. 
         // Expense from another asset increases cash.
         return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
