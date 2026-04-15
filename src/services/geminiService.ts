@@ -14,11 +14,17 @@ function getConfig() {
 async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<string> {
   const { apiKey, baseUrl } = getConfig();
 
+  const hasImage = messages.some(m =>
+    Array.isArray(m.content) && m.content.some((c: any) => c.type === "image_url")
+  );
+
   const body: any = {
     model: "gemini-3.1-pro",
     messages,
+    max_tokens: 4096,
   };
-  if (jsonMode) {
+
+  if (jsonMode && !hasImage) {
     body.response_format = { type: "json_object" };
   }
 
@@ -38,6 +44,16 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
 
   const data = await res.json();
   return data.choices?.[0]?.message?.content || "";
+}
+
+function extractJson(text: string): string {
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock) return codeBlock[1].trim();
+  const arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) return arrMatch[0];
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) return objMatch[0];
+  return text.trim();
 }
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
@@ -72,46 +88,66 @@ export interface ExtractedData {
 
 export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg"): Promise<ExtractedData[] | null> {
   try {
-    const imageData = base64Data.split(",")[1] || base64Data;
-    const isUrl = base64Data.startsWith("http");
+    const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const imageContent = isUrl
-      ? { type: "image_url", image_url: { url: base64Data } }
-      : { type: "image_url", image_url: { url: `data:${mimeType};base64,${imageData}` } };
+    const prompt = `You are an OCR and accounting data extraction assistant. Extract ALL accounting transactions from this document.
 
-    const prompt = `Extract accounting data from this document (receipt, invoice, or bank statement).
+IMPORTANT: You MUST respond with ONLY a valid JSON array. No explanation, no markdown, just the raw JSON array.
 
-If it is a single receipt or invoice:
-- Identify if it is an income (money in/Duit Masuk) or expense (money out/Duit Keluar).
-- IMPORTANT: Receipts (Resit) from shops, restaurants, or suppliers are ALWAYS expenses.
-- Identify the document type (e.g., Invoice, Resit, Bil, Lain-lain).
-- Extract the document number. If not found, leave it empty.
-- Select the most appropriate category from: ${ALL_CATEGORIES.join(", ")}.
-- Identify the payment method: 'cash' or 'bank'. Default to 'bank' if unsure.
-- Provide the amount, date (YYYY-MM-DD), and a brief description.
+Rules:
+- Receipts/Resit from shops or restaurants = expense (type: "expense")
+- Payment received, sales = income (type: "income")
+- payment_method: "cash" if paid by cash/tunai, otherwise "bank"
+- date format: YYYY-MM-DD (if year missing, use current year)
+- category must be one of: ${ALL_CATEGORIES.join(", ")}
+- docType examples: "Resit", "Invoice", "Bil", "Penyata Bank", "Lain-lain"
 
-If it is a bank statement:
-- Extract ALL individual transactions listed.
-- For each transaction, determine if it is income or expense.
-- Categorize each transaction using: ${ALL_CATEGORIES.join(", ")}.
+Each item in the JSON array must have exactly these fields:
+{ "type": "income"|"expense", "docType": string, "docNumber": string, "category": string, "amount": number, "date": "YYYY-MM-DD", "description": string, "payment_method": "cash"|"bank" }
 
-Return a JSON array of transactions. Each item must have: type, docType, docNumber, category, amount, date, description, payment_method.`;
+Example response format:
+[{"type":"expense","docType":"Resit","docNumber":"001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"2024-01-15","description":"Shell Petrol","payment_method":"cash"}]
 
-    const text = await withRetry(() =>
-      chatCompletion([
-        {
-          role: "user",
-          content: [
-            imageContent,
-            { type: "text", text: prompt },
-          ],
-        },
-      ], true)
+Now extract from the document:`;
+
+    let messages: { role: string; content: any }[];
+
+    if (isPdf) {
+      messages = [{
+        role: "user",
+        content: `${prompt}\n\n[This is a PDF document - extract all visible transactions from the bank statement or financial document]`,
+      }];
+    } else {
+      const imageData = base64Data.split(",")[1] || base64Data;
+      const isUrl = base64Data.startsWith("http");
+      const imageUrl = isUrl ? base64Data : `data:${mimeType};base64,${imageData}`;
+
+      messages = [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "text", text: prompt },
+        ],
+      }];
+    }
+
+    const text = await withRetry(() => chatCompletion(messages, false));
+
+    if (!text || text.trim() === "") {
+      console.error("Empty response from AI");
+      return null;
+    }
+
+    const jsonStr = extractJson(text);
+    let parsed = JSON.parse(jsonStr);
+
+    if (!Array.isArray(parsed)) {
+      parsed = parsed.transactions || parsed.data || [parsed];
+    }
+
+    return parsed.filter((item: any) =>
+      item && item.type && item.amount && item.date && item.category
     );
-
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : text);
-    return Array.isArray(parsed) ? parsed : [parsed];
   } catch (error) {
     console.error("Error analyzing document:", error);
     return null;
@@ -187,8 +223,7 @@ Return a JSON array. Each item must have: type (improvement/attention/positive),
 
     const text = await withRetry(() => chatCompletion([{ role: "user", content: prompt }], true));
 
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    const result = JSON.parse(jsonMatch ? jsonMatch[0] : text);
+    const result = JSON.parse(extractJson(text));
 
     if (Array.isArray(result) && result.length > 0) {
       insightsCache.set(cacheKey, { data: result, timestamp: Date.now() });
