@@ -5706,15 +5706,16 @@ const ReportsView = ({
           </div>
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={comparisonData}>
+              <BarChart data={comparisonData} barCategoryGap="35%" margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
-                <Tooltip 
+                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} tickFormatter={(v) => `RM${v >= 1000 ? (v/1000).toFixed(0)+'k' : v}`} />
+                <Tooltip
                   cursor={{ fill: '#f8fafc' }}
                   contentStyle={{ borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)', padding: '12px' }}
+                  formatter={(value: any) => [`RM ${Number(value).toLocaleString('en-MY', { minimumFractionDigits: 2 })}`, 'Jumlah']}
                 />
-                <Bar dataKey="value" radius={[4, 4, 0, 0]} barSize={60}>
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={100} minPointSize={4}>
                   {comparisonData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
