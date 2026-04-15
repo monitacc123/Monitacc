@@ -163,6 +163,94 @@ Now extract from the document:`;
   }
 }
 
+export interface BankTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  type: "credit" | "debit";
+}
+
+export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf"): Promise<BankTransaction[] | null> {
+  try {
+    const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
+
+    const prompt = `You are a bank statement parser. Extract ALL transactions from this bank statement document.
+
+IMPORTANT: You MUST respond with ONLY a valid JSON array. No explanation, no markdown, just the raw JSON array.
+
+Rules:
+- "credit" = money coming IN to the account (deposits, transfers in, sales receipts)
+- "debit" = money going OUT of the account (payments, withdrawals, charges)
+- amount must be a positive number regardless of credit/debit
+- date format: YYYY-MM-DD
+- description: use the original transaction description from the statement
+
+Each item in the JSON array must have exactly these fields:
+{ "date": "YYYY-MM-DD", "description": string, "amount": number, "type": "credit"|"debit" }
+
+Example response:
+[{"date":"2024-01-15","description":"PETRONAS FUEL STATION","amount":85.50,"type":"debit"},{"date":"2024-01-16","description":"TRANSFER FROM ABU BAKAR","amount":500.00,"type":"credit"}]
+
+Extract ALL transactions from the document:`;
+
+    let messages: { role: string; content: any }[];
+
+    if (isPdf) {
+      let pdfText = "";
+      try {
+        pdfText = await extractTextFromPdf(base64Data);
+      } catch (pdfErr) {
+        console.error("PDF extraction failed:", pdfErr);
+        return null;
+      }
+
+      if (!pdfText || pdfText.trim().length < 50) {
+        return null;
+      }
+
+      messages = [{
+        role: "user",
+        content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${pdfText}`,
+      }];
+    } else {
+      const imageData = base64Data.split(",")[1] || base64Data;
+      const isUrl = base64Data.startsWith("http");
+      const imageUrl = isUrl ? base64Data : `data:${mimeType};base64,${imageData}`;
+
+      messages = [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "text", text: prompt },
+        ],
+      }];
+    }
+
+    const text = await withRetry(() => chatCompletion(messages, false));
+
+    if (!text || text.trim() === "") return null;
+
+    const jsonStr = extractJson(text);
+    let parsed = JSON.parse(jsonStr);
+
+    if (!Array.isArray(parsed)) {
+      parsed = parsed.transactions || parsed.data || [parsed];
+    }
+
+    return parsed.filter((item: any) =>
+      item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
+    ).map((item: any) => ({
+      date: item.date,
+      description: item.description || "Transaksi Bank",
+      amount: Math.abs(Number(item.amount)),
+      type: item.type as "credit" | "debit",
+    }));
+  } catch (error) {
+    console.error("Error extracting bank transactions:", error);
+    return null;
+  }
+}
+
 export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false): Promise<string> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";

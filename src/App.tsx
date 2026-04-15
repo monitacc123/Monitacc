@@ -18,7 +18,7 @@ import {
   Pie
 } from 'recharts';
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO } from 'date-fns';
-import { analyzeDocument, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
+import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
 import {
   apiLogin,
@@ -3554,6 +3554,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const [isUploading, setIsUploading] = useState(false);
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [manualMatchTransaction, setManualMatchTransaction] = useState<any | null>(null);
+  const [uploadStatus, setUploadStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     localStorage.setItem('monitacc_bank_transactions', JSON.stringify(bankTransactions));
@@ -3744,25 +3745,24 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
         try {
           const base64Data = event.target?.result as string;
           const mimeType = file.type || (file.name.endsWith('.pdf') ? 'application/pdf' : 'image/jpeg');
-          
-          alert('Format PDF/Imej dikesan. Menggunakan AI untuk mengekstrak transaksi bank...');
-          
-          const extracted = await analyzeDocument(base64Data, mimeType);
-          
+
+          setUploadStatus({ type: 'info', message: 'AI sedang menganalisis penyata bank anda...' });
+
+          const extracted = await extractBankTransactions(base64Data, mimeType);
+
           if (extracted && extracted.length > 0) {
             const data = extracted.map((item, i) => ({
               id: `bt-ai-${Date.now()}-${i}`,
               date: item.date || format(new Date(), 'yyyy-MM-dd'),
-              description: item.description || 'Transaksi AI',
-              amount: Math.abs(item.amount),
-              type: item.type === 'income' ? 'credit' : 'debit'
+              description: item.description || 'Transaksi Bank',
+              amount: item.amount,
+              type: item.type
             }));
 
-            // Deduplicate within the extracted data
             const uniqueData = data.filter((item, index, self) =>
               index === self.findIndex((t) => (
-                t.date === item.date && 
-                Math.abs(t.amount - item.amount) < 0.01 && 
+                t.date === item.date &&
+                Math.abs(t.amount - item.amount) < 0.01 &&
                 t.description.toLowerCase() === item.description.toLowerCase() &&
                 t.type === item.type
               ))
@@ -3770,17 +3770,17 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
 
             setBankTransactions(uniqueData);
             localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
-            if (uniqueData.length < data.length) {
-              alert(`Berjaya mengekstrak ${uniqueData.length} transaksi menggunakan AI. (${data.length - uniqueData.length} rekod bertindih telah diabaikan)`);
-            } else {
-              alert(`Berjaya mengekstrak ${uniqueData.length} transaksi menggunakan AI.`);
-            }
+            const dupes = data.length - uniqueData.length;
+            setUploadStatus({
+              type: 'success',
+              message: `Berjaya! ${uniqueData.length} transaksi diekstrak${dupes > 0 ? ` (${dupes} rekod bertindih diabaikan)` : ''}.`
+            });
           } else {
-            alert('AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.');
+            setUploadStatus({ type: 'error', message: 'AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.' });
           }
         } catch (err) {
           console.error('Error processing with AI:', err);
-          alert('Ralat semasa memproses dokumen dengan AI.');
+          setUploadStatus({ type: 'error', message: 'Ralat semasa memproses dokumen dengan AI. Sila cuba lagi.' });
         } finally {
           setIsUploading(false);
         }
@@ -3925,7 +3925,37 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
         </div>
       </header>
 
-      {bankTransactions.length === 0 ? (
+      {uploadStatus && (
+        <div className={`mb-6 flex items-start gap-3 p-4 rounded-2xl border text-sm font-medium ${
+          uploadStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' :
+          uploadStatus.type === 'error' ? 'bg-rose-50 border-rose-100 text-rose-800' :
+          'bg-blue-50 border-blue-100 text-blue-800'
+        }`}>
+          <div className="shrink-0 mt-0.5">
+            {uploadStatus.type === 'info' && <Loader2 size={16} className="animate-spin" />}
+            {uploadStatus.type === 'success' && <Check size={16} />}
+            {uploadStatus.type === 'error' && <AlertCircle size={16} />}
+          </div>
+          <span className="flex-1">{uploadStatus.message}</span>
+          {uploadStatus.type !== 'info' && (
+            <button onClick={() => setUploadStatus(null)} className="shrink-0 opacity-50 hover:opacity-100">
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {bankTransactions.length === 0 && isUploading ? (
+        <div className="card-premium p-20 text-center bg-white border-slate-100">
+          <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+            <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-2">
+              <Loader2 size={40} className="animate-spin" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-900 font-display">AI Sedang Menganalisis...</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">Mengekstrak transaksi daripada penyata bank anda. Ini mungkin mengambil masa beberapa saat.</p>
+          </div>
+        </div>
+      ) : bankTransactions.length === 0 ? (
         <div className="card-premium p-20 text-center bg-white border-slate-100">
           <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
             <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-2">
