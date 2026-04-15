@@ -3285,9 +3285,11 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       const cat = (r.category || '').trim().toLowerCase();
       const sel = selectedCategory.toLowerCase();
       
-      // Balance Sheet Groupings
-      if (sel === 'bank') return (r as any).payment_method === 'bank' || cat === 'bank' || cat.includes('bank');
-      if (sel === 'cash in hand') return (r as any).payment_method === 'cash' || cat === 'cash in hand' || cat.includes('tunai') || cat.includes('cash');
+      // Balance Sheet Groupings — match by CATEGORY only, not payment_method,
+      // so that e.g. a TUNAI DI TANGAN income entry paid via bank does NOT
+      // appear in the Bank ledger.
+      if (sel === 'bank') return cat === 'bank' || cat.includes('bank');
+      if (sel === 'cash in hand') return cat === 'cash in hand' || cat === 'tunai di tangan' || cat.includes('tunai') || cat.includes('cash in hand');
       
       const fixedAssetCats = ["fixed assets", "motor vehicles", "furniture and fittings", "office equipment", "computer and software", "kitchen utensil", "renovation", "signboard", "building", "goodwill"];
       if (sel === 'fixed assets') return cat === sel || fixedAssetCats.includes(cat) || cat.includes('aset tetap') || cat.includes('kenderaan') || cat.includes('perabot') || cat.includes('pejabat') || cat.includes('komputer');
