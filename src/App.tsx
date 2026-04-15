@@ -2147,9 +2147,12 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
-              <SearchableSelect 
+              <SearchableSelect
                 value={formData.category}
-                onChange={(val) => setFormData({...formData, category: val})}
+                onChange={(val) => {
+                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND' || val.trim().toUpperCase() === 'TUNAI DI TANGAN';
+                  setFormData({...formData, category: val, payment_method: (formData.type === 'income' && isCashInHand) ? 'bank' : formData.payment_method});
+                }}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
                   ...ASSET_LIABILITY_CATEGORIES,
@@ -2166,7 +2169,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input 
+                <input
                   required
                   type="number"
                   step="0.01"
@@ -2439,9 +2442,12 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
-              <SearchableSelect 
+              <SearchableSelect
                 value={formData.category}
-                onChange={(val) => setFormData({...formData, category: val})}
+                onChange={(val) => {
+                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND' || val.trim().toUpperCase() === 'TUNAI DI TANGAN';
+                  setFormData({...formData, category: val, payment_method: (formData.type === 'income' && isCashInHand) ? 'bank' : formData.payment_method});
+                }}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
                   ...ASSET_LIABILITY_CATEGORIES,
@@ -2458,7 +2464,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input 
+                <input
                   type="number"
                   step="0.01"
                   value={formData.amount}
@@ -6594,7 +6600,7 @@ const BalanceSheetReport = ({
     "ACCUM. DEPRN - KITCHEN UTENSIL", "ACCUM. DEPRN - RENOVATION", "PROVISION FOR DOUBTFUL DEBT"
   ];
   const bankCats = ["BANK", ...BANK_LIST];
-  const cashCats = ["CASH IN HAND"];
+  const cashCats = ["CASH IN HAND", "TUNAI DI TANGAN"];
   const debtorCats = ["TRADE DEBTORS", "OTHER DEBTORS", "EN SALLEH", "MORGAN SDN BHD"];
   const stockCats = ["STOCK"];
   const depositCats = ["DEPOSIT & PREPAYMENT", "DEPOSIT - RENTAL", "PREPAYMENT - UTILITIES"];
@@ -9585,7 +9591,12 @@ export default function App() {
     records.forEach(r => {
       const cat = r.category.trim().toUpperCase();
       if (cat && !newMappings[cat]) {
-        newMappings[cat] = r.type === 'income' ? 'SALES' : 'EXPENSE';
+        const isAssetLiability = ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()).includes(cat);
+        if (isAssetLiability) {
+          newMappings[cat] = 'ASSET_LIABILITY';
+        } else {
+          newMappings[cat] = r.type === 'income' ? 'SALES' : 'EXPENSE';
+        }
         changed = true;
       }
     });
