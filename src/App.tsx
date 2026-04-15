@@ -4836,12 +4836,13 @@ const ProfitLossReport = ({
 
     // Process Sales
     sales.forEach(s => {
+      const sCat = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
+      const sType = categoryMappings[sCat] || 'SALES';
+      if (sType === 'ASSET_LIABILITY') return;
       const date = parseISO(s.date);
       const month = months[date.getMonth()];
       if (data[month]) {
         data[month].sales += s.total;
-        // Use category from sales record if available, otherwise default to 'JUALAN (REKOD)'
-        const sCat = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
         data[month].salesByCategory[sCat] = (data[month].salesByCategory[sCat] || 0) + s.total;
       }
     });
@@ -6525,7 +6526,12 @@ const BalanceSheetReport = ({
     let income = 0;
     let expense = 0;
 
-    periodSales.forEach(s => income += s.total);
+    periodSales.forEach(s => {
+      const sCat = (s.category || '').trim().toUpperCase();
+      const sType = categoryMappings[sCat] || 'SALES';
+      if (sType === 'ASSET_LIABILITY') return;
+      income += s.total;
+    });
 
     periodRecords.forEach(r => {
       if (r.sale_id) return;
@@ -6656,32 +6662,32 @@ const BalanceSheetReport = ({
 
   const fixedAssets = getBalance(fixedAssetCats) + getBalance(contraAssetCats);
   const cash = filteredRecords.reduce((sum, r) => {
-    if (r.sale_id) return sum;
     const category = r.category.trim().toUpperCase();
     const mappingType = categoryMappings[category] || 'EXPENSE';
     const isAssetLiability = mappingType === 'ASSET_LIABILITY';
     const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
-    
+
     // 1. Direct adjustments where Cash is the category
     if (isCashCategory) {
       return sum + (r.type === 'income' ? r.amount : -r.amount);
     }
-    
+
+    if (r.sale_id) return sum;
+
     // 2. Transactions where Cash is the payment method but NOT the category
     if (!isCashCategory && r.payment_method === 'cash') {
       if (!isAssetLiability) {
-        // Regular P&L items: Income increases cash, Expense decreases cash
         return sum + (r.type === 'income' ? r.amount : -r.amount);
       } else {
-        // Asset/Liability transfers: 
-        // Income into another asset decreases cash. 
-        // Expense from another asset increases cash.
         return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
     }
-    
+
     return sum;
   }, 0) + filteredSales.reduce((sum, s) => {
+    const sCat = (s.category || '').trim().toUpperCase();
+    const sType = categoryMappings[sCat] || 'SALES';
+    if (sType === 'ASSET_LIABILITY') return sum;
     if (s.payment_method === 'cash') {
       return sum + s.total;
     }
