@@ -6711,36 +6711,49 @@ const BalanceSheetReport = ({
   };
 
   const fixedAssets = getBalance(fixedAssetCats) + getBalance(contraAssetCats);
-  const cash = filteredRecords.reduce((sum, r) => {
-    if (r.sale_id) return sum;
-    const category = r.category.trim().toUpperCase();
-    const mappingType = categoryMappings[category] || 'EXPENSE';
-    const isAssetLiability = mappingType === 'ASSET_LIABILITY';
-    const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
-    
-    // 1. Direct adjustments where Cash is the category
-    if (isCashCategory) {
-      return sum + (r.type === 'income' ? r.amount : -r.amount);
-    }
-    
-    // 2. Transactions where Cash is the payment method but NOT the category
-    if (!isCashCategory && r.payment_method === 'cash') {
-      if (!isAssetLiability) {
-        // Regular P&L items: Income increases cash, Expense decreases cash
+
+  const lowerCashCats = new Set(cashCats.map(c => c.toLowerCase()));
+  const lowerBankCats = new Set(bankCats.map(c => c.toLowerCase()));
+
+  const computeAssetBalance = (targetCatSet: Set<string>, paymentMethodKey: 'cash' | 'bank') => {
+    return filteredRecords.reduce((sum, r) => {
+      const category = r.category.trim().toUpperCase();
+      const catLower = category.toLowerCase();
+      const mappingType = categoryMappings[category] || 'EXPENSE';
+      const isAL = mappingType === 'ASSET_LIABILITY';
+      const isTargetCategory = targetCatSet.has(catLower);
+
+      if (isTargetCategory) {
         return sum + (r.type === 'income' ? r.amount : -r.amount);
-      } else {
-        // Asset/Liability transfers: 
-        // Income into another asset decreases cash. 
-        // Expense from another asset increases cash.
+      }
+
+      if (r.sale_id && !isAL) return sum;
+
+      const pmMatch = paymentMethodKey === 'bank'
+        ? (r.payment_method !== 'cash')
+        : (r.payment_method === 'cash');
+
+      if (pmMatch && isAL) {
         return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
-    }
-    
+
+      if (r.sale_id) return sum;
+
+      if (pmMatch && !isAL) {
+        return sum + (r.type === 'income' ? r.amount : -r.amount);
+      }
+
+      return sum;
+    }, 0);
+  };
+
+  const cash = computeAssetBalance(lowerCashCats, 'cash') + filteredSales.reduce((sum, s) => {
+    if (s.payment_method === 'cash') return sum + s.total;
     return sum;
-  }, 0) + filteredSales.reduce((sum, s) => {
-    if (s.payment_method === 'cash') {
-      return sum + s.total;
-    }
+  }, 0);
+
+  const bank = computeAssetBalance(lowerBankCats, 'bank') + filteredSales.reduce((sum, s) => {
+    if (s.payment_method !== 'cash') return sum + s.total;
     return sum;
   }, 0);
 
@@ -6763,18 +6776,9 @@ const BalanceSheetReport = ({
   const drawings = getBalance(drawingCats);
   const retainedEarnings = netProfit;
 
-  // In a single-entry system, we derive the Bank/Cash balance from the accounting equation:
-  // Assets = Liabilities + Equity
-  // Bank + FixedAssets + Cash + Debtors + Stock + Deposits = Liabilities + Capital + Drawings + RetainedEarnings
-  // Bank = (Liabilities + Capital + Drawings + RetainedEarnings) - (FixedAssets + Cash + Debtors + Stock + Deposits)
-  
   const totalCurrentLiabilities = accruals + creditors + loans + taxProvision;
   const totalEquity = capital + drawings + retainedEarnings;
-  const otherAssets = fixedAssets + cash + debtors + stock + deposits;
-  
-  // Calculate bank as the balancing figure to ensure the balance sheet always balances
-  const bank = totalEquity + totalCurrentLiabilities - otherAssets;
-  
+
   const totalCurrentAssets = bank + cash + debtors + stock + deposits;
   const netCurrentAssets = totalCurrentAssets - totalCurrentLiabilities;
   const totalAssets = fixedAssets + netCurrentAssets;
