@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, ArrowRightLeft } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -2326,174 +2326,6 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
             </div>
           </form>
         </div>
-      </motion.div>
-    </div>
-  );
-};
-
-const TransferModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data: any[]) => void }) => {
-  const [amount, setAmount] = useState<number>(0);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [description, setDescription] = useState('');
-  const [fromBank, setFromBank] = useState('MAYBANK');
-  const [isLoading, setIsLoading] = useState(false);
-
-  const BANK_OPTIONS = [
-    'MAYBANK', 'CIMB BANK', 'PUBLIC BANK', 'RHB BANK', 'HONG LEONG BANK',
-    'AMBANK', 'UOB BANK', 'BANK ISLAM', 'BANK MUAMALAT', 'ALLIANCE BANK',
-    'AFFIN BANK', 'STANDARD CHARTERED', 'HSBC BANK', 'OCBC BANK'
-  ];
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!amount || amount <= 0) return;
-    setIsLoading(true);
-
-    const ref = `TRF-${Date.now()}`;
-    const desc = description.trim() || `Pindahan dari ${fromBank} ke Tunai`;
-
-    const bankDebit = {
-      type: 'expense' as const,
-      docType: 'Pindahan Ke Tunai',
-      docNumber: ref,
-      category: fromBank.toUpperCase(),
-      amount,
-      date,
-      description: desc,
-      payment_method: 'bank',
-      origin: 'manual',
-    };
-
-    const cashCredit = {
-      type: 'income' as const,
-      docType: 'Pindahan Ke Tunai',
-      docNumber: ref,
-      category: 'TUNAI DI TANGAN',
-      amount,
-      date,
-      description: desc,
-      payment_method: 'cash',
-      origin: 'manual',
-    };
-
-    onSave([bankDebit, cashCredit]);
-    setIsLoading(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
-      <motion.div
-        initial={{ opacity: 0, y: 50 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 50 }}
-        className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden"
-      >
-        <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-slate-100">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-              <ArrowRightLeft size={20} strokeWidth={2} />
-            </div>
-            <div>
-              <h2 className="font-bold text-slate-800 text-base">Pindah Ke Tunai</h2>
-              <p className="text-[11px] text-slate-400 font-medium">Bank → Tunai Di Tangan</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-9 h-9 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="px-6 py-3 bg-blue-50 border-b border-blue-100">
-          <div className="flex items-center gap-3">
-            <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-blue-100">
-              <Landmark size={14} className="text-blue-500 shrink-0" />
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Bank</span>
-            </div>
-            <ArrowRightLeft size={16} className="text-blue-400 shrink-0" />
-            <div className="flex-1 flex items-center gap-2 bg-white rounded-xl px-3 py-2 border border-blue-100">
-              <Banknote size={14} className="text-emerald-500 shrink-0" />
-              <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Tunai</span>
-            </div>
-          </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Bank Sumber</label>
-            <div className="relative">
-              <select
-                value={fromBank}
-                onChange={(e) => setFromBank(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none pr-10"
-              >
-                {BANK_OPTIONS.map(b => (
-                  <option key={b} value={b}>{b}</option>
-                ))}
-              </select>
-              <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-              <input
-                required
-                type="number"
-                step="0.01"
-                min="0.01"
-                value={amount || ''}
-                onChange={(e) => setAmount(parseFloat(e.target.value))}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-lg outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                placeholder="0.00"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Tarikh</label>
-              <input
-                required
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider ml-1">Nota (Optional)</label>
-            <input
-              type="text"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder={`Pindahan dari ${fromBank} ke Tunai`}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-medium text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-            />
-          </div>
-
-          {amount > 0 && (
-            <div className="bg-slate-50 rounded-2xl p-4 space-y-2 border border-slate-100">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ringkasan Pindahan</p>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500 font-medium">Tolak dari {fromBank}</span>
-                <span className="font-bold text-rose-600">- RM {amount.toFixed(2)}</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-slate-500 font-medium">Masuk ke Tunai Di Tangan</span>
-                <span className="font-bold text-emerald-600">+ RM {amount.toFixed(2)}</span>
-              </div>
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isLoading || !amount || amount <= 0}
-            className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm rounded-xl transition-all active:scale-95 flex items-center justify-center gap-2"
-          >
-            {isLoading ? <Loader2 size={18} className="animate-spin" /> : <ArrowRightLeft size={18} />}
-            {isLoading ? 'Memproses...' : 'Sahkan Pindahan'}
-          </button>
-        </form>
       </motion.div>
     </div>
   );
@@ -9779,7 +9611,6 @@ export default function App() {
   const [showCamera, setShowCamera] = useState(false);
   const [triggerAddSale, setTriggerAddSale] = useState(0);
   const [showManualEntry, setShowManualEntry] = useState<{ show: boolean, type: 'income' | 'expense', initialData?: any }>({ show: false, type: 'income' });
-  const [showTransferModal, setShowTransferModal] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean, data: any, existing: TransactionRecord | Sale | null }>({ show: false, data: null, existing: null });
   const [confirmDelete, setConfirmDelete] = useState<{ 
     show: boolean, 
@@ -10269,7 +10100,7 @@ export default function App() {
         )}
 
         {showManualEntry.show && (
-          <ManualRecordModal
+          <ManualRecordModal 
             type={showManualEntry.type}
             initialData={showManualEntry.initialData}
             onClose={() => setShowManualEntry({ show: false, type: 'income' })}
@@ -10279,16 +10110,6 @@ export default function App() {
             }}
             onAddNewCategory={(name, type) => ensureCategoryExists(name, type === 'income' ? 'SALES' : 'EXPENSE')}
             categoryMappings={categoryMappings}
-          />
-        )}
-
-        {showTransferModal && (
-          <TransferModal
-            onClose={() => setShowTransferModal(false)}
-            onSave={(data) => {
-              handleSaveRecord(data, true);
-              setShowTransferModal(false);
-            }}
           />
         )}
 
@@ -10334,23 +10155,13 @@ export default function App() {
                   exit={{ opacity: 0, y: 10, scale: 0.95 }}
                   className="flex flex-col items-end gap-2 mb-2"
                 >
-                  <button
+                  <button 
                     onClick={() => { setShowManualEntry({ show: true, type: 'income' }); setIsFabOpen(false); }}
                     className="flex items-center gap-3 bg-white pl-5 pr-3 py-3 rounded-2xl shadow-xl border border-slate-100 hover:bg-slate-50 transition-all active:scale-95 group"
                   >
                     <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Duit Masuk</span>
                     <div className="w-10 h-10 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center border border-emerald-100 group-hover:scale-105 transition-transform">
                       <TrendingUp size={20} strokeWidth={2} />
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => { setShowTransferModal(true); setIsFabOpen(false); }}
-                    className="flex items-center gap-3 bg-white pl-5 pr-3 py-3 rounded-2xl shadow-xl border border-slate-100 hover:bg-slate-50 transition-all active:scale-95 group"
-                  >
-                    <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">Pindah Ke Tunai</span>
-                    <div className="w-10 h-10 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center border border-blue-100 group-hover:scale-105 transition-transform">
-                      <ArrowRightLeft size={20} strokeWidth={2} />
                     </div>
                   </button>
 
