@@ -6594,7 +6594,7 @@ const BalanceSheetReport = ({
     "ACCUM. DEPRN - KITCHEN UTENSIL", "ACCUM. DEPRN - RENOVATION", "PROVISION FOR DOUBTFUL DEBT"
   ];
   const bankCats = ["BANK", ...BANK_LIST];
-  const cashCats = ["CASH IN HAND", "TUNAI DI TANGAN"];
+  const cashCats = ["CASH IN HAND"];
   const debtorCats = ["TRADE DEBTORS", "OTHER DEBTORS", "EN SALLEH", "MORGAN SDN BHD"];
   const stockCats = ["STOCK"];
   const depositCats = ["DEPOSIT & PREPAYMENT", "DEPOSIT - RENTAL", "PREPAYMENT - UTILITIES"];
@@ -9534,10 +9534,6 @@ export default function App() {
           Object.keys(parsed).forEach(k => {
             normalized[k.trim().toUpperCase()] = parsed[k];
           });
-          INCOME_CATEGORIES.forEach(c => { if (!normalized[c.toUpperCase()]) normalized[c.toUpperCase()] = 'SALES'; });
-          COGS_CATEGORIES.forEach(c => { if (!normalized[c.toUpperCase()]) normalized[c.toUpperCase()] = 'COGS'; });
-          EXPENSE_CATEGORIES.forEach(c => { if (!normalized[c.toUpperCase()]) normalized[c.toUpperCase()] = 'EXPENSE'; });
-          ASSET_LIABILITY_CATEGORIES.forEach(c => { if (!normalized[c.toUpperCase()]) normalized[c.toUpperCase()] = 'ASSET_LIABILITY'; });
           setCategoryMappings(normalized);
           return;
         } catch (e) {
