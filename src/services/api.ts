@@ -1,8 +1,5 @@
 import { supabase } from '../lib/supabase';
 import type { User as UserType } from '../types';
-import { ASSET_LIABILITY_CATEGORIES } from '../constants/categories';
-
-const ASSET_LIABILITY_SET = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
 
 function mapRecord(r: any) {
   return {
@@ -73,8 +70,8 @@ export async function apiFetchDashboard(userId: string, role: string) {
   const records = (recordsRes.data || []).map(mapRecord);
   const sales = (salesRes.data || []).map(mapSale);
 
-  const total_income = records.filter(r => r.type === 'income' && !ASSET_LIABILITY_SET.has((r.category || '').trim().toUpperCase())).reduce((s, r) => s + Number(r.amount), 0);
-  const total_expense = records.filter(r => r.type === 'expense' && !ASSET_LIABILITY_SET.has((r.category || '').trim().toUpperCase())).reduce((s, r) => s + Number(r.amount), 0);
+  const total_income = records.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0);
+  const total_expense = records.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0);
 
   const categoryMap: Record<string, Record<string, number>> = {};
   for (const r of records) {
@@ -111,9 +108,7 @@ export async function apiFetchDashboard(userId: string, role: string) {
 }
 
 export async function apiSaveRecord(userId: string, data: any): Promise<{ id: number }> {
-  const isAssetLiability = ASSET_LIABILITY_SET.has((data.category || '').trim().toUpperCase());
-
-  if (data.type === 'income' && data.origin !== 'sale' && !isAssetLiability) {
+  if (data.type === 'income' && data.origin !== 'sale') {
     const { data: saleData, error: saleError } = await supabase
       .from('sales')
       .insert([{
@@ -225,10 +220,8 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
 
   if (error) throw new Error(error.message);
 
-  const isAssetLiability = ASSET_LIABILITY_SET.has((data.category || '').trim().toUpperCase());
-
   if (existing.sale_id) {
-    if (data.type === 'income' && !isAssetLiability) {
+    if (data.type === 'income') {
       await supabase
         .from('sales')
         .update({
@@ -246,7 +239,7 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
       await supabase.from('sales').delete().eq('id', existing.sale_id);
       await supabase.from('records').update({ sale_id: null }).eq('id', id);
     }
-  } else if (data.type === 'income' && !isAssetLiability) {
+  } else if (data.type === 'income') {
     const { data: saleData } = await supabase
       .from('sales')
       .insert([{
