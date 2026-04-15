@@ -6669,12 +6669,18 @@ const BalanceSheetReport = ({
     
     // 2. Transactions where Cash is the payment method but NOT the category
     if (!isCashCategory && r.payment_method === 'cash') {
+      const isBankCategory = bankCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
+      // Bank category transactions must NOT directly affect cash — bank is already
+      // derived as the accounting-equation balancing figure, so touching cash here
+      // would double-count the movement.
+      if (isBankCategory) return sum;
+
       if (!isAssetLiability) {
         // Regular P&L items: Income increases cash, Expense decreases cash
         return sum + (r.type === 'income' ? r.amount : -r.amount);
       } else {
-        // Asset/Liability transfers: 
-        // Income into another asset decreases cash. 
+        // Asset/Liability transfers (non-bank, non-cash):
+        // Income into another asset decreases cash.
         // Expense from another asset increases cash.
         return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
