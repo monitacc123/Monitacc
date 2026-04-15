@@ -4747,6 +4747,8 @@ const ProfitLossReport = ({
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
   const [addingTo, setAddingTo] = useState<string | null>(null);
   const [newSubCatName, setNewSubCatName] = useState('');
+  const [pdfSegment, setPdfSegment] = useState<'all' | 'sales' | 'cogs' | 'gross_profit' | 'other_income' | 'expenses' | 'net_profit'>('all');
+  const [showPdfMenu, setShowPdfMenu] = useState(false);
 
   const getOptionsForSection = (section: string) => {
     const standard = (() => {
@@ -5037,13 +5039,168 @@ const ProfitLossReport = ({
             </button>
           </div>
         </div>
-        <button 
-          onClick={() => window.print()}
-          className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm"
-        >
-          <Download size={14} />
-          Muat Turun PDF
-        </button>
+        <div className="relative">
+          <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+            <button
+              onClick={() => {
+                const sm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+                const doc = new jsPDF();
+                const pageW = 210;
+                const colCode = 14;
+                const colDesc = 50;
+                const colAmt = 160;
+                const lineH = 6;
+                let y = 20;
+
+                const calcMonthlyData = () => {
+                  const md: any = {};
+                  sm.forEach(m => { md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 }; });
+                  sales.filter(s => { const d = parseISO(s.date); return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? currentYear) && d.getFullYear() === currentYear : true; }).forEach(s => {
+                    const mi = sm[parseISO(s.date).getMonth()];
+                    md[mi].sales += s.total;
+                    const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
+                    md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
+                  });
+                  records.filter(r => { if (r.sale_id) return false; const d = parseISO(r.date); return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true; }).forEach(r => {
+                    const mi = sm[parseISO(r.date).getMonth()];
+                    const cat = r.category.trim().toUpperCase();
+                    const type = categoryMappings[cat] || 'EXPENSE';
+                    if (type === 'ASSET_LIABILITY') return;
+                    if (r.type === 'income') {
+                      if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
+                      else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
+                      else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
+                    } else {
+                      if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
+                      else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
+                      else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
+                    }
+                  });
+                  return md;
+                };
+
+                const md = calcMonthlyData();
+                const calcTotal = (path: string) => sm.reduce((sum, m) => { const parts = path.split('.'); let val: any = md[m]; parts.forEach(p => { val = val?.[p]; }); return sum + (Number(val) || 0); }, 0);
+
+                const salesCats = Array.from(new Set([...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'), 'JUALAN (REKOD)'])).filter(cat => calcTotal(`salesByCategory.${cat}`) !== 0);
+                const cogsCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS' && calcTotal(`cogs.${c}`) !== 0);
+                const otherIncomeCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calcTotal(`otherIncome.${c}`) !== 0);
+                const expenseCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calcTotal(`expenses.${c}`) !== 0);
+
+                const totalSalesAmt = calcTotal('sales') + calcTotal('salesAdjustments');
+                const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0);
+                const grossProfit = totalSalesAmt - totalCogsAmt;
+                const totalOtherIncome = otherIncomeCats.reduce((s, c) => s + calcTotal(`otherIncome.${c}`), 0);
+                const totalExpensesAmt = expenseCats.reduce((s, c) => s + calcTotal(`expenses.${c}`), 0);
+                const taxation = calcTotal('taxation');
+                const netProfitAmt = grossProfit + totalOtherIncome - totalExpensesAmt - taxation;
+
+                const segLabels: Record<string, string> = { all: 'Penuh', sales: 'Jualan', cogs: 'Kos Jualan', gross_profit: 'Untung Kasar', other_income: 'Pendapatan Lain', expenses: 'Perbelanjaan', net_profit: 'Untung Bersih' };
+                const segTitle = segLabels[pdfSegment] || 'Penuh';
+                const periodLabel = reportType === 'monthly' && selectedMonth !== undefined ? `${['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'][selectedMonth]} ${currentYear}` : reportType === 'yearly' ? String(currentYear) : `${startDate} - ${endDate}`;
+
+                const drawHeader = () => {
+                  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+                  doc.text((user?.company_name || 'MONITACC ENTERPRISE').toUpperCase(), pageW / 2, y, { align: 'center' }); y += lineH;
+                  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+                  doc.text(`No. SSM: ${user?.ssm_number || '-'}`, pageW / 2, y, { align: 'center' }); y += lineH;
+                  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
+                  doc.text(`PENYATA UNTUNG RUGI${pdfSegment !== 'all' ? ` - ${segTitle.toUpperCase()}` : ''} - ${periodLabel}`, pageW / 2, y, { align: 'center' }); y += lineH + 2;
+                  doc.setDrawColor(200, 200, 200); doc.line(colCode, y, pageW - colCode, y); y += lineH;
+                  doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(100, 116, 139);
+                  doc.text('KOD', colCode, y); doc.text('KETERANGAN', colDesc, y); doc.text(`JUMLAH (RM)`, colAmt, y, { align: 'right' }); y += lineH - 1;
+                  doc.setDrawColor(220, 220, 220); doc.line(colCode, y, pageW - colCode, y); y += lineH - 1;
+                };
+
+                const checkPage = () => { if (y > 270) { doc.addPage(); y = 20; } };
+
+                const drawRow = (code: string, label: string, value: number | null, bold = false, indent = false, highlight = false) => {
+                  checkPage();
+                  if (highlight) { doc.setFillColor(240, 253, 244); doc.rect(colCode - 1, y - 4, pageW - 2 * colCode + 2, lineH + 1, 'F'); }
+                  doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8);
+                  doc.setTextColor(bold ? 15 : 71, bold ? 23 : 85, bold ? 42 : 105);
+                  doc.text(code, colCode, y); doc.text(indent ? `   ${label}` : label, colDesc, y);
+                  if (value !== null) { doc.setTextColor(value < 0 ? 220 : bold ? 15 : 71, value < 0 ? 38 : bold ? 23 : 85, value < 0 ? 38 : bold ? 42 : 105); doc.text(fmt2(value), colAmt, y, { align: 'right' }); }
+                  y += lineH;
+                };
+
+                const drawDivider = () => { doc.setDrawColor(180, 180, 180); doc.line(colCode, y - 2, pageW - colCode, y - 2); y += 1; };
+
+                drawHeader();
+
+                const seg = pdfSegment;
+                if (seg === 'all' || seg === 'sales') {
+                  salesCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), false, true));
+                  const adj = calcTotal('salesAdjustments'); if (adj !== 0) drawRow('-', 'SALES ADJUSTMENTS', adj, false, true);
+                  drawDivider(); drawRow(CHART_OF_ACCOUNTS['SALES'] || '5000/000', 'JUMLAH JUALAN (TOTAL)', totalSalesAmt, true); y += 2;
+                }
+                if (seg === 'all' || seg === 'cogs') {
+                  cogsCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), false, true));
+                  drawDivider(); drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, true); y += 2;
+                }
+                if (seg === 'all' || seg === 'gross_profit') {
+                  drawDivider(); drawRow('', 'GROSS PROFIT/(LOSS)', grossProfit, true, false, true); y += 3;
+                }
+                if (seg === 'all' || seg === 'other_income') {
+                  otherIncomeCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), false, true));
+                  drawDivider(); drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, true); y += 2;
+                }
+                if (seg === 'all' || seg === 'expenses') {
+                  expenseCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), false, true));
+                  if (taxation !== 0) drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'PROVISION FOR TAXATION', taxation, false, true);
+                  drawDivider(); drawRow('', 'JUMLAH PERBELANJAAN (TOTAL)', totalExpensesAmt + taxation, true); y += 3;
+                }
+                if (seg === 'all' || seg === 'net_profit') {
+                  drawDivider(); drawRow('', `NET PROFIT/(LOSS) ${currentYear}`, netProfitAmt, true, false, true);
+                }
+
+                const pc = (doc as any).internal.getNumberOfPages();
+                for (let i = 1; i <= pc; i++) { doc.setPage(i); doc.setFontSize(7); doc.setTextColor(148, 163, 184); doc.text(`Dijana oleh Monitacc pada ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, colCode, 290); doc.text(`Halaman ${i} daripada ${pc}`, pageW - colCode, 290, { align: 'right' }); }
+
+                const biz = (user?.company_name || 'Monitacc').replace(/\s+/g, '_');
+                doc.save(`PnL_${biz}_${segTitle}_${periodLabel.replace(/\s+/g,'_').replace(/\//g,'-')}.pdf`);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all"
+            >
+              <Download size={14} />
+              Muat Turun PDF
+            </button>
+            <div className="w-px h-8 bg-slate-200" />
+            <div className="relative">
+              <button
+                onClick={() => setShowPdfMenu(v => !v)}
+                className="flex items-center gap-1 px-3 py-2 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 transition-all"
+              >
+                <span className="text-[10px] text-slate-500 max-w-[80px] truncate">{({'all':'Semua','sales':'Jualan','cogs':'Kos Jualan','gross_profit':'Untung Kasar','other_income':'Pendapatan Lain','expenses':'Perbelanjaan','net_profit':'Untung Bersih'} as any)[pdfSegment]}</span>
+                <ChevronDown size={12} className={`transition-transform ${showPdfMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showPdfMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-2xl z-50 py-1.5 min-w-[170px] animate-in fade-in zoom-in duration-150">
+                  <p className="text-[9px] font-black text-slate-400 px-3 py-1.5 uppercase tracking-wider border-b border-slate-50 mb-1">Pilih Bahagian PDF</p>
+                  {([
+                    ['all', 'Laporan Penuh'],
+                    ['sales', 'Bahagian Jualan'],
+                    ['cogs', 'Kos Jualan (COGS)'],
+                    ['gross_profit', 'Untung Kasar'],
+                    ['other_income', 'Pendapatan Lain'],
+                    ['expenses', 'Perbelanjaan'],
+                    ['net_profit', 'Untung/Rugi Bersih'],
+                  ] as [string, string][]).map(([val, label]) => (
+                    <button
+                      key={val}
+                      onClick={() => { setPdfSegment(val as any); setShowPdfMenu(false); }}
+                      className={`w-full text-left px-3 py-2 text-[10px] font-bold transition-colors flex items-center gap-2 ${pdfSegment === val ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600 hover:bg-slate-50'}`}
+                    >
+                      {pdfSegment === val && <Check size={10} className="text-emerald-600 shrink-0" />}
+                      {pdfSegment !== val && <span className="w-[10px]" />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
       <div className="overflow-x-auto">
         {isAnnual && (
