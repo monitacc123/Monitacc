@@ -5044,49 +5044,55 @@ const ProfitLossReport = ({
             <button
               onClick={() => {
                 const sm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                const doc = new jsPDF();
+                const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
                 const pageW = 210;
-                const colCode = 14;
-                const colDesc = 50;
-                const colAmt = 160;
-                const lineH = 6;
-                let y = 20;
+                const pageH = 297;
+                const marginL = 18;
+                const marginR = 18;
+                const contentW = pageW - marginL - marginR;
+                const colCodeW = 30;
+                const colAmtW = 38;
+                const colDescX = marginL + colCodeW + 4;
+                const colAmtX = pageW - marginR;
+                const rowH = 7;
+                let y = 0;
 
-                const calcMonthlyData = () => {
-                  const md: any = {};
-                  sm.forEach(m => { md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 }; });
-                  sales.filter(s => { const d = parseISO(s.date); return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? currentYear) && d.getFullYear() === currentYear : true; }).forEach(s => {
-                    const mi = sm[parseISO(s.date).getMonth()];
-                    md[mi].sales += s.total;
-                    const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
-                    md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
-                  });
-                  records.filter(r => { if (r.sale_id) return false; const d = parseISO(r.date); return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true; }).forEach(r => {
-                    const mi = sm[parseISO(r.date).getMonth()];
-                    const cat = r.category.trim().toUpperCase();
-                    const type = categoryMappings[cat] || 'EXPENSE';
-                    if (type === 'ASSET_LIABILITY') return;
-                    if (r.type === 'income') {
-                      if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
-                      else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
-                      else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
-                    } else {
-                      if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
-                      else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
-                      else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
-                    }
-                  });
-                  return md;
-                };
-
-                const md = calcMonthlyData();
+                // ── Data computation ───────────────────────────────────────
+                const md: any = {};
+                sm.forEach(m => { md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 }; });
+                sales.filter(s => {
+                  const d = parseISO(s.date);
+                  return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
+                }).forEach(s => {
+                  const mi = sm[parseISO(s.date).getMonth()];
+                  md[mi].sales += s.total;
+                  const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
+                  md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
+                });
+                records.filter(r => {
+                  if (r.sale_id) return false;
+                  const d = parseISO(r.date);
+                  return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
+                }).forEach(r => {
+                  const mi = sm[parseISO(r.date).getMonth()];
+                  const cat = r.category.trim().toUpperCase();
+                  const type = categoryMappings[cat] || 'EXPENSE';
+                  if (type === 'ASSET_LIABILITY') return;
+                  if (r.type === 'income') {
+                    if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
+                    else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
+                    else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
+                  } else {
+                    if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
+                    else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
+                    else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
+                  }
+                });
                 const calcTotal = (path: string) => sm.reduce((sum, m) => { const parts = path.split('.'); let val: any = md[m]; parts.forEach(p => { val = val?.[p]; }); return sum + (Number(val) || 0); }, 0);
-
                 const salesCats = Array.from(new Set([...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'), 'JUALAN (REKOD)'])).filter(cat => calcTotal(`salesByCategory.${cat}`) !== 0);
                 const cogsCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS' && calcTotal(`cogs.${c}`) !== 0);
                 const otherIncomeCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calcTotal(`otherIncome.${c}`) !== 0);
                 const expenseCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calcTotal(`expenses.${c}`) !== 0);
-
                 const totalSalesAmt = calcTotal('sales') + calcTotal('salesAdjustments');
                 const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0);
                 const grossProfit = totalSalesAmt - totalCogsAmt;
@@ -5097,65 +5103,232 @@ const ProfitLossReport = ({
 
                 const segLabels: Record<string, string> = { all: 'Penuh', sales: 'Jualan', cogs: 'Kos Jualan', gross_profit: 'Untung Kasar', other_income: 'Pendapatan Lain', expenses: 'Perbelanjaan', net_profit: 'Untung Bersih' };
                 const segTitle = segLabels[pdfSegment] || 'Penuh';
-                const periodLabel = reportType === 'monthly' && selectedMonth !== undefined ? `${['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'][selectedMonth]} ${currentYear}` : reportType === 'yearly' ? String(currentYear) : `${startDate} - ${endDate}`;
+                const mnNames = ['Januari','Februari','Mac','April','Mei','Jun','Julai','Ogos','September','Oktober','November','Disember'];
+                const periodLabel = reportType === 'monthly' && selectedMonth !== undefined ? `${mnNames[selectedMonth]} ${currentYear}` : reportType === 'yearly' ? String(currentYear) : `${startDate} - ${endDate}`;
+                const bizName = (user?.company_name || 'MONITACC ENTERPRISE').toUpperCase();
+                const ssmNo = user?.ssm_number || '-';
 
-                const drawHeader = () => {
-                  doc.setFontSize(11); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
-                  doc.text((user?.company_name || 'MONITACC ENTERPRISE').toUpperCase(), pageW / 2, y, { align: 'center' }); y += lineH;
-                  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
-                  doc.text(`No. SSM: ${user?.ssm_number || '-'}`, pageW / 2, y, { align: 'center' }); y += lineH;
-                  doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(15, 23, 42);
-                  doc.text(`PENYATA UNTUNG RUGI${pdfSegment !== 'all' ? ` - ${segTitle.toUpperCase()}` : ''} - ${periodLabel}`, pageW / 2, y, { align: 'center' }); y += lineH + 2;
-                  doc.setDrawColor(200, 200, 200); doc.line(colCode, y, pageW - colCode, y); y += lineH;
+                // ── Page helpers ───────────────────────────────────────────
+                const drawPageFooter = (pageNum: number, totalPages: number) => {
+                  doc.setDrawColor(180, 180, 180);
+                  doc.line(marginL, pageH - 14, pageW - marginR, pageH - 14);
+                  doc.setFontSize(7); doc.setFont('courier', 'normal'); doc.setTextColor(150, 150, 150);
+                  doc.text(`Dijana oleh Monitacc • ${format(new Date(), 'dd MMMM yyyy', { locale: undefined })} • Sulit`, marginL, pageH - 9);
+                  doc.text(`Halaman ${pageNum} / ${totalPages}`, pageW - marginR, pageH - 9, { align: 'right' });
+                };
+
+                const drawPageHeader = () => {
+                  // Dark top bar
+                  doc.setFillColor(15, 23, 42);
+                  doc.rect(0, 0, pageW, 36, 'F');
+                  // Company name
+                  doc.setFontSize(13); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
+                  doc.text(bizName, marginL, 14);
+                  // SSM
+                  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+                  doc.text(`No. SSM: ${ssmNo}`, marginL, 21);
+                  // Report title right-aligned
+                  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(52, 211, 153);
+                  const rTitle = pdfSegment !== 'all' ? `PENYATA UNTUNG RUGI — ${segTitle.toUpperCase()}` : 'PENYATA UNTUNG RUGI';
+                  doc.text(rTitle, pageW - marginR, 14, { align: 'right' });
+                  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
+                  doc.text(`Tempoh: ${periodLabel}`, pageW - marginR, 21, { align: 'right' });
+                  // Thin accent line
+                  doc.setFillColor(52, 211, 153);
+                  doc.rect(0, 36, pageW, 1.2, 'F');
+                  y = 46;
+                };
+
+                const drawTableHeader = () => {
+                  doc.setFillColor(248, 250, 252);
+                  doc.rect(marginL, y - 5, contentW, rowH, 'F');
                   doc.setFontSize(7.5); doc.setFont('helvetica', 'bold'); doc.setTextColor(100, 116, 139);
-                  doc.text('KOD', colCode, y); doc.text('KETERANGAN', colDesc, y); doc.text(`JUMLAH (RM)`, colAmt, y, { align: 'right' }); y += lineH - 1;
-                  doc.setDrawColor(220, 220, 220); doc.line(colCode, y, pageW - colCode, y); y += lineH - 1;
+                  doc.text('KOD', marginL, y);
+                  doc.text('KETERANGAN', colDescX, y);
+                  doc.text('JUMLAH (RM)', colAmtX, y, { align: 'right' });
+                  doc.setDrawColor(203, 213, 225);
+                  doc.line(marginL, y + 1.5, pageW - marginR, y + 1.5);
+                  y += rowH;
                 };
 
-                const checkPage = () => { if (y > 270) { doc.addPage(); y = 20; } };
-
-                const drawRow = (code: string, label: string, value: number | null, bold = false, indent = false, highlight = false) => {
-                  checkPage();
-                  if (highlight) { doc.setFillColor(240, 253, 244); doc.rect(colCode - 1, y - 4, pageW - 2 * colCode + 2, lineH + 1, 'F'); }
-                  doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8);
-                  doc.setTextColor(bold ? 15 : 71, bold ? 23 : 85, bold ? 42 : 105);
-                  doc.text(code, colCode, y); doc.text(indent ? `   ${label}` : label, colDesc, y);
-                  if (value !== null) { doc.setTextColor(value < 0 ? 220 : bold ? 15 : 71, value < 0 ? 38 : bold ? 23 : 85, value < 0 ? 38 : bold ? 42 : 105); doc.text(fmt2(value), colAmt, y, { align: 'right' }); }
-                  y += lineH;
+                const checkNewPage = (needed = rowH) => {
+                  if (y + needed > pageH - 20) {
+                    doc.addPage();
+                    drawPageHeader();
+                    drawTableHeader();
+                  }
                 };
 
-                const drawDivider = () => { doc.setDrawColor(180, 180, 180); doc.line(colCode, y - 2, pageW - colCode, y - 2); y += 1; };
+                // Section label band
+                const drawSectionLabel = (label: string) => {
+                  checkNewPage(rowH + 2);
+                  doc.setFillColor(241, 245, 249);
+                  doc.rect(marginL, y - 4, contentW, rowH - 1, 'F');
+                  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(71, 85, 105);
+                  doc.text(label.toUpperCase(), marginL + 1, y);
+                  y += rowH - 1;
+                };
 
-                drawHeader();
+                // Normal data row
+                const drawRow = (code: string, label: string, value: number | null, opts: { bold?: boolean; indent?: boolean; highlight?: boolean; highlightColor?: [number,number,number]; totalRow?: boolean } = {}) => {
+                  checkNewPage();
+                  const { bold = false, indent = false, highlight = false, highlightColor = [240, 253, 244], totalRow = false } = opts;
+                  if (highlight) {
+                    doc.setFillColor(...highlightColor);
+                    doc.rect(marginL, y - 5, contentW, rowH, 'F');
+                  }
+                  doc.setFont('helvetica', bold ? 'bold' : 'normal');
+                  doc.setFontSize(bold ? 8.5 : 8);
+                  doc.setTextColor(bold ? 15 : 55, bold ? 23 : 65, bold ? 42 : 81);
+                  doc.text(code, marginL, y);
+                  doc.text(indent ? `    ${label}` : label, colDescX, y);
+                  if (value !== null) {
+                    const isNeg = value < 0;
+                    doc.setTextColor(isNeg ? 190 : bold ? 15 : 55, isNeg ? 40 : bold ? 23 : 65, isNeg ? 40 : bold ? 42 : 81);
+                    doc.text(fmt2(value), colAmtX, y, { align: 'right' });
+                  }
+                  if (totalRow) {
+                    doc.setDrawColor(100, 116, 139);
+                    doc.line(colAmtX - colAmtW + 4, y + 1.5, colAmtX, y + 1.5);
+                  }
+                  y += rowH;
+                };
+
+                // Single underline under amount
+                const drawUnderline = (double = false) => {
+                  doc.setDrawColor(100, 116, 139);
+                  doc.line(colAmtX - colAmtW + 4, y - rowH + 1.5, colAmtX, y - rowH + 1.5);
+                  if (double) {
+                    doc.line(colAmtX - colAmtW + 4, y - rowH + 3, colAmtX, y - rowH + 3);
+                  }
+                  y += 1;
+                };
+
+                // Full-width separator
+                const drawSeparator = (thick = false) => {
+                  checkNewPage(3);
+                  doc.setDrawColor(thick ? 71 : 203, thick ? 85 : 213, thick ? 105 : 225);
+                  doc.setLineWidth(thick ? 0.4 : 0.2);
+                  doc.line(marginL, y - 2, pageW - marginR, y - 2);
+                  doc.setLineWidth(0.2);
+                  y += 2;
+                };
+
+                // ── Build PDF ──────────────────────────────────────────────
+                drawPageHeader();
+                drawTableHeader();
 
                 const seg = pdfSegment;
+
+                // SALES
                 if (seg === 'all' || seg === 'sales') {
-                  salesCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), false, true));
-                  const adj = calcTotal('salesAdjustments'); if (adj !== 0) drawRow('-', 'SALES ADJUSTMENTS', adj, false, true);
-                  drawDivider(); drawRow(CHART_OF_ACCOUNTS['SALES'] || '5000/000', 'JUMLAH JUALAN (TOTAL)', totalSalesAmt, true); y += 2;
-                }
-                if (seg === 'all' || seg === 'cogs') {
-                  cogsCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), false, true));
-                  drawDivider(); drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, true); y += 2;
-                }
-                if (seg === 'all' || seg === 'gross_profit') {
-                  drawDivider(); drawRow('', 'GROSS PROFIT/(LOSS)', grossProfit, true, false, true); y += 3;
-                }
-                if (seg === 'all' || seg === 'other_income') {
-                  otherIncomeCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), false, true));
-                  drawDivider(); drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, true); y += 2;
-                }
-                if (seg === 'all' || seg === 'expenses') {
-                  expenseCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), false, true));
-                  if (taxation !== 0) drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'PROVISION FOR TAXATION', taxation, false, true);
-                  drawDivider(); drawRow('', 'JUMLAH PERBELANJAAN (TOTAL)', totalExpensesAmt + taxation, true); y += 3;
-                }
-                if (seg === 'all' || seg === 'net_profit') {
-                  drawDivider(); drawRow('', `NET PROFIT/(LOSS) ${currentYear}`, netProfitAmt, true, false, true);
+                  drawSectionLabel('A. Jualan / Sales');
+                  salesCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), { indent: true }));
+                  const adj = calcTotal('salesAdjustments');
+                  if (adj !== 0) drawRow('-', 'Sales Adjustments', adj, { indent: true });
+                  drawSeparator();
+                  drawRow(CHART_OF_ACCOUNTS['SALES'] || '5000/000', 'JUMLAH JUALAN (TOTAL)', totalSalesAmt, { bold: true, totalRow: true });
+                  drawUnderline();
+                  y += 3;
                 }
 
-                const pc = (doc as any).internal.getNumberOfPages();
-                for (let i = 1; i <= pc; i++) { doc.setPage(i); doc.setFontSize(7); doc.setTextColor(148, 163, 184); doc.text(`Dijana oleh Monitacc pada ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, colCode, 290); doc.text(`Halaman ${i} daripada ${pc}`, pageW - colCode, 290, { align: 'right' }); }
+                // COGS
+                if (seg === 'all' || seg === 'cogs') {
+                  drawSectionLabel('B. Kos Jualan / Cost of Goods Sold');
+                  if (cogsCats.length > 0) {
+                    cogsCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), { indent: true }));
+                    drawSeparator();
+                  }
+                  drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, { bold: true, totalRow: true });
+                  drawUnderline();
+                  y += 3;
+                }
+
+                // GROSS PROFIT
+                if (seg === 'all' || seg === 'gross_profit') {
+                  const gpColor: [number,number,number] = grossProfit >= 0 ? [220, 252, 231] : [254, 226, 226];
+                  drawRow('', 'GROSS PROFIT / (LOSS)', grossProfit, { bold: true, highlight: true, highlightColor: gpColor });
+                  drawUnderline(true);
+                  y += 5;
+                }
+
+                // OTHER INCOME
+                if (seg === 'all' || seg === 'other_income') {
+                  drawSectionLabel('C. Pendapatan Lain / Other Income');
+                  if (otherIncomeCats.length > 0) {
+                    otherIncomeCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), { indent: true }));
+                    drawSeparator();
+                  }
+                  drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, { bold: true, totalRow: true });
+                  drawUnderline();
+                  y += 3;
+                }
+
+                // EXPENSES
+                if (seg === 'all' || seg === 'expenses') {
+                  drawSectionLabel('D. Perbelanjaan / Expenses');
+                  expenseCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), { indent: true }));
+                  if (taxation !== 0) {
+                    drawSeparator();
+                    drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'Provision for Taxation', taxation, { indent: true });
+                  }
+                  drawSeparator();
+                  drawRow('', 'JUMLAH PERBELANJAAN (TOTAL)', totalExpensesAmt + taxation, { bold: true, totalRow: true });
+                  drawUnderline();
+                  y += 5;
+                }
+
+                // NET PROFIT — always full-width highlight
+                if (seg === 'all' || seg === 'net_profit') {
+                  const npColor: [number,number,number] = netProfitAmt >= 0 ? [15, 23, 42] : [127, 29, 29];
+                  doc.setFillColor(...npColor);
+                  doc.rect(marginL, y - 5, contentW, rowH + 1, 'F');
+                  doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(255, 255, 255);
+                  doc.text('', marginL, y);
+                  doc.text(`NET PROFIT / (LOSS)  —  ${periodLabel}`, colDescX, y);
+                  const npColor2: [number,number,number] = netProfitAmt >= 0 ? [52, 211, 153] : [252, 165, 165];
+                  doc.setTextColor(...npColor2);
+                  doc.text(fmt2(netProfitAmt), colAmtX, y, { align: 'right' });
+                  y += rowH + 4;
+                }
+
+                // ── Summary box (only for 'all') ───────────────────────────
+                if (seg === 'all') {
+                  checkNewPage(40);
+                  y += 4;
+                  doc.setDrawColor(203, 213, 225);
+                  doc.setLineWidth(0.3);
+                  doc.rect(marginL, y, contentW, 32, 'S');
+                  doc.setLineWidth(0.2);
+                  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(100, 116, 139);
+                  doc.text('RINGKASAN EKSEKUTIF', marginL + 4, y + 6);
+                  const sumItems = [
+                    { label: 'Jumlah Jualan', val: totalSalesAmt, color: [16, 185, 129] as [number,number,number] },
+                    { label: 'Kos Jualan', val: totalCogsAmt, color: [100, 116, 139] as [number,number,number] },
+                    { label: 'Untung Kasar', val: grossProfit, color: [59, 130, 246] as [number,number,number] },
+                    { label: 'Perbelanjaan', val: totalExpensesAmt + taxation, color: [244, 63, 94] as [number,number,number] },
+                    { label: 'Untung Bersih', val: netProfitAmt, color: netProfitAmt >= 0 ? [16, 185, 129] as [number,number,number] : [244, 63, 94] as [number,number,number] },
+                  ];
+                  const boxW = (contentW - 8) / sumItems.length;
+                  sumItems.forEach((item, i) => {
+                    const bx = marginL + 4 + i * (boxW + 2);
+                    const by = y + 11;
+                    doc.setFillColor(...item.color);
+                    doc.rect(bx, by - 1, 2, 10, 'F');
+                    doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 116, 139);
+                    doc.text(item.label, bx + 4, by + 3);
+                    doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...item.color);
+                    doc.text(`RM ${fmt2(item.val)}`, bx + 4, by + 9);
+                  });
+                  y += 38;
+                }
+
+                // ── Footer on every page ───────────────────────────────────
+                const totalPages = (doc as any).internal.getNumberOfPages();
+                for (let i = 1; i <= totalPages; i++) {
+                  doc.setPage(i);
+                  drawPageFooter(i, totalPages);
+                }
 
                 const biz = (user?.company_name || 'Monitacc').replace(/\s+/g, '_');
                 doc.save(`PnL_${biz}_${segTitle}_${periodLabel.replace(/\s+/g,'_').replace(/\//g,'-')}.pdf`);
