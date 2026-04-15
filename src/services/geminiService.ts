@@ -1,7 +1,18 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { ALL_CATEGORIES } from "../constants/categories";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+let _ai: GoogleGenAI | null = null;
+
+function getAI(): GoogleGenAI {
+  if (!_ai) {
+    const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
+    if (!apiKey) {
+      throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
+    }
+    _ai = new GoogleGenAI({ apiKey });
+  }
+  return _ai;
+}
 
 // Simple in-memory cache
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
@@ -42,7 +53,7 @@ export interface ExtractedData {
 
 export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg"): Promise<ExtractedData[] | null> {
   try {
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getAI().models.generateContent({
       model: "gemini-3.1-pro-preview",
       contents: [
         {
@@ -125,7 +136,7 @@ export async function analyzeFinancials(records: any[], sales: any[], isConcise:
   }
 
   try {
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getAI().models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [
         {
@@ -181,7 +192,7 @@ export async function getDashboardInsights(records: any[], sales: any[]): Promis
   }
 
   try {
-    const response = await withRetry(() => ai.models.generateContent({
+    const response = await withRetry(() => getAI().models.generateContent({
       model: "gemini-3.1-pro-preview",
       contents: [
         {
