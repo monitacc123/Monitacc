@@ -3291,7 +3291,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       
       // Balance Sheet Groupings
       if (sel === 'bank') return (r as any).payment_method === 'bank' || cat === 'bank' || cat.includes('bank');
-      if (sel === 'cash in hand') return (r as any).payment_method === 'cash' || cat === 'cash in hand' || cat.includes('tunai') || cat.includes('cash');
+      if (sel === 'cash in hand') return (r as any).payment_method === 'cash' || (r as any).payment_method === 'cash_in_hand' || cat === 'cash in hand' || cat === 'tunai di tangan' || cat.includes('tunai') || cat.includes('cash');
       
       const fixedAssetCats = ["fixed assets", "motor vehicles", "furniture and fittings", "office equipment", "computer and software", "kitchen utensil", "renovation", "signboard", "building", "goodwill"];
       if (sel === 'fixed assets') return cat === sel || fixedAssetCats.includes(cat) || cat.includes('aset tetap') || cat.includes('kenderaan') || cat.includes('perabot') || cat.includes('pejabat') || cat.includes('komputer');
@@ -6603,7 +6603,7 @@ const BalanceSheetReport = ({
     "ACCUM. DEPRN - KITCHEN UTENSIL", "ACCUM. DEPRN - RENOVATION", "PROVISION FOR DOUBTFUL DEBT"
   ];
   const bankCats = ["BANK", ...BANK_LIST];
-  const cashCats = ["CASH IN HAND"];
+  const cashCats = ["CASH IN HAND", "TUNAI DI TANGAN"];
   const debtorCats = ["TRADE DEBTORS", "OTHER DEBTORS", "EN SALLEH", "MORGAN SDN BHD"];
   const stockCats = ["STOCK"];
   const depositCats = ["DEPOSIT & PREPAYMENT", "DEPOSIT - RENTAL", "PREPAYMENT - UTILITIES"];
