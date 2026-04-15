@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabase';
 import type { User as UserType } from '../types';
+import { ASSET_LIABILITY_CATEGORIES } from '../constants/categories';
 
 function mapRecord(r: any) {
   return {
@@ -108,7 +109,10 @@ export async function apiFetchDashboard(userId: string, role: string) {
 }
 
 export async function apiSaveRecord(userId: string, data: any): Promise<{ id: number }> {
-  if (data.type === 'income' && data.origin !== 'sale') {
+  const categoryUpper = (data.category || '').trim().toUpperCase();
+  const isAssetLiability = ASSET_LIABILITY_CATEGORIES.map((c: string) => c.toUpperCase()).includes(categoryUpper);
+
+  if (data.type === 'income' && data.origin !== 'sale' && !isAssetLiability) {
     const { data: saleData, error: saleError } = await supabase
       .from('sales')
       .insert([{
@@ -220,8 +224,11 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
 
   if (error) throw new Error(error.message);
 
+  const updatedCategoryUpper = (data.category || '').trim().toUpperCase();
+  const updatedIsAssetLiability = ASSET_LIABILITY_CATEGORIES.map((c: string) => c.toUpperCase()).includes(updatedCategoryUpper);
+
   if (existing.sale_id) {
-    if (data.type === 'income') {
+    if (data.type === 'income' && !updatedIsAssetLiability) {
       await supabase
         .from('sales')
         .update({
@@ -239,7 +246,7 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
       await supabase.from('sales').delete().eq('id', existing.sale_id);
       await supabase.from('records').update({ sale_id: null }).eq('id', id);
     }
-  } else if (data.type === 'income') {
+  } else if (data.type === 'income' && !updatedIsAssetLiability) {
     const { data: saleData } = await supabase
       .from('sales')
       .insert([{
