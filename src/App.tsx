@@ -2147,12 +2147,9 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
-              <SearchableSelect
+              <SearchableSelect 
                 value={formData.category}
-                onChange={(val) => {
-                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND';
-                  setFormData({...formData, category: val, payment_method: isCashInHand ? 'bank' : formData.payment_method});
-                }}
+                onChange={(val) => setFormData({...formData, category: val})}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
                   ...ASSET_LIABILITY_CATEGORIES,
@@ -2166,22 +2163,10 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               />
             </div>
 
-            {formData.category.trim().toUpperCase() === 'CASH IN HAND' && (
-              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <div className="mt-0.5 text-amber-500 shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Pemindahan Aset Tunai</p>
-                  <p className="text-xs text-amber-600 mt-0.5 leading-relaxed">Wang dipindahkan dari bank ke tunai di tangan. Baki bank akan berkurang dan baki tunai di tangan akan bertambah dalam Kunci Kira-Kira.</p>
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input
+                <input 
                   required
                   type="number"
                   step="0.01"
@@ -2193,7 +2178,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
-                <input
+                <input 
                   required
                   type="date"
                   value={formData.date}
@@ -2201,22 +2186,20 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
-              {formData.category.trim().toUpperCase() !== 'CASH IN HAND' && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
-                  <div className="relative">
-                    <select
-                      value={formData.payment_method}
-                      onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
-                    >
-                      <option value="bank">Bank / Online</option>
-                      <option value="cash">Tunai (Cash)</option>
-                    </select>
-                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
+                <div className="relative">
+                  <select 
+                    value={formData.payment_method}
+                    onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
+                  >
+                    <option value="bank">Bank / Online</option>
+                    <option value="cash">Tunai (Cash)</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="space-y-1.5">
@@ -2456,12 +2439,9 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
 
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
-              <SearchableSelect
+              <SearchableSelect 
                 value={formData.category}
-                onChange={(val) => {
-                  const isCashInHand = val.trim().toUpperCase() === 'CASH IN HAND';
-                  setFormData({...formData, category: val, payment_method: isCashInHand ? 'bank' : formData.payment_method});
-                }}
+                onChange={(val) => setFormData({...formData, category: val})}
                 options={Array.from(new Set([
                   ...(formData.type === 'income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES),
                   ...ASSET_LIABILITY_CATEGORIES,
@@ -2475,22 +2455,10 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               />
             </div>
 
-            {formData.category.trim().toUpperCase() === 'CASH IN HAND' && (
-              <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                <div className="mt-0.5 text-amber-500 shrink-0">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Pemindahan Aset Tunai</p>
-                  <p className="text-xs text-amber-600 mt-0.5 leading-relaxed">Wang dipindahkan dari bank ke tunai di tangan. Baki bank akan berkurang dan baki tunai di tangan akan bertambah dalam Kunci Kira-Kira.</p>
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input
+                <input 
                   type="number"
                   step="0.01"
                   value={formData.amount}
@@ -2500,34 +2468,32 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
-                <input
+                <input 
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({...formData, date: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
-              {formData.category.trim().toUpperCase() !== 'CASH IN HAND' && (
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
-                  <div className="relative">
-                    <select
-                      value={formData.payment_method}
-                      onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
-                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
-                    >
-                      <option value="bank">Bank / Online</option>
-                      <option value="cash">Tunai (Cash)</option>
-                    </select>
-                    <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
+                <div className="relative">
+                  <select 
+                    value={formData.payment_method}
+                    onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
+                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
+                  >
+                    <option value="bank">Bank / Online</option>
+                    <option value="cash">Tunai (Cash)</option>
+                  </select>
+                  <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
-              )}
+              </div>
             </div>
 
             <div className="space-y-2">
               <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
-              <textarea
+              <textarea 
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
                 className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-[32px] font-medium text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all min-h-[100px]"
