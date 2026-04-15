@@ -6755,216 +6755,167 @@ const BalanceSheetReport = ({
             const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
             const pageW = 210;
             const pageH = 297;
-            const mL = 20;
-            const mR = 20;
-            const cW = pageW - mL - mR;
-            const amtColW = 36;
+            const mL = 25;
+            const mR = 25;
             const amtX = pageW - mR;
-            const rH = 6.5;
+            const amtW = 40;
+            const rH = 7;
             let y = 0;
 
-            const fmtAmt = (v: number) => v === 0 ? '-' : Math.abs(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const f = (v: number) => Math.abs(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-            // ── Header ────────────────────────────────────────────────
-            const drawPageHeader = () => {
-              doc.setFillColor(15, 23, 42);
-              doc.rect(0, 0, pageW, 40, 'F');
-              doc.setFillColor(16, 185, 129);
-              doc.rect(0, 40, pageW, 1.5, 'F');
-              doc.setFontSize(14); doc.setFont('helvetica', 'bold'); doc.setTextColor(255, 255, 255);
-              doc.text(companyName.toUpperCase(), pageW / 2, 13, { align: 'center' });
-              doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
-              doc.text(`No. SSM: ${user?.ssm_number || '-'}`, pageW / 2, 20, { align: 'center' });
-              if (user?.business_address) { doc.text(user.business_address, pageW / 2, 26, { align: 'center' }); }
-              doc.setFontSize(9); doc.setFont('helvetica', 'bold'); doc.setTextColor(16, 185, 129);
-              doc.text('KUNCI KIRA-KIRA / BALANCE SHEET', pageW / 2, 33, { align: 'center' });
-              doc.setFontSize(7.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(148, 163, 184);
-              doc.text(`Pada Tarikh / As At: ${asAtDate}`, pageW / 2, 38.5, { align: 'center' });
-              y = 52;
+            const addPage = () => { doc.addPage(); y = 28; };
+            const chk = (n = rH) => { if (y + n > pageH - 22) addPage(); };
+
+            // ── Header (center-block, minimal) ─────────────────────────
+            y = 28;
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+            doc.text(companyName.toUpperCase(), pageW / 2, y, { align: 'center' });
+            y += 5.5;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
+            doc.text(`No. SSM: ${user?.ssm_number || '-'}`, pageW / 2, y, { align: 'center' });
+            y += 5;
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20, 20, 20);
+            doc.text('KUNCI KIRA-KIRA (BALANCE SHEET)', pageW / 2, y, { align: 'center' });
+            y += 4.5;
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
+            doc.text(`Pada Tarikh: ${asAtDate}`, pageW / 2, y, { align: 'center' });
+            y += 5;
+            // thin rule under header
+            doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.5);
+            doc.line(mL, y, pageW - mR, y);
+            doc.setLineWidth(0.15);
+            y += 7;
+
+            // ── Helpers ────────────────────────────────────────────────
+            const colHdr = (left: string, right: string) => {
+              doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+              doc.text(left.toUpperCase(), mL, y);
+              doc.text(right, amtX, y, { align: 'right' });
+              doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+              doc.line(mL, y + 1.5, pageW - mR, y + 1.5);
+              y += rH - 1;
             };
+
+            const sectionHdr = (label: string) => {
+              chk(rH + 2);
+              y += 3;
+              doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(20, 20, 20);
+              doc.text(label.toUpperCase(), mL, y);
+              y += rH - 2;
+              doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+              doc.line(mL, y - 1, pageW - mR, y - 1);
+              y += 2;
+            };
+
+            const row = (label: string, val: number | null, bold = false) => {
+              if (val !== null && val === 0) return;
+              chk();
+              doc.setFont('helvetica', bold ? 'bold' : 'normal');
+              doc.setFontSize(bold ? 8 : 8);
+              doc.setTextColor(bold ? 20 : 55, bold ? 20 : 55, bold ? 20 : 55);
+              doc.text(bold ? label : `    ${label}`, mL, y);
+              if (val !== null) {
+                doc.setTextColor(val < 0 ? 180 : (bold ? 20 : 55), val < 0 ? 30 : (bold ? 20 : 55), val < 0 ? 30 : (bold ? 20 : 55));
+                doc.text(f(val), amtX, y, { align: 'right' });
+              }
+              y += rH;
+            };
+
+            const subtotal = (label: string, val: number) => {
+              chk(rH + 3);
+              doc.setDrawColor(160, 160, 160); doc.setLineWidth(0.2);
+              doc.line(amtX - amtW, y - rH + 1, amtX, y - rH + 1);
+              doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(20, 20, 20);
+              doc.text(label, mL, y);
+              doc.text(f(val), amtX, y, { align: 'right' });
+              y += rH;
+            };
+
+            const grandTotal = (label: string, val: number) => {
+              chk(rH + 5);
+              doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20, 20, 20);
+              doc.text(label, mL, y);
+              doc.text(f(val), amtX, y, { align: 'right' });
+              doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.3);
+              doc.line(amtX - amtW, y + 1.5, amtX, y + 1.5);
+              doc.line(amtX - amtW, y + 3, amtX, y + 3);
+              doc.setLineWidth(0.15);
+              y += rH + 4;
+            };
+
+            const spacer = (n = 4) => { y += n; };
+
+            // ═══════════════════════════════════════════
+            // ASSETS
+            // ═══════════════════════════════════════════
+            colHdr('Keterangan', 'RM');
+
+            sectionHdr('Aset Tetap (Fixed Assets)');
+            row('Aset Tetap', fixedAssets);
+            subtotal('Jumlah Aset Tetap', fixedAssets);
+            spacer();
+
+            sectionHdr('Aset Semasa (Current Assets)');
+            row('Bank', bank);
+            row('Tunai di Tangan', cash);
+            if (debtors !== 0) row('Penghutang Dagangan', debtors);
+            if (stock !== 0) row('Stok', stock);
+            if (deposits !== 0) row('Deposit & Prabayar', deposits);
+            subtotal('Jumlah Aset Semasa', totalCurrentAssets);
+            spacer();
+
+            sectionHdr('Liabiliti Semasa (Current Liabilities)');
+            if (accruals !== 0) row('Akruan', accruals);
+            if (creditors !== 0) row('Pemiutang Dagangan', creditors);
+            if (loans !== 0) row('Pinjaman / HP Kreditor', loans);
+            if (taxProvision !== 0) row('Peruntukan Cukai', taxProvision);
+            subtotal('Jumlah Liabiliti Semasa', totalCurrentLiabilities);
+            spacer();
+
+            row('Aset Semasa Bersih', netCurrentAssets, true);
+            spacer(2);
+            grandTotal('JUMLAH ASET', totalAssets);
+
+            // ═══════════════════════════════════════════
+            // FINANCED BY
+            // ═══════════════════════════════════════════
+            spacer(4);
+            colHdr('Dibiayai Oleh (Financed By)', 'RM');
+
+            sectionHdr('Ekuiti Pemilik (Owner\'s Equity)');
+            row('Modal (Capital)', capital);
+            row('Ambilan / Pendahuluan', drawings);
+            row('Untung/(Rugi) Terkumpul B/H', priorProfit);
+            row('Untung/(Rugi) Semasa', currentPeriodProfit);
+            subtotal('Jumlah Ekuiti', totalEquity);
+            spacer(2);
+            grandTotal('JUMLAH DIBIAYAI OLEH', totalEquity);
+
+            // ── Signature ─────────────────────────────────────────────
+            spacer(10);
+            chk(30);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(7); doc.setTextColor(140, 140, 140);
+            doc.text('Saya/Kami mengesahkan bahawa penyata di atas adalah benar dan betul.', mL, y);
+            spacer(10);
+            doc.setDrawColor(160, 160, 160); doc.setLineWidth(0.2);
+            doc.line(mL, y, mL + 55, y);
+            doc.line(pageW - mR - 55, y, pageW - mR, y);
+            spacer(4);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(140, 140, 140);
+            doc.text('Tandatangan & Cop Syarikat', mL, y);
+            doc.text('Tarikh', pageW - mR - 55, y);
 
             // ── Footer ────────────────────────────────────────────────
-            const drawPageFooter = (pg: number, total: number) => {
-              doc.setDrawColor(203, 213, 225); doc.setLineWidth(0.2);
-              doc.line(mL, pageH - 14, pageW - mR, pageH - 14);
-              doc.setFontSize(7); doc.setFont('helvetica', 'normal'); doc.setTextColor(150, 150, 150);
-              doc.text(`Dijana oleh Monitacc • ${format(new Date(), 'dd/MM/yyyy HH:mm')} • Sulit`, mL, pageH - 9);
-              doc.text(`Halaman ${pg} / ${total}`, pageW - mR, pageH - 9, { align: 'right' });
-            };
-
-            const checkPage = (need = rH) => {
-              if (y + need > pageH - 20) {
-                doc.addPage(); drawPageHeader();
-              }
-            };
-
-            // ── Drawing helpers ───────────────────────────────────────
-            const drawSectionBand = (label: string) => {
-              checkPage(rH + 3);
-              doc.setFillColor(15, 23, 42);
-              doc.rect(mL, y - 4.5, cW, rH, 'F');
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(255, 255, 255);
-              doc.text(label, mL + 3, y);
-              doc.setTextColor(16, 185, 129);
-              doc.text('RM', amtX, y, { align: 'right' });
-              y += rH + 1;
-            };
-
-            const drawSubSection = (label: string) => {
-              checkPage(rH);
-              doc.setFillColor(241, 245, 249);
-              doc.rect(mL, y - 4.5, cW, rH - 1, 'F');
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(71, 85, 105);
-              doc.text(label.toUpperCase(), mL + 2, y);
-              y += rH;
-            };
-
-            const drawLineItem = (label: string, value: number, indent = true) => {
-              if (value === 0) return;
-              checkPage(rH);
-              doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(30, 41, 59);
-              doc.text(indent ? `        ${label}` : `    ${label}`, mL, y);
-              doc.text(fmtAmt(value), amtX, y, { align: 'right' });
-              y += rH;
-            };
-
-            const drawTotalLine = (label: string, value: number, doubleLine = false) => {
-              checkPage(rH + 3);
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(15, 23, 42);
-              doc.text(`    ${label}`, mL, y);
-              doc.setTextColor(15, 23, 42);
-              doc.text(fmtAmt(value), amtX, y, { align: 'right' });
-              doc.setDrawColor(71, 85, 105); doc.setLineWidth(0.3);
-              doc.line(amtX - amtColW + 2, y + 1.5, amtX, y + 1.5);
-              if (doubleLine) doc.line(amtX - amtColW + 2, y + 3, amtX, y + 3);
-              doc.setLineWidth(0.2);
-              y += rH + (doubleLine ? 3 : 2);
-            };
-
-            const drawNetLine = (label: string, value: number) => {
-              checkPage(rH + 4);
-              const bg: [number,number,number] = value >= 0 ? [220, 252, 231] : [254, 226, 226];
-              doc.setFillColor(...bg);
-              doc.rect(mL, y - 4.5, cW, rH + 1, 'F');
-              doc.setFont('helvetica', 'bold'); doc.setFontSize(9); doc.setTextColor(15, 23, 42);
-              doc.text(label, mL + 3, y);
-              const vc: [number,number,number] = value >= 0 ? [5, 150, 105] : [185, 28, 28];
-              doc.setTextColor(...vc);
-              doc.text(fmtAmt(value), amtX, y, { align: 'right' });
-              doc.setDrawColor(71, 85, 105); doc.setLineWidth(0.4);
-              doc.line(amtX - amtColW + 2, y + 2.5, amtX, y + 2.5);
-              doc.line(amtX - amtColW + 2, y + 4, amtX, y + 4);
-              doc.setLineWidth(0.2);
-              y += rH + 5;
-            };
-
-            const drawDivider = (thick = false) => {
-              doc.setDrawColor(thick ? 100 : 203, thick ? 116 : 213, thick ? 139 : 225);
-              doc.setLineWidth(thick ? 0.3 : 0.15);
-              doc.line(mL, y - 1, pageW - mR, y - 1);
-              doc.setLineWidth(0.2);
-              y += 1;
-            };
-
-            // ── Build document ────────────────────────────────────────
-            drawPageHeader();
-
-            // ═══════════════════════════════════════════
-            // SECTION 1: ASSETS
-            // ═══════════════════════════════════════════
-            drawSectionBand('I.  ASET / ASSETS');
-
-            // Fixed Assets
-            drawSubSection('A.  Aset Tetap / Fixed Assets');
-            drawLineItem('Aset Tetap', fixedAssets);
-            drawTotalLine('JUMLAH ASET TETAP', fixedAssets);
-            y += 2;
-
-            // Current Assets
-            drawSubSection('B.  Aset Semasa / Current Assets');
-            drawLineItem('Bank', bank);
-            drawLineItem('Tunai di Tangan', cash);
-            if (debtors !== 0) drawLineItem('Penghutang Dagangan', debtors);
-            if (stock !== 0) drawLineItem('Stok', stock);
-            if (deposits !== 0) drawLineItem('Deposit & Prabayar', deposits);
-            drawDivider();
-            drawTotalLine('JUMLAH ASET SEMASA', totalCurrentAssets);
-            y += 2;
-
-            // Current Liabilities (deducted to get net)
-            drawSubSection('C.  Liabiliti Semasa / Current Liabilities');
-            if (accruals !== 0) drawLineItem('Akruan', accruals);
-            if (creditors !== 0) drawLineItem('Pemiutang Dagangan', creditors);
-            if (loans !== 0) drawLineItem('Pinjaman / HP Kreditor', loans);
-            if (taxProvision !== 0) drawLineItem('Peruntukan Cukai', taxProvision);
-            drawDivider();
-            drawTotalLine('JUMLAH LIABILITI SEMASA', totalCurrentLiabilities);
-            y += 2;
-
-            // Net Current Assets
-            drawNetLine('ASET SEMASA BERSIH / NET CURRENT ASSETS', netCurrentAssets);
-
-            // Total Assets
-            y += 2;
-            drawNetLine('JUMLAH ASET / TOTAL ASSETS', totalAssets);
-            y += 4;
-
-            // ═══════════════════════════════════════════
-            // SECTION 2: FINANCED BY (EQUITY)
-            // ═══════════════════════════════════════════
-            drawSectionBand('II.  DIBIAYAI OLEH / FINANCED BY');
-
-            drawSubSection('Ekuiti Pemilik / Owner\'s Equity');
-            drawLineItem('Modal (Capital)', capital);
-            drawLineItem('Ambilan / Pendahuluan (Drawings/Advances)', drawings);
-            drawLineItem('Untung/(Rugi) Terkumpul Bawa Hadapan', priorProfit);
-            drawLineItem('Untung/(Rugi) Semasa', currentPeriodProfit);
-            drawDivider();
-            drawTotalLine('JUMLAH EKUITI', totalEquity);
-            y += 2;
-            drawNetLine('JUMLAH DIBIAYAI OLEH / TOTAL FINANCED BY', totalEquity);
-            y += 8;
-
-            // ═══════════════════════════════════════════
-            // Verification check
-            // ═══════════════════════════════════════════
-            checkPage(20);
-            const balanced = Math.abs(totalAssets - totalEquity) < 0.01;
-            const chkBg: [number,number,number] = balanced ? [240, 253, 244] : [254, 226, 226];
-            doc.setFillColor(...chkBg);
-            doc.rect(mL, y - 4, cW, 10, 'F');
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5);
-            doc.setTextColor(balanced ? 5 : 185, balanced ? 150 : 28, balanced ? 105 : 28);
-            doc.text(balanced ? 'PENGESAHAN: Kunci kira-kira ini adalah seimbang (Balance Sheet balances).' : 'AMARAN: Kunci kira-kira tidak seimbang. Sila semak entri.', mL + 3, y + 1.5);
-            doc.text(`Total Aset: RM ${fmtAmt(totalAssets)}   |   Total Ekuiti: RM ${fmtAmt(totalEquity)}`, mL + 3, y + 6.5);
-            y += 15;
-
-            // ═══════════════════════════════════════════
-            // Signature block
-            // ═══════════════════════════════════════════
-            checkPage(40);
-            y += 6;
-            doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(100, 116, 139);
-            doc.text('Saya/Kami dengan ini mengesahkan bahawa penyata yang diberikan di atas adalah benar dan betul mengikut', mL, y);
-            y += 4.5;
-            doc.text('pengetahuan dan kepercayaan saya/kami.', mL, y);
-            y += 14;
-            doc.setDrawColor(100, 116, 139); doc.setLineWidth(0.3);
-            doc.line(mL, y, mL + 60, y);
-            doc.line(pageW - mR - 60, y, pageW - mR, y);
-            doc.setLineWidth(0.2);
-            y += 4;
-            doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(100, 116, 139);
-            doc.text('Tandatangan Pengarah / Pemilik', mL, y);
-            doc.text('Tarikh', pageW - mR - 60, y);
-            y += 4;
-            doc.setFont('helvetica', 'normal'); doc.setTextColor(130, 130, 130);
-            doc.text('Name:', mL, y);
-            doc.text('Jawatan:', mL, y + 4);
-
-            // Footers
-            const totalPages = (doc as any).internal.getNumberOfPages();
-            for (let i = 1; i <= totalPages; i++) { doc.setPage(i); drawPageFooter(i, totalPages); }
+            const tp = (doc as any).internal.getNumberOfPages();
+            for (let i = 1; i <= tp; i++) {
+              doc.setPage(i);
+              doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+              doc.line(mL, pageH - 13, pageW - mR, pageH - 13);
+              doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(160, 160, 160);
+              doc.text(`Dijana oleh Monitacc  •  ${format(new Date(), 'dd/MM/yyyy')}`, mL, pageH - 8);
+              doc.text(`${i} / ${tp}`, pageW - mR, pageH - 8, { align: 'right' });
+            }
 
             const biz = companyName.replace(/\s+/g, '_').replace(/[^a-zA-Z0-9_]/g, '');
             doc.save(`KunciKiraKira_${biz}_${asAtDate.replace(/\//g, '-')}.pdf`);
