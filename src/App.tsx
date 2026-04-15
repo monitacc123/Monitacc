@@ -4834,11 +4834,12 @@ const ProfitLossReport = ({
       data[m].salesByCategory['JUALAN (REKOD)'] = 0;
     });
 
+    const assetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+
     // Process Sales
     sales.forEach(s => {
       const sCat = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
-      const sType = categoryMappings[sCat] || 'SALES';
-      if (sType === 'ASSET_LIABILITY') return;
+      if (assetLiabSet.has(sCat)) return;
       const date = parseISO(s.date);
       const month = months[date.getMonth()];
       if (data[month]) {
@@ -4855,7 +4856,7 @@ const ProfitLossReport = ({
       const type = categoryMappings[category] || 'EXPENSE';
 
       // Skip Asset/Liability categories in P&L
-      if (type === 'ASSET_LIABILITY') return;
+      if (assetLiabSet.has(category) || type === 'ASSET_LIABILITY') return;
 
       const date = parseISO(r.date);
       const month = months[date.getMonth()];
@@ -6522,23 +6523,23 @@ const BalanceSheetReport = ({
   // 1. Profit for the current selected period (to match P&L)
   // 2. Profit from all prior periods
 
+  const assetLiabilitySet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+
   const calculateProfitForPeriod = (periodRecords: TransactionRecord[], periodSales: Sale[]) => {
     let income = 0;
     let expense = 0;
 
     periodSales.forEach(s => {
       const sCat = (s.category || '').trim().toUpperCase();
-      const sType = categoryMappings[sCat] || 'SALES';
-      if (sType === 'ASSET_LIABILITY') return;
+      if (assetLiabilitySet.has(sCat)) return;
       income += s.total;
     });
 
     periodRecords.forEach(r => {
       if (r.sale_id) return;
       const category = r.category.trim().toUpperCase();
-      const type = categoryMappings[category] || 'EXPENSE';
 
-      if (type === 'ASSET_LIABILITY') return;
+      if (assetLiabilitySet.has(category) || categoryMappings[category] === 'ASSET_LIABILITY') return;
 
       if (r.type === 'income') {
         income += r.amount;
@@ -6686,8 +6687,7 @@ const BalanceSheetReport = ({
     return sum;
   }, 0) + filteredSales.reduce((sum, s) => {
     const sCat = (s.category || '').trim().toUpperCase();
-    const sType = categoryMappings[sCat] || 'SALES';
-    if (sType === 'ASSET_LIABILITY') return sum;
+    if (assetLiabilitySet.has(sCat)) return sum;
     if (s.payment_method === 'cash') {
       return sum + s.total;
     }
