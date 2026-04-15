@@ -107,8 +107,13 @@ export async function apiFetchDashboard(userId: string, role: string) {
   };
 }
 
+const ASSET_LIABILITY_DIRECT_CATS = ['TUNAI DI TANGAN', 'BANK', 'TRADE DEBTORS', 'OTHER DEBTORS', 'STOCK', 'DEPOSIT & PREPAYMENT', 'DEPOSIT - RENTAL', 'PREPAYMENT - UTILITIES', 'TRADE CREDITORS', 'OTHER CREDITORS', 'ACCRUALS', 'HIRE PURCHASE CREDITOR', 'TERM LOAN', 'CAPITAL', 'AMOUNT DUE FROM DIRECTOR', 'AMOUNT DUE TO DIRECTOR'];
+
 export async function apiSaveRecord(userId: string, data: any): Promise<{ id: number }> {
-  if (data.type === 'income' && data.origin !== 'sale') {
+  const categoryUpper = (data.category || '').trim().toUpperCase();
+  const isDirectAssetLiability = ASSET_LIABILITY_DIRECT_CATS.includes(categoryUpper);
+
+  if (data.type === 'income' && data.origin !== 'sale' && !isDirectAssetLiability) {
     const { data: saleData, error: saleError } = await supabase
       .from('sales')
       .insert([{
@@ -220,8 +225,11 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
 
   if (error) throw new Error(error.message);
 
+  const updatedCategoryUpper = (data.category || '').trim().toUpperCase();
+  const isDirectAssetLiabilityUpdate = ASSET_LIABILITY_DIRECT_CATS.includes(updatedCategoryUpper);
+
   if (existing.sale_id) {
-    if (data.type === 'income') {
+    if (data.type === 'income' && !isDirectAssetLiabilityUpdate) {
       await supabase
         .from('sales')
         .update({
@@ -239,7 +247,7 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
       await supabase.from('sales').delete().eq('id', existing.sale_id);
       await supabase.from('records').update({ sale_id: null }).eq('id', id);
     }
-  } else if (data.type === 'income') {
+  } else if (data.type === 'income' && !isDirectAssetLiabilityUpdate) {
     const { data: saleData } = await supabase
       .from('sales')
       .insert([{

@@ -6594,7 +6594,7 @@ const BalanceSheetReport = ({
     "ACCUM. DEPRN - KITCHEN UTENSIL", "ACCUM. DEPRN - RENOVATION", "PROVISION FOR DOUBTFUL DEBT"
   ];
   const bankCats = ["BANK", ...BANK_LIST];
-  const cashCats = ["CASH IN HAND"];
+  const cashCats = ["CASH IN HAND", "TUNAI DI TANGAN"];
   const debtorCats = ["TRADE DEBTORS", "OTHER DEBTORS", "EN SALLEH", "MORGAN SDN BHD"];
   const stockCats = ["STOCK"];
   const depositCats = ["DEPOSIT & PREPAYMENT", "DEPOSIT - RENTAL", "PREPAYMENT - UTILITIES"];
