@@ -249,145 +249,141 @@ const generatePDFReport = (
     const netProfitAmt = grossProfit + totalOtherIncome - totalExpensesAmt - taxation;
 
     const pageW = 210;
-    const colCode = 14;
-    const colDesc = 50;
-    const colAmt = 160;
-    const lineH = 6;
-    let y = 20;
+    const mL = 25;
+    const mR = 25;
+    const amtX = pageW - mR;
+    const amtW = 40;
+    const rH = 7;
+    let y = 0;
 
-    const drawPageHeader = () => {
-      doc.setFontSize(11);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(businessName.toUpperCase(), pageW / 2, y, { align: 'center' });
-      y += lineH;
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100, 116, 139);
-      doc.text(`No. SSM: ${ssmNo}`, pageW / 2, y, { align: 'center' });
-      y += lineH;
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(15, 23, 42);
-      doc.text(`PENYATA UNTUNG RUGI BAGI TAHUN BERAKHIR 31 DISEMBER ${year}`, pageW / 2, y, { align: 'center' });
-      y += lineH + 2;
-      doc.setDrawColor(200, 200, 200);
-      doc.line(colCode, y, pageW - colCode, y);
-      y += lineH;
+    const f2 = (v: number) => Math.abs(v).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const newPage = () => { doc.addPage(); y = 28; drawColHdr(); };
+    const chk = (n = rH) => { if (y + n > 275) newPage(); };
+
+    // ── Header ─────────────────────────────────────────────────────────────
+    y = 28;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(11); doc.setTextColor(20, 20, 20);
+    doc.text(businessName.toUpperCase(), pageW / 2, y, { align: 'center' });
+    y += 5.5;
+    doc.setFont('helvetica', 'normal'); doc.setFontSize(7.5); doc.setTextColor(120, 120, 120);
+    doc.text(`No. SSM: ${ssmNo}`, pageW / 2, y, { align: 'center' });
+    y += 5;
+    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20, 20, 20);
+    doc.text(`PENYATA UNTUNG RUGI BAGI TAHUN BERAKHIR 31 DISEMBER ${year}`, pageW / 2, y, { align: 'center' });
+    y += 5;
+    doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.5);
+    doc.line(mL, y, pageW - mR, y);
+    doc.setLineWidth(0.15);
+    y += 7;
+
+    // ── Column header ──────────────────────────────────────────────────────
+    const drawColHdr = () => {
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7); doc.setTextColor(120, 120, 120);
+      doc.text('KETERANGAN', mL, y);
+      doc.text(`RM (${year})`, amtX, y, { align: 'right' });
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+      doc.line(mL, y + 1.5, pageW - mR, y + 1.5);
+      y += rH - 1;
     };
 
-    const drawColHeaders = () => {
-      doc.setFontSize(7.5);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(100, 116, 139);
-      doc.text('KOD', colCode, y);
-      doc.text('KETERANGAN', colDesc, y);
-      doc.text(`JUMLAH (RM) ${year}`, colAmt, y, { align: 'right' });
-      y += lineH - 1;
-      doc.setDrawColor(220, 220, 220);
-      doc.line(colCode, y, pageW - colCode, y);
-      y += lineH - 1;
+    drawColHdr();
+
+    // ── Helpers ────────────────────────────────────────────────────────────
+    const sectionHdr = (label: string) => {
+      chk(rH + 2);
+      y += 3;
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(7.5); doc.setTextColor(20, 20, 20);
+      doc.text(label.toUpperCase(), mL, y);
+      y += rH - 2;
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+      doc.line(mL, y - 1, pageW - mR, y - 1);
+      y += 2;
     };
 
-    const checkPage = () => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-        drawColHeaders();
-      }
-    };
-
-    const drawRow = (code: string, label: string, value: number | null, bold = false, indent = false, highlight = false) => {
-      checkPage();
-      if (highlight) {
-        doc.setFillColor(240, 253, 244);
-        doc.rect(colCode - 1, y - 4, pageW - 2 * colCode + 2, lineH + 1, 'F');
-      }
-      doc.setFont('helvetica', bold ? 'bold' : 'normal');
-      doc.setFontSize(8);
-      doc.setTextColor(bold ? 15 : 71, bold ? 23 : 85, bold ? 42 : 105);
-      doc.text(code, colCode, y);
-      doc.text(indent ? `   ${label}` : label, colDesc, y);
+    const row = (label: string, value: number | null, bold = false) => {
+      if (value !== null && value === 0) return;
+      chk();
+      doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.setFontSize(8);
+      doc.setTextColor(bold ? 20 : 55, bold ? 20 : 55, bold ? 20 : 55);
+      doc.text(bold ? label : `    ${label}`, mL, y);
       if (value !== null) {
-        const text = fmt2(value);
-        doc.setTextColor(value < 0 ? 220 : bold ? 15 : 71, value < 0 ? 38 : bold ? 23 : 85, value < 0 ? 38 : bold ? 42 : 105);
-        doc.text(text, colAmt, y, { align: 'right' });
+        doc.setTextColor(value < 0 ? 180 : (bold ? 20 : 55), value < 0 ? 30 : (bold ? 20 : 55), value < 0 ? 30 : (bold ? 20 : 55));
+        doc.text(f2(value), amtX, y, { align: 'right' });
       }
-      y += lineH;
+      y += rH;
     };
 
-    const drawDivider = (light = false) => {
-      checkPage();
-      doc.setDrawColor(light ? 230 : 180, light ? 230 : 180, light ? 230 : 180);
-      doc.line(colCode, y - 2, pageW - colCode, y - 2);
-      y += 1;
+    const subtotal = (label: string, val: number) => {
+      chk(rH + 2);
+      doc.setDrawColor(160, 160, 160); doc.setLineWidth(0.2);
+      doc.line(amtX - amtW, y - rH + 1, amtX, y - rH + 1);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8); doc.setTextColor(20, 20, 20);
+      doc.text(label, mL, y);
+      doc.text(f2(val), amtX, y, { align: 'right' });
+      y += rH;
     };
 
-    drawPageHeader();
-    drawColHeaders();
+    const grandTotal = (label: string, val: number) => {
+      chk(rH + 5);
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(20, 20, 20);
+      doc.text(label, mL, y);
+      doc.setTextColor(val < 0 ? 180 : 20, val < 0 ? 30 : 20, val < 0 ? 30 : 20);
+      doc.text(f2(val), amtX, y, { align: 'right' });
+      doc.setDrawColor(20, 20, 20); doc.setLineWidth(0.3);
+      doc.line(amtX - amtW, y + 1.5, amtX, y + 1.5);
+      doc.line(amtX - amtW, y + 3, amtX, y + 3);
+      doc.setLineWidth(0.15);
+      y += rH + 4;
+    };
 
-    // SALES
-    salesCats.forEach(cat => {
-      drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), false, true);
-    });
+    const spacer = (n = 4) => { y += n; };
+
+    // ── JUALAN ─────────────────────────────────────────────────────────────
+    sectionHdr('Jualan (Sales)');
+    salesCats.forEach(cat => row(cat, calcTotal(`salesByCategory.${cat}`)));
     const adjTotal = calcTotal('salesAdjustments');
-    if (adjTotal !== 0) drawRow('-', 'SALES ADJUSTMENTS', adjTotal, false, true);
-    drawDivider();
-    drawRow(CHART_OF_ACCOUNTS['SALES'] || '5000/000', 'JUMLAH JUALAN (TOTAL)', totalSalesAmt, true);
-    y += 2;
+    if (adjTotal !== 0) row('Pelarasan Jualan', adjTotal);
+    subtotal('Jumlah Jualan', totalSalesAmt);
+    spacer();
 
-    // COGS
+    // ── KOS JUALAN ─────────────────────────────────────────────────────────
+    sectionHdr('Kos Jualan (Cost of Sales)');
     if (cogsCats.length > 0) {
-      cogsCats.forEach(cat => {
-        drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), false, true);
-      });
-      drawDivider();
-      drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, true);
-      y += 2;
-    } else {
-      drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', 0, true);
-      y += 2;
+      cogsCats.forEach(cat => row(cat, calcTotal(`cogs.${cat}`)));
     }
+    subtotal('Jumlah Kos Jualan', totalCogsAmt);
+    spacer(2);
+    grandTotal('UNTUNG KASAR (GROSS PROFIT)', grossProfit);
 
-    // GROSS PROFIT
-    drawDivider();
-    drawRow('', 'GROSS PROFIT/(LOSS)', grossProfit, true, false, true);
-    y += 3;
-
-    // OTHER INCOME
+    // ── DUIT MASUK LAIN ────────────────────────────────────────────────────
     if (otherIncomeCats.length > 0) {
-      otherIncomeCats.forEach(cat => {
-        drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), false, true);
-      });
-      drawDivider();
+      spacer(2);
+      sectionHdr('Pendapatan Lain (Other Income)');
+      otherIncomeCats.forEach(cat => row(cat, calcTotal(`otherIncome.${cat}`)));
+      subtotal('Jumlah Pendapatan Lain', totalOtherIncome);
+      spacer();
     }
-    drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, true);
-    y += 2;
 
-    // EXPENSES
-    expenseCats.forEach(cat => {
-      drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), false, true);
-    });
-    if (taxation !== 0) {
-      drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'PROVISION FOR TAXATION', taxation, false, true);
-    }
-    drawDivider();
-    drawRow('', 'JUMLAH PERBELANJAAN (TOTAL)', totalExpensesAmt + taxation, true);
-    y += 3;
+    // ── PERBELANJAAN ───────────────────────────────────────────────────────
+    spacer(2);
+    sectionHdr('Perbelanjaan (Expenses)');
+    expenseCats.forEach(cat => row(cat, calcTotal(`expenses.${cat}`)));
+    if (taxation !== 0) row('Peruntukan Cukai', taxation);
+    subtotal('Jumlah Perbelanjaan', totalExpensesAmt + taxation);
+    spacer(2);
 
-    // NET PROFIT
-    drawDivider();
-    drawRow('', `NET PROFIT/(LOSS) ${year}`, netProfitAmt, true, false, true);
-    y += 4;
+    grandTotal(`UNTUNG/(RUGI) BERSIH ${year}`, netProfitAmt);
 
-    // Footer on all pages
+    // ── Footer ─────────────────────────────────────────────────────────────
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.setFontSize(7);
-      doc.setTextColor(148, 163, 184);
-      doc.text(`Dijana oleh Monitacc pada ${format(new Date(), 'dd/MM/yyyy HH:mm')}`, colCode, 290);
-      doc.text(`Halaman ${i} daripada ${pageCount}`, pageW - colCode, 290, { align: 'right' });
+      doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+      doc.line(mL, 287, pageW - mR, 287);
+      doc.setFont('helvetica', 'normal'); doc.setFontSize(6.5); doc.setTextColor(160, 160, 160);
+      doc.text(`Dijana oleh Monitacc  •  ${format(new Date(), 'dd/MM/yyyy')}`, mL, 292);
+      doc.text(`${i} / ${pageCount}`, pageW - mR, 292, { align: 'right' });
     }
 
     doc.save(`Penyata_Untung_Rugi_${businessName.replace(/\s+/g, '_')}_${year}.pdf`);
