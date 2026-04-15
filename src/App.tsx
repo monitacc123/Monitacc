@@ -5932,7 +5932,7 @@ const ProfitLossReport = ({
             {/* NET PROFIT */}
             <tr className="bg-slate-900 font-bold text-white border-y-2 border-slate-800">
               <td className="px-4 py-3 sticky left-0 bg-slate-900 z-10"></td>
-              <td className="px-4 py-3 sticky left-24 bg-slate-900 z-10">BAKI TUNAI</td>
+              <td className="px-4 py-3 sticky left-24 bg-slate-900 z-10">NET PROFIT / LOSS</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
