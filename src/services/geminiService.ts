@@ -1,4 +1,5 @@
 import { ALL_CATEGORIES } from "../constants/categories";
+import { extractTextFromPdf } from "./pdfExtractor";
 
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
@@ -113,9 +114,17 @@ Now extract from the document:`;
     let messages: { role: string; content: any }[];
 
     if (isPdf) {
+      let pdfText = "";
+      try {
+        pdfText = await extractTextFromPdf(base64Data);
+      } catch (pdfErr) {
+        console.error("PDF extraction failed:", pdfErr);
+        pdfText = "[PDF content could not be extracted - please try an image format]";
+      }
+
       messages = [{
         role: "user",
-        content: `${prompt}\n\n[This is a PDF document - extract all visible transactions from the bank statement or financial document]`,
+        content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
       }];
     } else {
       const imageData = base64Data.split(",")[1] || base64Data;
