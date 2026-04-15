@@ -6696,15 +6696,6 @@ const BalanceSheetReport = ({
       }
     }
 
-    // 4. ASSET_LIABILITY category + payment_method=bank: bank-to-cash-type transfer
-    // e.g. category=TUNAI DI TANGAN/PETI CASH + payment_method=bank
-    // Income = money received into cash from bank (cash increases, bank decreases via equation)
-    // Expense = money sent from cash to bank (cash decreases, bank increases via equation)
-    const isBankCategory = bankCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
-    if (isAssetLiability && !isCashCategory && !isBankCategory && r.payment_method === 'bank') {
-      return sum + (r.type === 'income' ? r.amount : -r.amount);
-    }
-
     return sum;
   }, 0) + filteredSales.reduce((sum, s) => {
     if (s.payment_method === 'cash' || s.payment_method === 'cash_in_hand') {
