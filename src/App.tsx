@@ -88,6 +88,23 @@ import {
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO } from 'date-fns';
 import { analyzeDocument, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
+import {
+  apiLogin,
+  apiRegister,
+  apiLogout,
+  apiFetchDashboard,
+  apiSaveRecord,
+  apiDeleteRecord,
+  apiUpdateRecord,
+  apiSaveSale,
+  apiDeleteSale,
+  apiUpdateSale,
+  apiUpdateProfile,
+  apiUpdateBusinessSettings,
+  apiGetUsers,
+  apiAddUser,
+  apiUpdateUserRole,
+} from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 
 // --- Helpers ---
@@ -766,23 +783,16 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType) => void }
       localStorage.removeItem('rememberedPassword');
     }
 
-    const endpoint = isLogin ? '/api/login' : '/api/register';
-    const body = isLogin ? { email, password } : { name, email, phone, password, company_name: companyName };
-
     try {
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        onAuthSuccess(data);
+      let userData: UserType;
+      if (isLogin) {
+        userData = await apiLogin(email, password);
       } else {
-        setError(data.error || 'Something went wrong');
+        userData = await apiRegister(name, email, phone, password, companyName);
       }
-    } catch (err) {
-      setError('Connection error');
+      onAuthSuccess(userData);
+    } catch (err: any) {
+      setError(err?.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -6795,22 +6805,13 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      const res = await fetch('/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
-      if (res.ok) {
-        setSuccess(true);
-        setTimeout(() => {
-          onSave(formData);
-        }, 2000);
-      } else {
-        const data = await res.json();
-        setError(data.error || 'Gagal menambah pengguna');
-      }
-    } catch (err) {
-      setError('Ralat sambungan');
+      await apiAddUser(formData);
+      setSuccess(true);
+      setTimeout(() => {
+        onSave(formData);
+      }, 2000);
+    } catch (err: any) {
+      setError(err?.message || 'Gagal menambah pengguna');
     }
   };
 
@@ -6938,38 +6939,32 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
 };
 
 const UserManagementView = ({ onBack }: { onBack: () => void }) => {
-  const [users, setUsers] = useState<UserType[]>([
-    { id: 1, name: 'Ahmad Ibrahim', email: 'ahmad@example.com', company_name: 'Ibrahim & Co', role: 'full_access', plan: 'Ultimate', status: 'active', referred_by: 'Ejen Ali' },
-    { id: 2, name: 'Siti Nurhaliza', email: 'siti@example.com', company_name: 'Siti Ent', role: 'full_access', plan: 'Starter', status: 'active', referred_by: 'Ejen Bakar' },
-    { id: 3, name: 'Chong Wei', email: 'chong@example.com', company_name: 'CW Sports', role: 'upload_only', plan: 'Growth', status: 'cancelled', referred_by: 'Direct' },
-    { id: 4, name: 'Muthu Samy', email: 'muthu@example.com', company_name: 'Muthu Curry', role: 'full_access', plan: 'Percuma', status: 'active', referred_by: 'Ejen Dayang' },
-    { id: 5, name: 'Sarah Tan', email: 'sarah@example.com', company_name: 'Sarah Design', role: 'full_access', plan: 'Ultimate', status: 'active', referred_by: 'Ejen Ali' },
-    { id: 6, name: 'Zul Ariffin', email: 'zul@example.com', company_name: 'Zul Films', role: 'upload_only', plan: 'Growth', status: 'cancelled', referred_by: 'Ejen Bakar' },
-  ]);
+  const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'cancelled'>('all');
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
 
   const fetchUsers = async () => {
-    // In a real app, we'd fetch from API
-    // For now we use the enhanced mock data
+    setLoading(true);
+    try {
+      const data = await apiGetUsers();
+      setUsers(data);
+    } catch (err) {
+      console.error('Error fetching users:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
     fetchUsers();
   }, []);
 
-  const handleUpdateRole = async (userId: number, newRole: string) => {
+  const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
-      const res = await fetch('/api/users/role', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: userId, role: newRole })
-      });
-      if (res.ok) {
-        fetchUsers();
-      }
+      await apiUpdateUserRole(userId, newRole);
+      fetchUsers();
     } catch (err) {
       console.error('Error updating role:', err);
     }
@@ -8587,22 +8582,14 @@ const BusinessSettingsModal = ({ user, onClose, onSave }: { user: UserType | nul
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/business-settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          id: user?.id, 
-          company_name: companyName, 
-          ssm_number: ssmNumber, 
-          business_address: address, 
-          tax_id: taxId, 
-          financial_year_end: financialYearEnd 
-        })
+      const data = await apiUpdateBusinessSettings(String(user?.id), {
+        company_name: companyName,
+        ssm_number: ssmNumber,
+        business_address: address,
+        tax_id: taxId,
+        financial_year_end: financialYearEnd,
       });
-      const data = await res.json();
-      if (res.ok) {
-        onSave(data);
-      }
+      onSave(data);
     } catch (err) {
       console.error('Error updating business settings:', err);
     } finally {
@@ -8704,15 +8691,8 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
     e.preventDefault();
     setLoading(true);
     try {
-      const res = await fetch('/api/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: user?.id, name, phone, company_name: companyName })
-      });
-      const data = await res.json();
-      if (res.ok) {
-        onSave(data);
-      }
+      const data = await apiUpdateProfile(String(user?.id), name, phone, companyName);
+      onSave(data);
     } catch (err) {
       console.error('Error updating profile:', err);
     } finally {
@@ -9005,28 +8985,7 @@ export default function App() {
     setIsFetching(true);
 
     try {
-      // Wait for server to be ready if it's the first attempt
-      if (retries === 3) {
-        try {
-          const healthRes = await fetch('/api/health');
-          if (!healthRes.ok) throw new Error('Server not ready');
-        } catch (e) {
-          console.log('Server not ready, waiting...');
-          setConnectionError('Menunggu pelayan sedia...');
-          fetchInProgress.current = false;
-          setTimeout(() => fetchData(retries, delay), 1000);
-          return;
-        }
-      }
-
-      const res = await fetch(`/api/dashboard-data?userId=${user?.id || ''}&role=${user?.role || ''}`);
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text.slice(0, 100)}`);
-      }
-      
-      const data = await res.json();
-      
+      const data = await apiFetchDashboard(String(user.id), user.role || '');
       setRecords(data.records);
       setStats(data.stats);
       setSales(data.sales);
@@ -9036,9 +8995,8 @@ export default function App() {
       console.error('Error fetching data:', err);
       const msg = err instanceof Error ? err.message : String(err);
       setConnectionError(msg);
-      
+
       if (retries > 0) {
-        console.log(`Retrying fetch in ${delay}ms... (${retries} attempts left)`);
         fetchInProgress.current = false;
         setTimeout(() => fetchData(retries - 1, delay * 2), delay);
         return;
@@ -9049,7 +9007,8 @@ export default function App() {
     }
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await apiLogout();
     setUser(null);
     setIsAdminAuthenticated(false);
     setIsAffiliateAuthenticated(false);
@@ -9130,14 +9089,9 @@ export default function App() {
       }
 
       try {
-        await fetch('/api/records', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            ...recordData, 
-            category: recordData.category.trim().toUpperCase(),
-            userId: user?.id 
-          })
+        await apiSaveRecord(String(user?.id), {
+          ...recordData,
+          category: recordData.category.trim().toUpperCase(),
         });
         justSaved.push(recordData);
       } catch (err) {
@@ -9161,7 +9115,7 @@ export default function App() {
 
   const executeDeleteRecord = async (id: number) => {
     try {
-      await fetch(`/api/records/${id}?userId=${user?.id}`, { method: 'DELETE' });
+      await apiDeleteRecord(id, String(user?.id));
       fetchData();
       setConfirmDelete({ show: false, id: 0, type: 'record' });
     } catch (err) {
@@ -9171,11 +9125,7 @@ export default function App() {
 
   const handleUpdateRecord = async (id: number, data: any) => {
     try {
-      await fetch(`/api/records/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, userId: user?.id })
-      });
+      await apiUpdateRecord(id, String(user?.id), data);
       fetchData();
     } catch (err) {
       console.error('Error updating record:', err);
@@ -9184,11 +9134,7 @@ export default function App() {
 
   const handleUpdateSale = async (id: number, data: any) => {
     try {
-      await fetch(`/api/sales/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, userId: user?.id })
-      });
+      await apiUpdateSale(id, String(user?.id), data);
       fetchData();
     } catch (err) {
       console.error('Error updating sale:', err);
@@ -9210,14 +9156,9 @@ export default function App() {
     }
 
     try {
-      await fetch('/api/sales', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          ...data, 
-          category: (data.category || 'SALES').trim().toUpperCase(),
-          userId: user?.id 
-        })
+      await apiSaveSale(String(user?.id), {
+        ...data,
+        category: (data.category || 'SALES').trim().toUpperCase(),
       });
       fetchData();
     } catch (err) {
@@ -9231,7 +9172,7 @@ export default function App() {
 
   const executeDeleteSale = async (id: number) => {
     try {
-      await fetch(`/api/sales/${id}?userId=${user?.id}`, { method: 'DELETE' });
+      await apiDeleteSale(id, String(user?.id));
       fetchData();
       setConfirmDelete({ show: false, id: 0, type: 'record' });
     } catch (err) {
@@ -9247,8 +9188,11 @@ export default function App() {
     setIsFetching(true);
     try {
       for (const item of items) {
-        const endpoint = item.type === 'sale' && item.saleId ? `/api/sales/${item.saleId}` : `/api/records/${item.id}`;
-        await fetch(`${endpoint}?userId=${user?.id}`, { method: 'DELETE' });
+        if (item.type === 'sale' && item.saleId) {
+          await apiDeleteSale(item.saleId, String(user?.id));
+        } else {
+          await apiDeleteRecord(item.id, String(user?.id));
+        }
       }
       fetchData();
       setConfirmDelete({ show: false, id: 0, type: 'record' });
