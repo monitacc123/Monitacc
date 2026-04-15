@@ -1712,6 +1712,18 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const updateResult = (index: number, field: string, value: any) => {
     const newResults = [...results];
     newResults[index] = { ...newResults[index], [field]: value };
+    if (field === 'category') {
+      const isCashInHand = (value as string).trim().toUpperCase() === 'CASH IN HAND' || (value as string).trim().toUpperCase() === 'TUNAI DI TANGAN';
+      if (newResults[index].type === 'income' && isCashInHand) {
+        newResults[index].payment_method = 'bank';
+      }
+    }
+    if (field === 'type' && value === 'income') {
+      const cat = (newResults[index].category || '').trim().toUpperCase();
+      if (cat === 'CASH IN HAND' || cat === 'TUNAI DI TANGAN') {
+        newResults[index].payment_method = 'bank';
+      }
+    }
     setResults(newResults);
   };
 
