@@ -9532,6 +9532,12 @@ export default function App() {
 
   useEffect(() => {
     if (user) {
+      const defaults: any = {};
+      INCOME_CATEGORIES.forEach(c => defaults[c.toUpperCase()] = 'SALES');
+      COGS_CATEGORIES.forEach(c => defaults[c.toUpperCase()] = 'COGS');
+      EXPENSE_CATEGORIES.forEach(c => defaults[c.toUpperCase()] = 'EXPENSE');
+      ASSET_LIABILITY_CATEGORIES.forEach(c => defaults[c.toUpperCase()] = 'ASSET_LIABILITY');
+
       const saved = localStorage.getItem(`monitacc_category_mappings_${user.id}`);
       if (saved) {
         try {
@@ -9540,19 +9546,14 @@ export default function App() {
           Object.keys(parsed).forEach(k => {
             normalized[k.trim().toUpperCase()] = parsed[k];
           });
-          setCategoryMappings(normalized);
+          setCategoryMappings({ ...defaults, ...normalized });
           return;
         } catch (e) {
           console.error('Error loading saved mappings', e);
         }
       }
 
-      const initial: any = {};
-      INCOME_CATEGORIES.forEach(c => initial[c.toUpperCase()] = 'SALES');
-      COGS_CATEGORIES.forEach(c => initial[c.toUpperCase()] = 'COGS');
-      EXPENSE_CATEGORIES.forEach(c => initial[c.toUpperCase()] = 'EXPENSE');
-      ASSET_LIABILITY_CATEGORIES.forEach(c => initial[c.toUpperCase()] = 'ASSET_LIABILITY');
-      setCategoryMappings(initial);
+      setCategoryMappings(defaults);
     } else {
       setCategoryMappings({});
     }
