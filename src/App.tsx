@@ -1030,12 +1030,12 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType) => void }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
-      <motion.div 
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4 overflow-x-hidden">
+      <motion.div
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3 }}
-        className="w-full max-w-md bg-white p-8 rounded-2xl border border-slate-200 shadow-lg"
+        className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-lg"
       >
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-emerald-100">
