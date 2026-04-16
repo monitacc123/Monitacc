@@ -557,46 +557,50 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         bottom-5 left-1/2 -translate-x-1/2
         bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-2xl shadow-slate-900/15
         rounded-2xl px-1.5 py-1.5 flex items-center
-        md:translate-x-0 md:left-0 md:bottom-auto md:top-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:border-slate-200 md:bg-white md:backdrop-blur-none md:shadow-none
+        md:translate-x-0 md:left-0 md:bottom-auto md:top-0 md:w-60 md:h-screen md:flex-col md:justify-start md:py-6 md:px-3 md:rounded-none md:border-r md:border-slate-200/80 md:bg-white md:backdrop-blur-none md:shadow-none
         ${navVisible ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto'}
       `}
       style={{ willChange: 'transform, opacity' }}
     >
-      <div className="hidden md:flex items-center gap-3 mb-12 px-4 group cursor-pointer">
-        <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
-          <CreditCard size={20} strokeWidth={2} />
+      <div className="hidden md:flex items-center gap-3 mb-8 px-3 group cursor-pointer">
+        <div className="w-9 h-9 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-lg shadow-emerald-200/50">
+          <CreditCard size={18} strokeWidth={2.5} />
         </div>
         <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900 font-display leading-none">Monitacc</h1>
-          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mt-1">empower by wekeyra</p>
+          <h1 className="text-lg font-bold tracking-tight text-slate-900 font-display leading-none">Monitacc</h1>
+          <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">empower by wekeyra</p>
         </div>
       </div>
 
-      <div className="flex items-center md:flex-col md:gap-1 md:w-full">
-        {navItems.map((item) => {
+      <div className="flex items-center md:flex-col md:gap-0.5 md:w-full">
+        {navItems.map((item, i) => {
           const isActive = activeView === item.id;
+          const showDivider = !isAdmin && (i === 3 || i === 5);
           return (
-            <button
-              key={item.id}
-              onClick={() => setView(item.id as AppView)}
-              className={`relative flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-4 md:py-2.5 md:w-full md:rounded-lg md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-sm' : 'md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-900'}`}
-              style={{ WebkitTapHighlightColor: 'transparent' }}
-            >
-              {/* Mobile: icon-only pill, active shows label */}
-              <div className={`md:hidden flex items-center justify-center transition-all duration-200 rounded-xl
-                ${isActive
-                  ? 'bg-emerald-600 text-white px-3 py-2 gap-1.5'
-                  : 'text-slate-400 hover:text-slate-600 px-2.5 py-2'
-                }`}>
-                <item.icon size={17} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
-                {isActive && (
-                  <span className="text-[11px] font-bold whitespace-nowrap leading-none">{item.label}</span>
-                )}
-              </div>
-              {/* Desktop */}
-              <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="hidden md:block shrink-0" />
-              <span className="hidden md:block text-[13px] font-semibold">{item.label}</span>
-            </button>
+            <div key={item.id} className="md:w-full">
+              {showDivider && <div className="hidden md:block mx-3 my-2 border-t border-slate-100" />}
+              <button
+                onClick={() => setView(item.id as AppView)}
+                className={`relative w-full flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-3 md:py-2 md:w-full md:rounded-xl md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-md md:shadow-emerald-600/20' : 'md:text-slate-500 md:hover:bg-slate-50 md:hover:text-slate-800'}`}
+                style={{ WebkitTapHighlightColor: 'transparent' }}
+              >
+                <div className={`md:hidden flex items-center justify-center transition-all duration-200 rounded-xl
+                  ${isActive
+                    ? 'bg-emerald-600 text-white px-3 py-2 gap-1.5'
+                    : 'text-slate-400 hover:text-slate-600 px-2.5 py-2'
+                  }`}>
+                  <item.icon size={17} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                  {isActive && (
+                    <span className="text-[11px] font-bold whitespace-nowrap leading-none">{item.label}</span>
+                  )}
+                </div>
+                <div className={`hidden md:flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${isActive ? 'bg-white/15' : 'bg-slate-100'}`}>
+                  <item.icon size={15} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                </div>
+                <span className="hidden md:block text-[13px] font-semibold flex-1">{item.label}</span>
+                {isActive && <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-white/60 shrink-0" />}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -1372,7 +1376,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
   ];
 
   return (
-    <div className="pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       {/* Mobile Hero Header */}
       <div className="md:hidden bg-gradient-to-br from-emerald-600 to-emerald-800 px-4 pt-5 pb-8 relative overflow-hidden">
         <div className="absolute inset-0 opacity-10">
@@ -3065,7 +3069,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
   return (
-    <div className="pb-28 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="pb-28 md:pl-64 md:pt-12 max-w-7xl mx-auto">
 
       {/* ── Header ── */}
       <div className="px-4 md:px-6 pt-5 md:pt-0 mb-4">
@@ -3683,7 +3687,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
   const total = filtered.reduce((sum, r) => sum + r.amount, 0);
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10">
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
           <div>
@@ -4411,7 +4415,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   };
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Bank Reconciliation</h2>
@@ -4850,7 +4854,7 @@ const RecordsView = ({
   };
 
   return (
-    <div className="pb-28 md:p-6 md:pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="pb-28 md:p-6 md:pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <TransactionReportTemplate records={filtered} user={user} />
 
       {/* ── Mobile Header ── */}
@@ -6731,7 +6735,7 @@ const ReportsView = ({
   };
 
   return (
-    <div className="pb-28 md:p-6 md:pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="pb-28 md:p-6 md:pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
 
       {/* ── Mobile Header ── */}
       <div className="lg:hidden bg-white border-b border-slate-100 px-4 pt-5 pb-4 space-y-3 print:hidden">
@@ -7807,7 +7811,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
   };
 
   return (
-    <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-5xl mx-auto relative">
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-5xl mx-auto relative">
       {/* Background Decorative Elements */}
       <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -z-10" />
       <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl -z-10" />
@@ -8241,7 +8245,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   };
 
   return (
-    <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-8">
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
@@ -8472,7 +8476,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
   const email = user?.email || 'monitacc2026@gmail.com';
   
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <div className="space-y-6">
         {/* Profile Header Card */}
         <div className="card-premium p-8 text-center relative overflow-hidden">
@@ -8630,7 +8634,7 @@ const CategoriesView = ({
   };
 
   return (
-    <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
         <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
@@ -8778,7 +8782,7 @@ const FAQView = ({ onBack }: { onBack: () => void }) => {
   ];
 
   return (
-    <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
         <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
@@ -8809,7 +8813,7 @@ const FAQView = ({ onBack }: { onBack: () => void }) => {
 
 const TermsView = ({ onBack }: { onBack: () => void }) => {
   return (
-    <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
         <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
@@ -8855,7 +8859,7 @@ const TermsView = ({ onBack }: { onBack: () => void }) => {
 };
 
 const PlansView = () => (
-  <div className="p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+  <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
     <header className="mb-12 text-center">
       <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pilih Plan Anda</h2>
       <p className="text-slate-500 text-sm font-medium">Sesuai untuk setiap tahap perniagaan anda.</p>
@@ -9235,7 +9239,7 @@ const AdminDashboardView = () => {
   ];
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10">
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Admin Dashboard</h2>
         <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan token dan langganan pengguna.</p>
@@ -9380,7 +9384,7 @@ const AffiliatedManagementView = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10 flex justify-between items-center">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Pengurusan Affiliated</h2>
@@ -9668,7 +9672,7 @@ const TokenUsageView = () => {
   };
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10">
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Token Usage by User</h2>
         <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan kuota AI bagi setiap pengguna.</p>
