@@ -5490,7 +5490,7 @@ const ProfitLossReport = ({
 
   const CategoryName = ({ name, type }: { name: string, type: 'SALES' | 'COGS' | 'EXPENSE' | 'OTHER_INCOME' }) => (
     <td 
-      className={`px-4 py-2 pl-8 sticky left-24 bg-white group cursor-pointer hover:bg-slate-50 transition-colors ${editingCategory === name ? 'z-[100]' : 'z-10'}`}
+      className={`px-1.5 py-1.5 pl-2 sticky left-[72px] bg-white group cursor-pointer hover:bg-slate-50 transition-colors ${editingCategory === name ? 'z-[100]' : 'z-10'}`}
       onClick={() => onCategoryClick?.(name, reportType === 'monthly' ? selectedMonth : undefined, currentYear)}
     >
       <div className="flex items-center justify-between">
@@ -5943,15 +5943,23 @@ const ProfitLossReport = ({
             <h3 className="text-xs font-bold uppercase mb-1">PENYATA UNTUNG RUGI BAGI TAHUN BERAKHIR 31 DISEMBER {currentYear}</h3>
           </div>
         )}
-        <table className={`w-full text-left border-collapse ${isAnnual ? 'max-w-2xl mx-auto my-10 font-mono' : 'min-w-[1200px]'}`}>
+        <table className={`w-full text-left border-collapse ${isAnnual ? 'max-w-2xl mx-auto my-10 font-mono' : 'table-fixed'}`}>
+          <colgroup>
+            {!isAnnual && <>
+              <col className="w-[72px]" />
+              <col className="w-[160px]" />
+              {months.map(m => <col key={m} className="w-[6.5%]" />)}
+              <col className="w-[7.5%]" />
+            </>}
+          </colgroup>
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
-              <th className="px-2 py-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10 w-20">Kod</th>
-              <th className="px-2 py-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider sticky left-20 bg-slate-50 z-10 w-48">Keterangan</th>
+              <th className="px-1.5 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10">Kod</th>
+              <th className="px-1.5 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider sticky left-[72px] bg-slate-50 z-10">Keterangan</th>
               {!isAnnual && months.map(m => (
-                <th key={m} className="px-2 py-3 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-right">{m.slice(0,3)}'{currentYear.toString().slice(-2)}</th>
+                <th key={m} className="px-1 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider text-right">{m.slice(0,3).toUpperCase()}</th>
               ))}
-              <th className={`px-4 py-3 text-[9px] font-bold text-slate-900 uppercase tracking-wider text-right ${isAnnual ? 'w-48' : 'bg-slate-100/50'}`}>
+              <th className={`px-1.5 py-3 text-[8px] font-bold text-slate-900 uppercase tracking-wider text-right ${isAnnual ? 'w-48' : 'bg-slate-100/50'}`}>
                 {isAnnual ? `JUMLAH (RM) ${currentYear}` : 'TOTAL'}
               </th>
             </tr>
@@ -5962,19 +5970,19 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'salesByCategory'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-2 py-2 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
                 <CategoryName name={cat} type="SALES" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
                     key={m} 
-                    className="px-2 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                    className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                     onClick={() => onCategoryClick?.(cat, idx, currentYear)}
                   >
                     <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(monthlyData[m].salesByCategory[cat])}</span>
                   </td>
                 ))}
                 <td 
-                  className="px-4 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.(cat, undefined, currentYear)}
                 >
                   <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(calculateRowTotal(`salesByCategory.${cat}`))}</span>
@@ -5982,19 +5990,19 @@ const ProfitLossReport = ({
               </tr>
             ))}
             <tr>
-              <td className="px-2 py-2 sticky left-0 bg-white z-10"></td>
-              <td className="px-2 py-2 pl-8 sticky left-20 bg-white z-10 italic">SALES ADJUSTMENTS</td>
+              <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10"></td>
+              <td className="px-1.5 py-1.5 pl-2 sticky left-[72px] bg-white z-10 italic">SALES ADJUSTMENTS</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-2 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('SALES ADJUSTMENTS', idx, currentYear)}
                 >
                   <span className="group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(monthlyData[m].salesAdjustments)}</span>
                 </td>
               ))}
               <td 
-                className="px-4 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('SALES ADJUSTMENTS', undefined, currentYear)}
               >
                 <span className="group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(calculateRowTotal('salesAdjustments'))}</span>
@@ -6002,8 +6010,8 @@ const ProfitLossReport = ({
             </tr>
 
             <tr className="bg-slate-50/30 font-bold text-slate-900 border-t border-slate-200">
-              <td className="px-2 py-2 sticky left-0 bg-slate-50/30 z-10">{CHART_OF_ACCOUNTS['SALES']}</td>
-              <td className="px-2 py-2 sticky left-20 bg-slate-50/30 z-10 group">
+              <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10">{CHART_OF_ACCOUNTS['SALES']}</td>
+              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH JUALAN (TOTAL)</span>
                   <button 
@@ -6018,14 +6026,14 @@ const ProfitLossReport = ({
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-2 py-2 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('SALES', idx, currentYear)}
                 >
                   <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(monthlyData[m].sales)}</span>
                 </td>
               ))}
               <td 
-                className="px-4 py-2 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('SALES', undefined, currentYear)}
               >
                 <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(calculateRowTotal('sales'))}</span>
@@ -6033,8 +6041,8 @@ const ProfitLossReport = ({
             </tr>
             {addingTo === 'SALES' && (
               <tr className="bg-indigo-50/30">
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 pl-8 sticky left-24 bg-indigo-50/30 z-10">
+                <td className="px-1 py-1"></td>
+                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6076,8 +6084,8 @@ const ProfitLossReport = ({
                     </button>
                   </div>
                 </td>
-                {!isAnnual && months.map(m => <td key={m} className="px-4 py-2"></td>)}
-                <td className="px-6 py-2"></td>
+                {!isAnnual && months.map(m => <td key={m} className="px-1 py-1"></td>)}
+                <td className="px-1 py-1"></td>
               </tr>
             )}
 
@@ -6087,19 +6095,19 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'cogs'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-4 py-2 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
                 <CategoryName name={cat} type="COGS" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
                     key={m} 
-                    className="px-4 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                    className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                     onClick={() => onCategoryClick?.(cat, idx, currentYear)}
                   >
                     <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(monthlyData[m].cogs[cat])}</span>
                   </td>
                 ))}
                 <td 
-                  className="px-6 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.(cat, undefined, currentYear)}
                 >
                   <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(calculateRowTotal(`cogs.${cat}`))}</span>
@@ -6107,8 +6115,8 @@ const ProfitLossReport = ({
               </tr>
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900 border-t border-slate-200">
-              <td className="px-4 py-2 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-4 py-2 sticky left-24 bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
+              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH KOS JUALAN (TOTAL)</span>
                   <button 
@@ -6123,14 +6131,14 @@ const ProfitLossReport = ({
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-2 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('COGS', idx, currentYear)}
                 >
                   <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(monthlyData[m].cogsTotal)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-2 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('COGS', undefined, currentYear)}
               >
                 <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(calculateRowTotal('cogsTotal'))}</span>
@@ -6138,8 +6146,8 @@ const ProfitLossReport = ({
             </tr>
             {addingTo === 'COGS' && (
               <tr className="bg-indigo-50/30">
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 pl-8 sticky left-24 bg-indigo-50/30 z-10">
+                <td className="px-1 py-1"></td>
+                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6181,26 +6189,26 @@ const ProfitLossReport = ({
                     </button>
                   </div>
                 </td>
-                {!isAnnual && months.map(m => <td key={m} className="px-4 py-2"></td>)}
-                <td className="px-6 py-2"></td>
+                {!isAnnual && months.map(m => <td key={m} className="px-1 py-1"></td>)}
+                <td className="px-1 py-1"></td>
               </tr>
             )}
 
             {/* GROSS PROFIT */}
             <tr className="bg-emerald-50 font-bold text-emerald-700 border-y-2 border-emerald-100">
-              <td className="px-4 py-3 sticky left-0 bg-emerald-50 z-10"></td>
-              <td className="px-4 py-3 sticky left-24 bg-emerald-50 z-10">GROSS PROFIT/(LOSS)</td>
+              <td className="px-1.5 py-2 sticky left-0 bg-emerald-50 z-10"></td>
+              <td className="px-1.5 py-2 sticky left-[72px] bg-emerald-50 z-10">GROSS PROFIT/(LOSS)</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-3 text-right hover:bg-emerald-100 cursor-pointer transition-colors group"
+                  className="px-1 py-2 text-right hover:bg-emerald-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('GROSS PROFIT', idx, currentYear)}
                 >
                   <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(monthlyData[m].grossProfit)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-3 text-right bg-emerald-100/30 hover:bg-emerald-200 cursor-pointer transition-colors group"
+                className="px-1.5 py-2 text-right bg-emerald-100/30 hover:bg-emerald-200 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('GROSS PROFIT', undefined, currentYear)}
               >
                 <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(calculateRowTotal('grossProfit'))}</span>
@@ -6213,19 +6221,19 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'otherIncome'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-4 py-2 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
                 <CategoryName name={cat} type="OTHER_INCOME" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
                     key={m} 
-                    className="px-4 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                    className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                     onClick={() => onCategoryClick?.(cat, idx, currentYear)}
                   >
                     <span className="group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(monthlyData[m].otherIncome[cat])}</span>
                   </td>
                 ))}
                 <td 
-                  className="px-6 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.(cat, undefined, currentYear)}
                 >
                   <span className="group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(calculateRowTotal(`otherIncome.${cat}`))}</span>
@@ -6233,8 +6241,8 @@ const ProfitLossReport = ({
               </tr>
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900">
-              <td className="px-4 py-2 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-4 py-2 sticky left-24 bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
+              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH DUIT MASUK LAIN (TOTAL)</span>
                   <button 
@@ -6249,14 +6257,14 @@ const ProfitLossReport = ({
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-2 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('OTHER INCOMES', idx, currentYear)}
                 >
                   <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(monthlyData[m].otherIncomeTotal)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-2 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('OTHER INCOMES', undefined, currentYear)}
               >
                 <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(calculateRowTotal('otherIncomeTotal'))}</span>
@@ -6264,8 +6272,8 @@ const ProfitLossReport = ({
             </tr>
             {addingTo === 'OTHER_INCOME' && (
               <tr className="bg-indigo-50/30">
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 pl-8 sticky left-24 bg-indigo-50/30 z-10">
+                <td className="px-1 py-1"></td>
+                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6307,8 +6315,8 @@ const ProfitLossReport = ({
                     </button>
                   </div>
                 </td>
-                {!isAnnual && months.map(m => <td key={m} className="px-4 py-2"></td>)}
-                <td className="px-6 py-2"></td>
+                {!isAnnual && months.map(m => <td key={m} className="px-1 py-1"></td>)}
+                <td className="px-1 py-1"></td>
               </tr>
             )}
 
@@ -6318,19 +6326,19 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'expenses'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-4 py-2 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
                 <CategoryName name={cat} type="EXPENSE" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
                     key={m} 
-                    className="px-4 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                    className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                     onClick={() => onCategoryClick?.(cat, idx, currentYear)}
                   >
                     <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(monthlyData[m].expenses[cat])}</span>
                   </td>
                 ))}
                 <td 
-                  className="px-6 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.(cat, undefined, currentYear)}
                 >
                   <span className="text-indigo-600 group-hover:underline transition-all">{formatCurrency(calculateRowTotal(`expenses.${cat}`))}</span>
@@ -6338,8 +6346,8 @@ const ProfitLossReport = ({
               </tr>
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900">
-              <td className="px-4 py-2 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-4 py-2 sticky left-24 bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
+              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH BELANJA (TOTAL)</span>
                   <button 
@@ -6354,14 +6362,14 @@ const ProfitLossReport = ({
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-2 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-100 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('EXPENSES', idx, currentYear)}
                 >
                   <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(monthlyData[m].expensesTotal)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-2 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-100/30 hover:bg-slate-200 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('EXPENSES', undefined, currentYear)}
               >
                 <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(calculateRowTotal('expensesTotal'))}</span>
@@ -6369,8 +6377,8 @@ const ProfitLossReport = ({
             </tr>
             {addingTo === 'EXPENSE' && (
               <tr className="bg-indigo-50/30">
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 pl-8 sticky left-24 bg-indigo-50/30 z-10">
+                <td className="px-1 py-1"></td>
+                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6412,15 +6420,15 @@ const ProfitLossReport = ({
                     </button>
                   </div>
                 </td>
-                {!isAnnual && months.map(m => <td key={m} className="px-4 py-2"></td>)}
-                <td className="px-6 py-2"></td>
+                {!isAnnual && months.map(m => <td key={m} className="px-1 py-1"></td>)}
+                <td className="px-1 py-1"></td>
               </tr>
             )}
 
             {/* TAXATION */}
             <tr>
-              <td className="px-4 py-2 sticky left-0 bg-white z-10 font-bold text-slate-900">{CHART_OF_ACCOUNTS['Provision for taxation']}</td>
-              <td className="px-4 py-2 sticky left-24 bg-white z-10 font-bold text-slate-900 group">
+              <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10 font-bold text-slate-900">{CHART_OF_ACCOUNTS['Provision for taxation']}</td>
+              <td className="px-1.5 py-1.5 sticky left-[72px] bg-white z-10 font-bold text-slate-900 group">
                 <div className="flex items-center justify-between">
                   <span>TAXATION</span>
                   <button 
@@ -6435,14 +6443,14 @@ const ProfitLossReport = ({
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-2 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
+                  className="px-1 py-1.5 text-right hover:bg-slate-50 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('Provision for taxation', idx, currentYear)}
                 >
                   <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(monthlyData[m].taxation)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-2 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
+                className="px-1.5 py-1.5 text-right bg-slate-50/30 hover:bg-slate-100 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('Provision for taxation', undefined, currentYear)}
               >
                 <span className="text-indigo-600 font-bold group-hover:underline transition-all">{formatCurrency(calculateRowTotal('taxation'))}</span>
@@ -6450,8 +6458,8 @@ const ProfitLossReport = ({
             </tr>
             {addingTo === 'TAXATION' && (
               <tr className="bg-indigo-50/30">
-                <td className="px-4 py-2"></td>
-                <td className="px-4 py-2 pl-8 sticky left-24 bg-indigo-50/30 z-10">
+                <td className="px-1 py-1"></td>
+                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6488,26 +6496,26 @@ const ProfitLossReport = ({
                     </button>
                   </div>
                 </td>
-                {!isAnnual && months.map(m => <td key={m} className="px-4 py-2"></td>)}
-                <td className="px-6 py-2"></td>
+                {!isAnnual && months.map(m => <td key={m} className="px-1 py-1"></td>)}
+                <td className="px-1 py-1"></td>
               </tr>
             )}
 
             {/* NET PROFIT */}
             <tr className="bg-slate-900 font-bold text-white border-y-2 border-slate-800">
-              <td className="px-4 py-3 sticky left-0 bg-slate-900 z-10"></td>
-              <td className="px-4 py-3 sticky left-24 bg-slate-900 z-10">NET PROFIT / LOSS</td>
+              <td className="px-1.5 py-2 sticky left-0 bg-slate-900 z-10"></td>
+              <td className="px-1.5 py-2 sticky left-[72px] bg-slate-900 z-10">NET PROFIT / LOSS</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
-                  className="px-4 py-3 text-right hover:bg-slate-800 cursor-pointer transition-colors group"
+                  className="px-1 py-2 text-right hover:bg-slate-800 cursor-pointer transition-colors group"
                   onClick={() => onCategoryClick?.('NET PROFIT', idx, currentYear)}
                 >
                   <span className="text-indigo-400 group-hover:underline transition-all">{formatCurrency(monthlyData[m].netProfit)}</span>
                 </td>
               ))}
               <td 
-                className="px-6 py-3 text-right bg-slate-800 hover:bg-slate-700 cursor-pointer transition-colors group"
+                className="px-1.5 py-2 text-right bg-slate-800 hover:bg-slate-700 cursor-pointer transition-colors group"
                 onClick={() => onCategoryClick?.('NET PROFIT', undefined, currentYear)}
               >
                 <span className="text-indigo-400 group-hover:underline transition-all">{formatCurrency(calculateRowTotal('netProfit'))}</span>
