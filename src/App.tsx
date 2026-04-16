@@ -535,7 +535,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   if (activeView === 'landing' || activeView === 'auth' || activeView === 'welcome' || activeView === 'admin-auth') return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 px-2 py-2 flex justify-around items-center md:top-0 md:bottom-auto md:left-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r">
+    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-slate-200 z-50 px-1 py-1 flex justify-around items-center md:top-0 md:bottom-auto md:left-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:bg-white md:backdrop-blur-none">
       <div className="hidden md:flex items-center gap-3 mb-12 px-4 group cursor-pointer">
         <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
           <CreditCard size={20} strokeWidth={2} />
@@ -551,15 +551,16 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
           <button
             key={item.id}
             onClick={() => setView(item.id as AppView)}
-            className={`nav-item md:w-full ${
-              activeView === item.id 
-                ? 'nav-item-active' 
-                : 'nav-item-inactive'
+            className={`flex flex-col items-center justify-center gap-0.5 px-2 py-1.5 rounded-xl transition-all duration-200 min-w-[52px] md:flex-row md:gap-3 md:px-4 md:py-2.5 md:w-full md:rounded-lg md:min-w-0 ${
+              activeView === item.id
+                ? 'text-emerald-600 md:bg-emerald-600 md:text-white md:shadow-sm'
+                : 'text-slate-400 hover:text-slate-600 md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-900'
             }`}
           >
-            <item.icon size={18} strokeWidth={activeView === item.id ? 2.5 : 2} />
-            <span className="hidden md:block">{item.label}</span>
-            <span className="md:hidden text-[9px] font-bold mt-1 uppercase tracking-widest">{item.label}</span>
+            <item.icon size={20} strokeWidth={activeView === item.id ? 2.5 : 2} className="md:hidden" />
+            <item.icon size={18} strokeWidth={activeView === item.id ? 2.5 : 2} className="hidden md:block" />
+            <span className="text-[9px] font-semibold tracking-tight md:hidden">{item.label}</span>
+            <span className="hidden md:block text-[13px] font-semibold">{item.label}</span>
           </button>
         ))}
       </div>
@@ -1570,12 +1571,13 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: n
   const isEmerald = color === 'emerald';
   
   return (
-    <div className="card-premium p-6 flex flex-col items-start group">
-      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-6 shadow-sm border transition-all duration-300 group-hover:scale-105 ${isEmerald ? 'bg-gradient-to-br from-emerald-500 to-emerald-700 text-white border-emerald-400' : colors[color]}`}>
-        <Icon size={24} strokeWidth={2} />
+    <div className="card-premium p-3 md:p-6 flex flex-col items-start group">
+      <div className={`w-9 h-9 md:w-12 md:h-12 rounded-lg md:rounded-xl flex items-center justify-center mb-3 md:mb-6 shadow-sm border transition-all duration-300 group-hover:scale-105 ${isEmerald ? 'bg-gradient-to-br from-emerald-500 to-emerald-700 text-white border-emerald-400' : colors[color]}`}>
+        <Icon size={18} strokeWidth={2} className="md:hidden" />
+        <Icon size={24} strokeWidth={2} className="hidden md:block" />
       </div>
-      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-2xl font-bold text-slate-900 tracking-tight font-display pr-2">
+      <p className="text-[9px] md:text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-0.5 md:mb-1">{label}</p>
+      <p className="text-base md:text-2xl font-bold text-slate-900 tracking-tight font-display pr-1 md:pr-2 leading-tight">
         {label === 'Bil. Rekod' ? value : `RM ${(Number(value) || 0).toLocaleString()}`}
       </p>
     </div>
