@@ -1749,7 +1749,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   };
 
   return (
-    <div className="p-6 pb-24 md:pl-80 md:pt-12 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-4xl mx-auto">
       <header className="mb-12 flex items-center gap-6">
         <button onClick={onCancel} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
           <ArrowLeft size={24} />
@@ -2920,7 +2920,66 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
       </div>
 
       <div className="card-premium overflow-hidden">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="lg:hidden divide-y divide-slate-100">
+          {filteredSales.map((sale) => (
+            <div key={sale.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <ShoppingCart size={16} strokeWidth={2} />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-sm font-bold text-slate-900">{sale.category || 'SALES'}</span>
+                      {!!sale.reconciled && <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="text-[10px] font-bold text-slate-400">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
+                        {CHART_OF_ACCOUNTS[sale.category] || CHART_OF_ACCOUNTS['SALES'] || `#${sale.id}`}
+                      </span>
+                    </div>
+                    {sale.docNumber && (
+                      <span className="text-[9px] font-mono font-bold text-slate-400 mt-1 flex items-center gap-1">
+                        <Hash size={8} /> {sale.docNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-base font-bold text-emerald-600 font-display shrink-0">RM {(sale.total || 0).toLocaleString()}</p>
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-3">
+                <InvoiceTemplate sale={sale} user={user} />
+                <button
+                  onClick={() => downloadInvoice(sale)}
+                  disabled={downloading === sale.id}
+                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
+                >
+                  {downloading === sale.id ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
+                </button>
+                <button
+                  onClick={() => onDelete(sale.id)}
+                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {filteredSales.length === 0 && (
+            <div className="p-20 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+                  <ReceiptText size={32} />
+                </div>
+                <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod jualan untuk tempoh ini.</p>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Desktop Table View */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -2965,7 +3024,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <InvoiceTemplate sale={sale} user={user} />
-                      <button 
+                      <button
                         onClick={() => downloadInvoice(sale)}
                         disabled={downloading === sale.id}
                         className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
@@ -2973,7 +3032,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                       >
                         {downloading === sale.id ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
                       </button>
-                      <button 
+                      <button
                         onClick={() => onDelete(sale.id)}
                         className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                         title="Padam"
@@ -2986,7 +3045,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               ))}
               {filteredSales.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-20 text-center">
+                  <td colSpan={5} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                         <ReceiptText size={32} />
@@ -3500,7 +3559,62 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       </div>
 
       <div className="card-premium overflow-hidden bg-white">
-        <div className="overflow-x-auto">
+        {/* Mobile Card View */}
+        <div className="lg:hidden divide-y divide-slate-100">
+          {filtered.map((record) => (
+            <div key={record.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-bold text-slate-700">{record.description || selectedCategory}</span>
+                    {!!record.reconciled && <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-400">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                    {record.docNumber && (
+                      <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
+                        {record.docNumber}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className={`text-base font-bold font-display shrink-0 ${
+                  record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
+                }`}>
+                  {record.type === 'income' ? '+' : '-'} RM {record.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div className="flex items-center justify-end gap-2 mt-2">
+                {record.source === 'record' && (
+                  <button
+                    onClick={() => setEditingRecord(record as TransactionRecord)}
+                    className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                  >
+                    <Eye size={16} />
+                  </button>
+                )}
+                <button
+                  onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
+                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                >
+                  <Trash2 size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="p-20 text-center">
+              <div className="flex flex-col items-center gap-3">
+                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+                  <BookOpen size={32} />
+                </div>
+                <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada transaksi untuk kategori ini dalam tempoh yang dipilih.</p>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Desktop Table View */}
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
@@ -3540,7 +3654,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1">
                       {record.source === 'record' ? (
-                        <button 
+                        <button
                           onClick={() => setEditingRecord(record as TransactionRecord)}
                           className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                           title="Lihat & Edit"
@@ -3548,7 +3662,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                           <Eye size={16} />
                         </button>
                       ) : null}
-                      <button 
+                      <button
                         onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
                         className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                         title="Padam"
@@ -4201,7 +4315,85 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                 {bankTransactions.length} Transaksi Ditemui
               </span>
             </div>
-            <div className="overflow-x-auto">
+            {/* Mobile Card View */}
+            <div className="lg:hidden divide-y divide-slate-100">
+              {bankTransactions.map(bt => {
+                const match = matches.get(bt.id);
+                return (
+                  <div key={bt.id} className="p-4 space-y-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-bold text-slate-900 truncate">{bt.description}</p>
+                        <div className="flex items-center gap-2 mt-1 flex-wrap">
+                          <span className="text-[10px] font-bold text-slate-400">
+                            {bt.date.includes('-') ? format(parseISO(bt.date), 'dd MMM yyyy') : bt.date}
+                          </span>
+                          <span className="text-[9px] font-bold text-slate-400 uppercase">{bt.type === 'credit' ? 'Duit Masuk' : 'Duit Keluar'}</span>
+                        </div>
+                      </div>
+                      <p className={`text-base font-bold shrink-0 ${bt.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {bt.type === 'credit' ? '+' : '-'} RM {bt.amount.toFixed(2)}
+                      </p>
+                    </div>
+                    <div>
+                      {match ? (
+                        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${match.alreadyReconciled ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                          {match.alreadyReconciled ? <Check size={12} strokeWidth={3} className="text-blue-600" /> : <Check size={12} strokeWidth={3} />}
+                          {match.alreadyReconciled ? 'Sudah Dipadankan' : `Padanan Ditemui`}
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold border border-amber-100">
+                          <AlertCircle size={12} />
+                          Tiada Padanan
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {match ? (
+                        match.alreadyReconciled ? (
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selesai</span>
+                        ) : (
+                          <button
+                            onClick={() => handleReconcile(bt.id, match)}
+                            className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all shadow-sm"
+                          >
+                            Sahkan Padanan
+                          </button>
+                        )
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => handleQuickAdd(bt)}
+                            className="px-3 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-1.5"
+                          >
+                            <Zap size={12} />
+                            Padan Pantas
+                          </button>
+                          <button
+                            onClick={() => {
+                              const type = bt.type === 'credit' ? 'income' : 'expense';
+                              const guessedCat = guessCategory(bt.description, type);
+                              onAddMissingRecord({ ...bt, category: guessedCat });
+                            }}
+                            className="px-3 py-2 bg-emerald-50 text-emerald-600 text-[10px] font-bold rounded-lg hover:bg-emerald-100 transition-all border border-emerald-100"
+                          >
+                            Tambah Rekod
+                          </button>
+                          <button
+                            onClick={() => setManualMatchTransaction(bt)}
+                            className="px-3 py-2 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg hover:bg-slate-200 transition-all"
+                          >
+                            Cari Manual
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Desktop Table View */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-50">
@@ -4245,7 +4437,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                             match.alreadyReconciled ? (
                               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selesai</span>
                             ) : (
-                              <button 
+                              <button
                                 onClick={() => handleReconcile(bt.id, match)}
                                 className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all shadow-sm"
                               >
@@ -4254,7 +4446,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                             )
                           ) : (
                             <div className="flex items-center justify-end gap-2">
-                              <button 
+                              <button
                                 onClick={() => handleQuickAdd(bt)}
                                 className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-2"
                                 title="Tambah terus dengan kategori yang dicadangkan"
@@ -4262,7 +4454,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                                 <Zap size={14} />
                                 Padan Pantas
                               </button>
-                              <button 
+                              <button
                                 onClick={() => {
                                   const type = bt.type === 'credit' ? 'income' : 'expense';
                                   const guessedCat = guessCategory(bt.description, type);
@@ -4272,7 +4464,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                               >
                                 Tambah Rekod
                               </button>
-                              <button 
+                              <button
                                 onClick={() => setManualMatchTransaction(bt)}
                                 className="px-4 py-2 bg-slate-100 text-slate-600 text-[10px] font-bold rounded-lg hover:bg-slate-200 transition-all"
                               >
@@ -4552,13 +4744,119 @@ const RecordsView = ({
       </header>
 
       <div className="card-premium overflow-hidden bg-white">
-        <div className="overflow-x-auto lg:overflow-x-visible">
-          <table className="w-full text-left table-fixed min-w-[800px] lg:min-w-0">
+        {/* Mobile Card View */}
+        <div className="lg:hidden">
+          {filtered.length > 0 && (
+            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                <input
+                  type="checkbox"
+                  checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                  onChange={toggleSelectAll}
+                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                />
+                Pilih Semua
+              </label>
+              <span className="text-[10px] font-bold text-slate-400">{filtered.length} rekod</span>
+            </div>
+          )}
+          <div className="divide-y divide-slate-100">
+            {filtered.map((record) => {
+              const CategoryIcon = getCategoryIcon(record.category);
+              const accNo = CHART_OF_ACCOUNTS[record.category] || (record.origin === 'sale' ? CHART_OF_ACCOUNTS['SALES'] : null) || `#${record.id}`;
+              return (
+                <div key={record.id} className={`p-4 ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/30' : ''}`}>
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(`${record.origin}-${record.id}`)}
+                      onChange={() => toggleSelect(record.origin, record.id)}
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer mt-1 shrink-0"
+                    />
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
+                      record.origin === 'sale' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white'
+                    }`}>
+                      {record.origin === 'sale' ? <ShoppingCart size={16} strokeWidth={2} /> : <CategoryIcon size={16} strokeWidth={2} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-bold text-slate-900 truncate">{record.category}</span>
+                            {record.image_url && (
+                              <Paperclip size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />
+                            )}
+                            {!!record.reconciled && (
+                              <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            <span className="text-[10px] font-bold text-slate-400">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
+                              {accNo}
+                            </span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border ${
+                              record.origin === 'sale' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'
+                            }`}>{record.docType || 'Rekod'}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border inline-flex items-center gap-0.5 ${
+                              record.payment_method === 'cash' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-blue-50 text-blue-700 border-blue-100'
+                            }`}>
+                              {record.payment_method === 'cash' ? 'Tunai' : 'Bank'}
+                            </span>
+                          </div>
+                          {record.description && (
+                            <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">{record.description}</p>
+                          )}
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className={`text-base font-bold font-display ${
+                            record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-600')
+                          }`}>
+                            {record.type === 'income' ? '+' : '-'} RM {record.amount.toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-end gap-2 mt-2">
+                        {record.origin !== 'sale' && (
+                          <button
+                            onClick={() => setEditingRecord(record as TransactionRecord)}
+                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                          >
+                            <Eye size={16} />
+                          </button>
+                        )}
+                        <button
+                          onClick={() => record.origin === 'sale' && record.sale_id ? onDeleteSale(record.sale_id) : onDelete(record.id)}
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="p-20 text-center">
+                <div className="flex flex-col items-center gap-3">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+                    <ReceiptText size={32} />
+                  </div>
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod ditemui.</p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+        {/* Desktop Table View */}
+        <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full text-left table-fixed">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-2 py-4 w-[4%]">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={filtered.length > 0 && selectedIds.size === filtered.length}
                     onChange={toggleSelectAll}
                     className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
@@ -4581,8 +4879,8 @@ const RecordsView = ({
                 return (
                   <tr key={record.id} className={`hover:bg-slate-50 transition-colors group ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/30' : ''}`}>
                     <td className="px-2 py-4">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         checked={selectedIds.has(`${record.origin}-${record.id}`)}
                         onChange={() => toggleSelect(record.origin, record.id)}
                         className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
@@ -4605,8 +4903,8 @@ const RecordsView = ({
                     </td>
                     <td className="px-2 py-4">
                       <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider border inline-block truncate max-w-full ${
-                        record.origin === 'sale' 
-                          ? 'bg-blue-50 text-blue-700 border-blue-100' 
+                        record.origin === 'sale'
+                          ? 'bg-blue-50 text-blue-700 border-blue-100'
                           : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                       }`}>
                         {record.docType || 'Rekod'}
@@ -4645,8 +4943,8 @@ const RecordsView = ({
                     </td>
                     <td className="px-2 py-4">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border inline-flex items-center gap-1 ${
-                        record.payment_method === 'cash' 
-                          ? 'bg-amber-50 text-amber-700 border-amber-100' 
+                        record.payment_method === 'cash'
+                          ? 'bg-amber-50 text-amber-700 border-amber-100'
                           : 'bg-indigo-50 text-indigo-700 border-indigo-100'
                       }`}>
                         {record.payment_method === 'cash' ? <DollarSign size={10} className="mr-0.5" /> : <Landmark size={10} className="mr-0.5" />}
@@ -4661,7 +4959,7 @@ const RecordsView = ({
                     <td className="px-2 py-4 text-right">
                       <div className="flex items-center justify-end gap-1">
                         {record.origin !== 'sale' && (
-                          <button 
+                          <button
                             onClick={() => setEditingRecord(record as TransactionRecord)}
                             className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
                             title="Lihat & Edit"
@@ -4669,7 +4967,7 @@ const RecordsView = ({
                             <Eye size={14} />
                           </button>
                         )}
-                        <button 
+                        <button
                           onClick={() => record.origin === 'sale' && record.sale_id ? onDeleteSale(record.sale_id) : onDelete(record.id)}
                           className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
                           title="Padam"
@@ -4683,7 +4981,7 @@ const RecordsView = ({
               })}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-20 text-center">
+                  <td colSpan={9} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                         <ReceiptText size={32} />
@@ -5014,24 +5312,24 @@ const ProfitLossReport = ({
 
   return (
     <div className="card-premium p-0 overflow-hidden bg-white mt-10 print:shadow-none print:border-none">
-      <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 print:hidden">
-        <div className="flex items-center gap-6">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">
-            {isAnnual ? 'Laporan Tahunan (Annual Report)' : 'Penyata Untung Rugi (P&L)'} - {
-              reportType === 'monthly' && selectedMonth !== undefined ? `${['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'][selectedMonth]} ${currentYear}` :
+      <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-50/50 print:hidden">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">
+            {isAnnual ? 'Laporan Tahunan' : 'P&L'} - {
+              reportType === 'monthly' && selectedMonth !== undefined ? `${['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'][selectedMonth]} ${currentYear}` :
               reportType === 'yearly' ? currentYear :
-              reportType === 'custom' && startDate && endDate ? `${format(parseISO(startDate), 'dd/MM/yyyy')} - ${format(parseISO(endDate), 'dd/MM/yyyy')}` :
+              reportType === 'custom' && startDate && endDate ? `${format(parseISO(startDate), 'dd/MM/yy')} - ${format(parseISO(endDate), 'dd/MM/yy')}` :
               currentYear
             }
           </h3>
           <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button 
+            <button
               onClick={() => setIsAnnual(false)}
               className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${!isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
               Bulanan
             </button>
-            <button 
+            <button
               onClick={() => setIsAnnual(true)}
               className={`px-3 py-1 text-[10px] font-bold rounded-md transition-all ${isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
             >
@@ -6258,10 +6556,10 @@ const ReportsView = ({
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
-        <div className="lg:col-span-8 card-premium p-8 bg-white">
-          <div className="flex justify-between items-center mb-8">
+        <div className="lg:col-span-8 card-premium p-4 md:p-8 bg-white">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 md:mb-8">
             <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Perbandingan Prestasi</h3>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-3">
               {comparisonData.map((d, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.fill }} />
@@ -6270,7 +6568,7 @@ const ReportsView = ({
               ))}
             </div>
           </div>
-          <div className="h-[400px]">
+          <div className="h-[280px] md:h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={comparisonData} barCategoryGap="35%" margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
@@ -6309,8 +6607,8 @@ const ReportsView = ({
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
-        <div className="lg:col-span-5 card-premium p-8 bg-white">
-          <h3 className="text-lg font-bold mb-8 tracking-tight font-display text-slate-900">Pecahan Duit Keluar</h3>
+        <div className="lg:col-span-5 card-premium p-4 md:p-8 bg-white">
+          <h3 className="text-lg font-bold mb-6 md:mb-8 tracking-tight font-display text-slate-900">Pecahan Duit Keluar</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
@@ -6374,8 +6672,8 @@ const ReportsView = ({
           </div>
         </div>
 
-        <div className="lg:col-span-7 card-premium p-8 bg-white">
-          <div className="flex justify-between items-end mb-10">
+        <div className="lg:col-span-7 card-premium p-4 md:p-8 bg-white">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-6 md:mb-10">
             <div>
               <h3 className="text-lg font-bold tracking-tight font-display text-slate-900">Penyata Untung Rugi</h3>
               <p className="text-slate-500 text-xs font-medium">Ringkasan kewangan (P&L Statement)</p>
@@ -6437,12 +6735,12 @@ const ReportsView = ({
             </section>
 
             <section className="pt-6 border-t-2 border-slate-900">
-              <div className="flex justify-between items-center py-6 px-8 bg-slate-900 text-white rounded-2xl shadow-xl">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 py-4 md:py-6 px-4 md:px-8 bg-slate-900 text-white rounded-2xl shadow-xl">
                 <div>
                   <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Baki Tunai</h4>
                   <p className="text-[10px] font-medium text-slate-500">Selepas ditolak kos operasi</p>
                 </div>
-                <span className={`text-4xl font-bold tracking-tight font-display ${(totalIncome - totalExpense) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                <span className={`text-2xl md:text-4xl font-bold tracking-tight font-display ${(totalIncome - totalExpense) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   RM {(totalIncome - totalExpense).toLocaleString()}
                 </span>
               </div>
@@ -6741,10 +7039,10 @@ const BalanceSheetReport = ({
 
   return (
     <div className="card-premium p-0 overflow-hidden bg-white mt-10 mb-20 print:shadow-none print:border-none">
-      <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 print:hidden">
+      <div className="p-4 md:p-8 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50 print:hidden">
         <div className="flex flex-col sm:flex-row sm:items-center gap-4">
           <div>
-            <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Kunci Kira-Kira (Balance Sheet)</h3>
+            <h3 className="text-lg md:text-xl font-bold text-slate-900 tracking-tight font-display">Kunci Kira-Kira</h3>
             <div className="flex items-center gap-2 mt-1">
               <p className="text-slate-500 text-xs font-medium">Kedudukan kewangan setakat</p>
               <input 
@@ -6934,7 +7232,7 @@ const BalanceSheetReport = ({
         </button>
       </div>
 
-      <div className="p-10 max-w-4xl mx-auto font-mono text-[11px] leading-relaxed">
+      <div className="p-4 md:p-10 max-w-4xl mx-auto font-mono text-[10px] md:text-[11px] leading-relaxed overflow-x-auto">
         {/* Standard Accounting Header */}
         <div className="mb-10 text-center">
           <h2 className="text-sm font-bold uppercase mb-1">{companyName}</h2>
