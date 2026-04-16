@@ -5615,7 +5615,7 @@ const ProfitLossReport = ({
         </div>
 
         {/* Mobile P&L card list */}
-        <div className="divide-y divide-slate-50">
+        <div className="divide-y divide-slate-100">
           {/* JUALAN header */}
           <div className="px-4 py-2 bg-slate-50">
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jualan</span>
@@ -5623,21 +5623,30 @@ const ProfitLossReport = ({
           {Array.from(new Set([...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'), 'JUALAN (REKOD)']))
             .filter(cat => calculateRowTotal(`salesByCategory.${cat}`) !== 0)
             .map(cat => (
-              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
-                <span className="text-[12px] text-slate-600">{cat}</span>
-                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`salesByCategory.${cat}`))}</span>
-              </div>
+              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-slate-600">{cat}</span>
+                  <ChevronRight size={12} className="text-slate-300" />
+                </div>
+                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`salesByCategory.${cat}`))}</span>
+              </button>
             ))}
           {calculateRowTotal('salesAdjustments') !== 0 && (
-            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/50">
-              <span className="text-[11px] text-slate-500 italic">Sales Adjustments</span>
-              <span className="text-[12px] font-semibold text-slate-700">{formatCurrency(calculateRowTotal('salesAdjustments'))}</span>
-            </div>
+            <button onClick={() => onCategoryClick?.('SALES ADJUSTMENTS', reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/50 active:bg-slate-100 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-slate-500 italic">Sales Adjustments</span>
+                <ChevronRight size={12} className="text-slate-300" />
+              </div>
+              <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{formatCurrency(calculateRowTotal('salesAdjustments'))}</span>
+            </button>
           )}
-          <div className="flex items-center justify-between px-4 py-3 bg-white">
-            <span className="text-[12px] font-bold text-slate-900">Jumlah Jualan</span>
-            <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('sales'))}</span>
-          </div>
+          <button onClick={() => onCategoryClick?.('SALES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-bold text-slate-900">Jumlah Jualan</span>
+              <ChevronRight size={12} className="text-slate-300" />
+            </div>
+            <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('sales'))}</span>
+          </button>
 
           {/* COGS */}
           {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS').some(cat => calculateRowTotal(`cogs.${cat}`) !== 0) && (<>
@@ -5645,22 +5654,31 @@ const ProfitLossReport = ({
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kos Jualan (COGS)</span>
             </div>
             {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS' && calculateRowTotal(`cogs.${c}`) !== 0).map(cat => (
-              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
-                <span className="text-[12px] text-slate-600">{cat}</span>
-                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`cogs.${cat}`))}</span>
-              </div>
+              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-slate-600">{cat}</span>
+                  <ChevronRight size={12} className="text-slate-300" />
+                </div>
+                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`cogs.${cat}`))}</span>
+              </button>
             ))}
-            <div className="flex items-center justify-between px-4 py-3 bg-white">
-              <span className="text-[12px] font-bold text-slate-900">Jumlah Kos Jualan</span>
-              <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('cogsTotal'))}</span>
-            </div>
+            <button onClick={() => onCategoryClick?.('COGS', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-bold text-slate-900">Jumlah Kos Jualan</span>
+                <ChevronRight size={12} className="text-slate-300" />
+              </div>
+              <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('cogsTotal'))}</span>
+            </button>
           </>)}
 
           {/* GROSS PROFIT */}
-          <div className="flex items-center justify-between px-4 py-3.5 bg-emerald-50">
-            <span className="text-[12px] font-bold text-emerald-800">Gross Profit / (Loss)</span>
-            <span className="text-[15px] font-bold text-emerald-700">{formatCurrency(calculateRowTotal('grossProfit'))}</span>
-          </div>
+          <button onClick={() => onCategoryClick?.('GROSS PROFIT', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3.5 bg-emerald-50 active:bg-emerald-100 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-bold text-emerald-800">Gross Profit / (Loss)</span>
+              <ChevronRight size={12} className="text-emerald-400" />
+            </div>
+            <span className="text-[15px] font-bold text-emerald-700 tabular-nums">{formatCurrency(calculateRowTotal('grossProfit'))}</span>
+          </button>
 
           {/* OTHER INCOME */}
           {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME').some(cat => calculateRowTotal(`otherIncome.${cat}`) !== 0) && (<>
@@ -5668,15 +5686,21 @@ const ProfitLossReport = ({
               <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendapatan Lain</span>
             </div>
             {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calculateRowTotal(`otherIncome.${c}`) !== 0).map(cat => (
-              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
-                <span className="text-[12px] text-slate-600">{cat}</span>
-                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`otherIncome.${cat}`))}</span>
-              </div>
+              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] text-slate-600">{cat}</span>
+                  <ChevronRight size={12} className="text-slate-300" />
+                </div>
+                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`otherIncome.${cat}`))}</span>
+              </button>
             ))}
-            <div className="flex items-center justify-between px-4 py-3 bg-white">
-              <span className="text-[12px] font-bold text-slate-900">Jumlah Pendapatan Lain</span>
-              <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('otherIncomeTotal'))}</span>
-            </div>
+            <button onClick={() => onCategoryClick?.('OTHER INCOMES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-bold text-slate-900">Jumlah Pendapatan Lain</span>
+                <ChevronRight size={12} className="text-slate-300" />
+              </div>
+              <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('otherIncomeTotal'))}</span>
+            </button>
           </>)}
 
           {/* PERBELANJAAN */}
@@ -5684,31 +5708,43 @@ const ProfitLossReport = ({
             <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perbelanjaan</span>
           </div>
           {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calculateRowTotal(`expenses.${c}`) !== 0).map(cat => (
-            <div key={cat} className="flex items-center justify-between px-4 py-2.5">
-              <span className="text-[12px] text-slate-600">{cat}</span>
-              <span className="text-[12px] font-semibold text-rose-600">{formatCurrency(calculateRowTotal(`expenses.${cat}`))}</span>
-            </div>
+            <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-slate-600">{cat}</span>
+                <ChevronRight size={12} className="text-slate-300" />
+              </div>
+              <span className="text-[12px] font-semibold text-rose-600 tabular-nums">{formatCurrency(calculateRowTotal(`expenses.${cat}`))}</span>
+            </button>
           ))}
-          <div className="flex items-center justify-between px-4 py-3 bg-white">
-            <span className="text-[12px] font-bold text-slate-900">Jumlah Perbelanjaan</span>
-            <span className="text-[14px] font-bold text-rose-600">{formatCurrency(calculateRowTotal('expensesTotal'))}</span>
-          </div>
+          <button onClick={() => onCategoryClick?.('EXPENSES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] font-bold text-slate-900">Jumlah Perbelanjaan</span>
+              <ChevronRight size={12} className="text-slate-300" />
+            </div>
+            <span className="text-[14px] font-bold text-rose-600 tabular-nums">{formatCurrency(calculateRowTotal('expensesTotal'))}</span>
+          </button>
 
           {/* TAXATION */}
           {calculateRowTotal('taxation') !== 0 && (
-            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-              <span className="text-[12px] font-semibold text-slate-700">Taxation</span>
-              <span className="text-[12px] font-semibold text-slate-700">{formatCurrency(calculateRowTotal('taxation'))}</span>
-            </div>
+            <button onClick={() => onCategoryClick?.('Provision for taxation', reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 border-b border-slate-100 active:bg-slate-50 transition-colors">
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] font-semibold text-slate-700">Taxation</span>
+                <ChevronRight size={12} className="text-slate-300" />
+              </div>
+              <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{formatCurrency(calculateRowTotal('taxation'))}</span>
+            </button>
           )}
 
           {/* NET PROFIT */}
-          <div className="flex items-center justify-between px-4 py-4 bg-slate-900">
-            <span className="text-[13px] font-bold text-white uppercase tracking-wide">Net Profit / Loss</span>
-            <span className={`text-[17px] font-bold ${calculateRowTotal('netProfit') >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+          <button onClick={() => onCategoryClick?.('NET PROFIT', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-4 bg-slate-900 active:bg-slate-800 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-bold text-white uppercase tracking-wide">Net Profit / Loss</span>
+              <ChevronRight size={12} className="text-slate-500" />
+            </div>
+            <span className={`text-[17px] font-bold tabular-nums ${calculateRowTotal('netProfit') >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
               {formatCurrency(calculateRowTotal('netProfit'))}
             </span>
-          </div>
+          </button>
         </div>
       </div>
 
