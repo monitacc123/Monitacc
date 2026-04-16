@@ -3065,22 +3065,25 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
-      <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Rekod Jualan</h2>
-          <p className="text-slate-500 text-sm font-medium">Pantau prestasi jualan anda secara langsung.</p>
+    <div className="p-4 md:p-6 pb-28 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+      {/* Mobile Header */}
+      <header className="mb-5 lg:mb-10 lg:flex lg:justify-between lg:items-end lg:gap-6">
+        <div className="mb-4 lg:mb-0">
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Rekod Jualan</h2>
+          <p className="text-slate-400 text-xs font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
         </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+
+        {/* Filter tabs — scrollable on mobile */}
+        <div className="flex flex-col gap-2">
+          <div className="flex overflow-x-auto gap-1.5 pb-0.5 scrollbar-none -mx-0.5 px-0.5">
             {filterOptions.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setTimeFilter(opt.id as any)}
-                className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                  timeFilter === opt.id 
-                    ? 'bg-white shadow-sm text-emerald-600' 
-                    : 'text-slate-500 hover:text-slate-700'
+                className={`shrink-0 px-3.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
+                  timeFilter === opt.id
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
                 }`}
               >
                 {opt.label}
@@ -3088,12 +3091,13 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
             ))}
           </div>
 
-          <div className="flex gap-2 items-center">
+          {/* Secondary selectors */}
+          <div className="flex gap-2 items-center flex-wrap">
             {timeFilter === 'monthly' && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 {months.map((m, i) => (
                   <option key={i} value={i}>{m}</option>
@@ -3104,7 +3108,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 {years.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -3112,95 +3116,94 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               </select>
             )}
             {timeFilter === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input 
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
-                <span className="text-slate-400 font-bold text-xs">ke</span>
-                <input 
+                <span className="text-slate-400 font-bold text-xs">—</span>
+                <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
             )}
           </div>
-
-
         </div>
       </header>
 
-      <div className="mb-10">
-        <div className="card-premium p-8 max-w-md bg-white pr-10">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-            Jumlah Jualan ({filterOptions.find(o => o.id === timeFilter)?.label})
+      {/* Summary strip */}
+      <div className="mb-4 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between">
+        <div>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+            Jumlah Jualan
           </p>
-          <div className="flex items-end gap-3">
-            <h3 className="text-4xl font-bold text-slate-900 tracking-tight font-display">RM {(filteredTotal || 0).toLocaleString()}</h3>
-            <div className="mb-1.5 px-2.5 py-0.5 bg-emerald-50 text-emerald-700 rounded-md text-[10px] font-bold uppercase tracking-wider border border-emerald-100">
-              {filteredCount} Transaksi
-            </div>
-          </div>
+          <span className="text-2xl font-bold text-slate-900 tracking-tight font-display">RM {(filteredTotal || 0).toLocaleString()}</span>
+        </div>
+        <div className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[11px] font-bold border border-emerald-100">
+          {filteredCount} Transaksi
         </div>
       </div>
 
-      <div className="card-premium overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         {/* Mobile Card View */}
         <div className="lg:hidden divide-y divide-slate-100">
           {filteredSales.map((sale) => (
-            <div key={sale.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-sm">
-                    <ShoppingCart size={16} strokeWidth={2} />
+            <div key={sale.id} className="px-4 py-3.5">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                    <ShoppingCart size={15} strokeWidth={2} />
                   </div>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-sm font-bold text-slate-900">{sale.category || 'SALES'}</span>
-                      {!!sale.reconciled && <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[13px] font-bold text-slate-900 truncate">{sale.category || 'SALES'}</span>
+                      {!!sale.reconciled && <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      <span className="text-[10px] font-bold text-slate-400">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
+                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                      <span className="text-[10px] text-slate-400 font-medium">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
+                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
                         {CHART_OF_ACCOUNTS[sale.category] || CHART_OF_ACCOUNTS['SALES'] || `#${sale.id}`}
                       </span>
+                      {sale.docNumber && (
+                        <span className="text-[9px] font-mono text-slate-400 flex items-center gap-0.5">
+                          <Hash size={7} />{sale.docNumber}
+                        </span>
+                      )}
                     </div>
-                    {sale.docNumber && (
-                      <span className="text-[9px] font-mono font-bold text-slate-400 mt-1 flex items-center gap-1">
-                        <Hash size={8} /> {sale.docNumber}
-                      </span>
-                    )}
                   </div>
                 </div>
-                <p className="text-base font-bold text-emerald-600 font-display shrink-0">RM {(sale.total || 0).toLocaleString()}</p>
-              </div>
-              <div className="flex items-center justify-end gap-2 mt-3">
-                <InvoiceTemplate sale={sale} user={user} />
-                <button
-                  onClick={() => downloadInvoice(sale)}
-                  disabled={downloading === sale.id}
-                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
-                >
-                  {downloading === sale.id ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
-                </button>
-                <button
-                  onClick={() => onDelete(sale.id)}
-                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <span className="text-sm font-bold text-emerald-600 font-display">RM {(sale.total || 0).toLocaleString()}</span>
+                  <div className="flex items-center gap-1">
+                    <InvoiceTemplate sale={sale} user={user} />
+                    <button
+                      onClick={() => downloadInvoice(sale)}
+                      disabled={downloading === sale.id}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
+                    >
+                      {downloading === sale.id ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
+                    </button>
+                    <button
+                      onClick={() => onDelete(sale.id)}
+                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
           {filteredSales.length === 0 && (
-            <div className="p-20 text-center">
+            <div className="py-16 text-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                  <ReceiptText size={32} />
+                <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
+                  <ReceiptText size={28} />
                 </div>
                 <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod jualan untuk tempoh ini.</p>
               </div>
