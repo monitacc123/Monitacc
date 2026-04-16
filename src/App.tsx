@@ -5490,7 +5490,7 @@ const ProfitLossReport = ({
 
   const CategoryName = ({ name, type }: { name: string, type: 'SALES' | 'COGS' | 'EXPENSE' | 'OTHER_INCOME' }) => (
     <td 
-      className={`px-1.5 py-1.5 pl-2 sticky left-[72px] bg-white group cursor-pointer hover:bg-slate-50 transition-colors ${editingCategory === name ? 'z-[100]' : 'z-10'}`}
+      className={`px-1.5 py-1.5 pl-2 sticky left-[60px] bg-white group cursor-pointer hover:bg-slate-50 transition-colors ${editingCategory === name ? 'z-[100]' : 'z-10'}`}
       onClick={() => onCategoryClick?.(name, reportType === 'monthly' ? selectedMonth : undefined, currentYear)}
     >
       <div className="flex items-center justify-between">
@@ -5580,176 +5580,7 @@ const ProfitLossReport = ({
   return (
     <div className="card-premium p-0 overflow-hidden bg-white mt-6 print:shadow-none print:border-none">
 
-      {/* ── Mobile-only toolbar ── */}
-      <div className="lg:hidden print:hidden">
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-slate-100">
-          <div>
-            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{isAnnual ? 'Laporan Tahunan' : 'P&L'}</p>
-            <h3 className="text-base font-bold text-slate-900">{plPeriodLabel}</h3>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex bg-slate-100 rounded-xl p-0.5">
-              <button onClick={() => setIsAnnual(false)} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${!isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Bulanan</button>
-              <button onClick={() => setIsAnnual(true)} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Tahunan</button>
-            </div>
-            <div className="relative">
-              <button onClick={() => setShowPdfMenu(v => !v)} className="h-8 px-2.5 flex items-center gap-1 bg-emerald-600 text-white rounded-xl text-[11px] font-bold">
-                <Download size={12} />
-                PDF
-                <ChevronDown size={10} className={`transition-transform ${showPdfMenu ? 'rotate-180' : ''}`} />
-              </button>
-              {showPdfMenu && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 py-1.5 min-w-[170px]">
-                  <p className="text-[9px] font-black text-slate-400 px-3 py-1.5 uppercase tracking-wider border-b border-slate-100 mb-1">Bahagian PDF</p>
-                  {([['all','Laporan Penuh'],['sales','Jualan'],['cogs','Kos Jualan'],['gross_profit','Untung Kasar'],['other_income','Pendapatan Lain'],['expenses','Perbelanjaan'],['net_profit','Untung/Rugi Bersih']] as [string,string][]).map(([val, label]) => (
-                    <button key={val} onClick={() => { setPdfSegment(val as any); setShowPdfMenu(false); }}
-                      className={`w-full text-left px-3 py-2 text-[11px] font-semibold flex items-center gap-2 ${pdfSegment === val ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'}`}>
-                      {pdfSegment === val ? <Check size={10} className="text-emerald-600 shrink-0" /> : <span className="w-[10px]" />}
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Mobile P&L card list */}
-        <div className="divide-y divide-slate-100">
-          {/* JUALAN header */}
-          <div className="px-4 py-2 bg-slate-50">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jualan</span>
-          </div>
-          {Array.from(new Set([...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'), 'JUALAN (REKOD)']))
-            .filter(cat => calculateRowTotal(`salesByCategory.${cat}`) !== 0)
-            .map(cat => (
-              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-slate-600">{cat}</span>
-                  <ChevronRight size={12} className="text-slate-300" />
-                </div>
-                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`salesByCategory.${cat}`))}</span>
-              </button>
-            ))}
-          {calculateRowTotal('salesAdjustments') !== 0 && (
-            <button onClick={() => onCategoryClick?.('SALES ADJUSTMENTS', reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-slate-50/50 active:bg-slate-100 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] text-slate-500 italic">Sales Adjustments</span>
-                <ChevronRight size={12} className="text-slate-300" />
-              </div>
-              <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{formatCurrency(calculateRowTotal('salesAdjustments'))}</span>
-            </button>
-          )}
-          <button onClick={() => onCategoryClick?.('SALES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-bold text-slate-900">Jumlah Jualan</span>
-              <ChevronRight size={12} className="text-slate-300" />
-            </div>
-            <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('sales'))}</span>
-          </button>
-
-          {/* COGS */}
-          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS').some(cat => calculateRowTotal(`cogs.${cat}`) !== 0) && (<>
-            <div className="px-4 py-2 bg-slate-50">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kos Jualan (COGS)</span>
-            </div>
-            {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS' && calculateRowTotal(`cogs.${c}`) !== 0).map(cat => (
-              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-slate-600">{cat}</span>
-                  <ChevronRight size={12} className="text-slate-300" />
-                </div>
-                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`cogs.${cat}`))}</span>
-              </button>
-            ))}
-            <button onClick={() => onCategoryClick?.('COGS', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-bold text-slate-900">Jumlah Kos Jualan</span>
-                <ChevronRight size={12} className="text-slate-300" />
-              </div>
-              <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('cogsTotal'))}</span>
-            </button>
-          </>)}
-
-          {/* GROSS PROFIT */}
-          <button onClick={() => onCategoryClick?.('GROSS PROFIT', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3.5 bg-emerald-50 active:bg-emerald-100 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-bold text-emerald-800">Gross Profit / (Loss)</span>
-              <ChevronRight size={12} className="text-emerald-400" />
-            </div>
-            <span className="text-[15px] font-bold text-emerald-700 tabular-nums">{formatCurrency(calculateRowTotal('grossProfit'))}</span>
-          </button>
-
-          {/* OTHER INCOME */}
-          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME').some(cat => calculateRowTotal(`otherIncome.${cat}`) !== 0) && (<>
-            <div className="px-4 py-2 bg-slate-50">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendapatan Lain</span>
-            </div>
-            {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calculateRowTotal(`otherIncome.${c}`) !== 0).map(cat => (
-              <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] text-slate-600">{cat}</span>
-                  <ChevronRight size={12} className="text-slate-300" />
-                </div>
-                <span className="text-[12px] font-semibold text-slate-800 tabular-nums">{formatCurrency(calculateRowTotal(`otherIncome.${cat}`))}</span>
-              </button>
-            ))}
-            <button onClick={() => onCategoryClick?.('OTHER INCOMES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-bold text-slate-900">Jumlah Pendapatan Lain</span>
-                <ChevronRight size={12} className="text-slate-300" />
-              </div>
-              <span className="text-[14px] font-bold text-slate-900 tabular-nums">{formatCurrency(calculateRowTotal('otherIncomeTotal'))}</span>
-            </button>
-          </>)}
-
-          {/* PERBELANJAAN */}
-          <div className="px-4 py-2 bg-slate-50">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perbelanjaan</span>
-          </div>
-          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calculateRowTotal(`expenses.${c}`) !== 0).map(cat => (
-            <button key={cat} onClick={() => onCategoryClick?.(cat, reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] text-slate-600">{cat}</span>
-                <ChevronRight size={12} className="text-slate-300" />
-              </div>
-              <span className="text-[12px] font-semibold text-rose-600 tabular-nums">{formatCurrency(calculateRowTotal(`expenses.${cat}`))}</span>
-            </button>
-          ))}
-          <button onClick={() => onCategoryClick?.('EXPENSES', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 bg-white active:bg-slate-50 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-[12px] font-bold text-slate-900">Jumlah Perbelanjaan</span>
-              <ChevronRight size={12} className="text-slate-300" />
-            </div>
-            <span className="text-[14px] font-bold text-rose-600 tabular-nums">{formatCurrency(calculateRowTotal('expensesTotal'))}</span>
-          </button>
-
-          {/* TAXATION */}
-          {calculateRowTotal('taxation') !== 0 && (
-            <button onClick={() => onCategoryClick?.('Provision for taxation', reportType === 'monthly' ? selectedMonth : undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-3 border-b border-slate-100 active:bg-slate-50 transition-colors">
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-semibold text-slate-700">Taxation</span>
-                <ChevronRight size={12} className="text-slate-300" />
-              </div>
-              <span className="text-[12px] font-semibold text-slate-700 tabular-nums">{formatCurrency(calculateRowTotal('taxation'))}</span>
-            </button>
-          )}
-
-          {/* NET PROFIT */}
-          <button onClick={() => onCategoryClick?.('NET PROFIT', undefined, currentYear)} className="w-full flex items-center justify-between px-4 py-4 bg-slate-900 active:bg-slate-800 transition-colors">
-            <div className="flex items-center gap-2">
-              <span className="text-[13px] font-bold text-white uppercase tracking-wide">Net Profit / Loss</span>
-              <ChevronRight size={12} className="text-slate-500" />
-            </div>
-            <span className={`text-[17px] font-bold tabular-nums ${calculateRowTotal('netProfit') >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-              {formatCurrency(calculateRowTotal('netProfit'))}
-            </span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── Desktop toolbar (hidden on mobile) ── */}
-      <div className="hidden lg:block print:block">
+      <div className="print:block">
       <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-50/50 print:hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">
@@ -6115,19 +5946,19 @@ const ProfitLossReport = ({
             <h3 className="text-xs font-bold uppercase mb-1">PENYATA UNTUNG RUGI BAGI TAHUN BERAKHIR 31 DISEMBER {currentYear}</h3>
           </div>
         )}
-        <table className={`w-full text-left border-collapse ${isAnnual ? 'max-w-2xl mx-auto my-10 font-mono' : 'table-fixed'}`}>
+        <table className={`text-left border-collapse ${isAnnual ? 'w-full max-w-2xl mx-auto my-10 font-mono' : 'min-w-[1100px] w-full'}`}>
           <colgroup>
             {!isAnnual && <>
-              <col className="w-[72px]" />
-              <col className="w-[160px]" />
-              {months.map(m => <col key={m} className="w-[6.5%]" />)}
-              <col className="w-[7.5%]" />
+              <col className="w-[60px]" />
+              <col className="w-[140px]" />
+              {months.map(m => <col key={m} className="w-[65px]" />)}
+              <col className="w-[80px]" />
             </>}
           </colgroup>
           <thead>
             <tr className="bg-slate-50 border-b border-slate-100">
               <th className="px-1.5 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider sticky left-0 bg-slate-50 z-10">Kod</th>
-              <th className="px-1.5 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider sticky left-[72px] bg-slate-50 z-10">Keterangan</th>
+              <th className="px-1.5 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider sticky left-[60px] bg-slate-50 z-10">Keterangan</th>
               {!isAnnual && months.map(m => (
                 <th key={m} className="px-1 py-3 text-[8px] font-bold text-slate-500 uppercase tracking-wider text-right">{m.slice(0,3).toUpperCase()}</th>
               ))}
@@ -6163,7 +5994,7 @@ const ProfitLossReport = ({
             ))}
             <tr>
               <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10"></td>
-              <td className="px-1.5 py-1.5 pl-2 sticky left-[72px] bg-white z-10 italic">SALES ADJUSTMENTS</td>
+              <td className="px-1.5 py-1.5 pl-2 sticky left-[60px] bg-white z-10 italic">SALES ADJUSTMENTS</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
@@ -6183,7 +6014,7 @@ const ProfitLossReport = ({
 
             <tr className="bg-slate-50/30 font-bold text-slate-900 border-t border-slate-200">
               <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10">{CHART_OF_ACCOUNTS['SALES']}</td>
-              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 group">
+              <td className="px-1.5 py-1.5 sticky left-[60px] bg-slate-50/30 z-10 group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH JUALAN (TOTAL)</span>
                   <button 
@@ -6214,7 +6045,7 @@ const ProfitLossReport = ({
             {addingTo === 'SALES' && (
               <tr className="bg-indigo-50/30">
                 <td className="px-1 py-1"></td>
-                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
+                <td className="px-1.5 py-1 pl-2 sticky left-[60px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6288,7 +6119,7 @@ const ProfitLossReport = ({
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900 border-t border-slate-200">
               <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-[60px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH KOS JUALAN (TOTAL)</span>
                   <button 
@@ -6319,7 +6150,7 @@ const ProfitLossReport = ({
             {addingTo === 'COGS' && (
               <tr className="bg-indigo-50/30">
                 <td className="px-1 py-1"></td>
-                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
+                <td className="px-1.5 py-1 pl-2 sticky left-[60px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6369,7 +6200,7 @@ const ProfitLossReport = ({
             {/* GROSS PROFIT */}
             <tr className="bg-emerald-50 font-bold text-emerald-700 border-y-2 border-emerald-100">
               <td className="px-1.5 py-2 sticky left-0 bg-emerald-50 z-10"></td>
-              <td className="px-1.5 py-2 sticky left-[72px] bg-emerald-50 z-10">GROSS PROFIT/(LOSS)</td>
+              <td className="px-1.5 py-2 sticky left-[60px] bg-emerald-50 z-10">GROSS PROFIT/(LOSS)</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
@@ -6414,7 +6245,7 @@ const ProfitLossReport = ({
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900">
               <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-[60px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH DUIT MASUK LAIN (TOTAL)</span>
                   <button 
@@ -6445,7 +6276,7 @@ const ProfitLossReport = ({
             {addingTo === 'OTHER_INCOME' && (
               <tr className="bg-indigo-50/30">
                 <td className="px-1 py-1"></td>
-                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
+                <td className="px-1.5 py-1 pl-2 sticky left-[60px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6519,7 +6350,7 @@ const ProfitLossReport = ({
             ))}
             <tr className="bg-slate-50/30 font-bold text-slate-900">
               <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
-              <td className="px-1.5 py-1.5 sticky left-[72px] bg-slate-50/30 z-10 uppercase tracking-wider group">
+              <td className="px-1.5 py-1.5 sticky left-[60px] bg-slate-50/30 z-10 uppercase tracking-wider group">
                 <div className="flex items-center justify-between">
                   <span>JUMLAH BELANJA (TOTAL)</span>
                   <button 
@@ -6550,7 +6381,7 @@ const ProfitLossReport = ({
             {addingTo === 'EXPENSE' && (
               <tr className="bg-indigo-50/30">
                 <td className="px-1 py-1"></td>
-                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
+                <td className="px-1.5 py-1 pl-2 sticky left-[60px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6600,7 +6431,7 @@ const ProfitLossReport = ({
             {/* TAXATION */}
             <tr>
               <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10 font-bold text-slate-900">{CHART_OF_ACCOUNTS['Provision for taxation']}</td>
-              <td className="px-1.5 py-1.5 sticky left-[72px] bg-white z-10 font-bold text-slate-900 group">
+              <td className="px-1.5 py-1.5 sticky left-[60px] bg-white z-10 font-bold text-slate-900 group">
                 <div className="flex items-center justify-between">
                   <span>TAXATION</span>
                   <button 
@@ -6631,7 +6462,7 @@ const ProfitLossReport = ({
             {addingTo === 'TAXATION' && (
               <tr className="bg-indigo-50/30">
                 <td className="px-1 py-1"></td>
-                <td className="px-1.5 py-1 pl-2 sticky left-[72px] bg-indigo-50/30 z-10">
+                <td className="px-1.5 py-1 pl-2 sticky left-[60px] bg-indigo-50/30 z-10">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-xl border border-indigo-100 shadow-sm max-w-fit">
                     <select 
                       onChange={(e) => {
@@ -6676,7 +6507,7 @@ const ProfitLossReport = ({
             {/* NET PROFIT */}
             <tr className="bg-slate-900 font-bold text-white border-y-2 border-slate-800">
               <td className="px-1.5 py-2 sticky left-0 bg-slate-900 z-10"></td>
-              <td className="px-1.5 py-2 sticky left-[72px] bg-slate-900 z-10">NET PROFIT / LOSS</td>
+              <td className="px-1.5 py-2 sticky left-[60px] bg-slate-900 z-10">NET PROFIT / LOSS</td>
               {!isAnnual && months.map((m, idx) => (
                 <td 
                   key={m} 
