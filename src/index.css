@@ -10,6 +10,11 @@
 
 body {
   @apply bg-[#F1F5F9] text-[#1E293B] font-sans antialiased;
+  overflow-x: hidden;
+}
+
+html {
+  overflow-x: hidden;
 }
 
 .glass {
