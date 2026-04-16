@@ -504,6 +504,23 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   if (['landing', 'auth', 'welcome', 'admin-auth', 'affiliate-auth', 'affiliate-dashboard'].includes(activeView)) return null;
   const isAdmin = user?.role === 'admin' || isAdminAuthenticated;
 
+  const [navVisible, setNavVisible] = useState(true);
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const current = window.scrollY;
+      if (current > lastScrollY.current && current > 60) {
+        setNavVisible(false);
+      } else {
+        setNavVisible(true);
+      }
+      lastScrollY.current = current;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
   const userNavItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'sales', label: 'Jualan', icon: ShoppingCart },
@@ -535,7 +552,16 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   if (activeView === 'landing' || activeView === 'auth' || activeView === 'welcome' || activeView === 'admin-auth') return null;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl border-t border-slate-100 z-50 flex justify-around items-end pb-safe md:top-0 md:bottom-auto md:left-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:border-t-0 md:bg-white md:backdrop-blur-none" style={{paddingBottom: 'max(env(safe-area-inset-bottom), 8px)', paddingTop: '8px'}}>
+    <nav
+      className={`fixed z-50 transition-all duration-300 ease-in-out
+        bottom-4 left-1/2 -translate-x-1/2 w-auto
+        bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-900/10
+        rounded-2xl px-2 py-1.5 flex items-center gap-0.5
+        md:translate-x-0 md:left-0 md:bottom-auto md:top-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:border-slate-200 md:bg-white md:backdrop-blur-none md:shadow-none md:gap-0
+        ${navVisible ? 'translate-y-0 opacity-100' : 'translate-y-28 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto'}
+      `}
+      style={{ willChange: 'transform, opacity' }}
+    >
       <div className="hidden md:flex items-center gap-3 mb-12 px-4 group cursor-pointer">
         <div className="w-10 h-10 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center text-white shadow-lg shadow-emerald-200">
           <CreditCard size={20} strokeWidth={2} />
@@ -546,21 +572,23 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         </div>
       </div>
 
-      <div className="flex justify-around items-center w-full md:flex-col md:gap-1">
+      <div className="flex items-center gap-0.5 md:flex-col md:gap-1 md:w-full">
         {navItems.map((item) => {
           const isActive = activeView === item.id;
           return (
             <button
               key={item.id}
               onClick={() => setView(item.id as AppView)}
-              className={`flex flex-col items-center justify-center gap-1 py-1 px-3 relative transition-all duration-200 min-w-[52px] md:flex-row md:gap-3 md:px-4 md:py-2.5 md:w-full md:rounded-lg md:min-w-0 md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-sm' : 'md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-900'}`}
+              className={`relative flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-4 md:py-2.5 md:w-full md:rounded-lg md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-sm' : 'md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-900'}`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              <div className={`flex items-center justify-center w-10 h-7 rounded-full transition-all duration-200 md:hidden ${isActive ? 'bg-emerald-100' : ''}`}>
-                <item.icon size={20} strokeWidth={isActive ? 2.5 : 2} className={`md:hidden ${isActive ? 'text-emerald-600' : 'text-slate-400'}`} />
+              {/* Mobile pill button */}
+              <div className={`md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-200 ${isActive ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400'}`}>
+                <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
+                {isActive && <span className="text-[11px] font-bold whitespace-nowrap pr-0.5">{item.label}</span>}
               </div>
+              {/* Desktop */}
               <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="hidden md:block" />
-              <span className={`text-[10px] font-semibold transition-colors md:hidden ${isActive ? 'text-emerald-600' : 'text-slate-400'}`}>{item.label}</span>
               <span className="hidden md:block text-[13px] font-semibold">{item.label}</span>
             </button>
           );
@@ -10629,7 +10657,7 @@ export default function App() {
 
       {/* Floating Action Button */}
       {view !== 'landing' && view !== 'auth' && view !== 'welcome' && view !== 'scan' && (
-        <div className="fixed bottom-20 right-4 z-50 flex flex-col items-end gap-2 md:bottom-12 md:right-12">
+        <div className="fixed bottom-20 right-4 z-40 flex flex-col items-end gap-2 md:bottom-12 md:right-12">
           <AnimatePresence>
             {isFabOpen && (
               <>
