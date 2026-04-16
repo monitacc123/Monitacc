@@ -3066,24 +3066,25 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
   return (
     <div className="pb-28 md:pl-72 md:pt-12 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="px-4 md:px-6 pt-4 md:pt-0 mb-3">
-        <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Rekod Jualan</h2>
-        <p className="text-slate-400 text-xs font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
+
+      {/* ── Header ── */}
+      <div className="px-4 md:px-6 pt-5 md:pt-0 mb-4">
+        <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">Rekod Jualan</h2>
+        <p className="text-slate-400 text-[12px] font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
       </div>
 
-      {/* Filter tabs — full-width scroll, no clipping */}
-      <div className="mb-3">
+      {/* ── Filter tabs ── */}
+      <div className="mb-4">
         <div className="overflow-x-auto scrollbar-none px-4 md:px-6 pb-1">
-          <div className="inline-flex items-center bg-slate-800 rounded-xl p-1 gap-0.5">
+          <div className="inline-flex items-center bg-slate-800 rounded-2xl p-1 gap-0.5">
             {filterOptions.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setTimeFilter(opt.id as any)}
-                className={`shrink-0 px-4 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
+                className={`shrink-0 px-4 py-1.5 rounded-xl text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
                   timeFilter === opt.id
                     ? 'bg-emerald-500 text-white shadow-sm'
-                    : 'text-slate-300 hover:text-white'
+                    : 'text-slate-400 hover:text-white'
                 }`}
               >
                 {opt.label}
@@ -3094,12 +3095,12 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
         {/* Secondary selectors */}
         {(timeFilter === 'monthly' || timeFilter === 'yearly' || timeFilter === 'custom') && (
-          <div className="flex gap-2 items-center flex-wrap px-4 md:px-6 mt-2">
+          <div className="flex gap-2 items-center flex-wrap px-4 md:px-6 mt-2.5">
             {timeFilter === 'monthly' && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
               >
                 {months.map((m, i) => (
                   <option key={i} value={i}>{m}</option>
@@ -3110,7 +3111,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
               >
                 {years.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -3123,14 +3124,14 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
                 />
-                <span className="text-slate-400 font-bold text-xs">—</span>
+                <span className="text-slate-300 font-bold text-sm">—</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20 shadow-sm"
                 />
               </div>
             )}
@@ -3140,61 +3141,61 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
       <div className="px-4 md:px-6">
 
-      {/* Summary strip */}
-      <div className="mb-4 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between">
+      {/* ── Summary card ── */}
+      <div className="mb-4 bg-emerald-600 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
         <div>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
-            Jumlah Jualan
-          </p>
-          <span className="text-2xl font-bold text-slate-900 tracking-tight font-display">RM {(filteredTotal || 0).toLocaleString()}</span>
+          <p className="text-emerald-100 text-[10px] font-semibold uppercase tracking-widest mb-1">Jumlah Jualan</p>
+          <span className="text-3xl font-bold text-white tracking-tight font-display">RM {(filteredTotal || 0).toLocaleString('ms-MY', { minimumFractionDigits: 2 })}</span>
         </div>
-        <div className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[11px] font-bold border border-emerald-100">
+        <div className="bg-white/15 text-white rounded-xl px-3 py-1.5 text-[11px] font-bold backdrop-blur-sm">
           {filteredCount} Transaksi
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* ── Sales list ── */}
+      <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         {/* Mobile Card View */}
-        <div className="lg:hidden divide-y divide-slate-100">
+        <div className="lg:hidden">
+          {filteredSales.length > 0 && (
+            <div className="px-4 pt-3 pb-1 border-b border-slate-50">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Senarai Transaksi</p>
+            </div>
+          )}
+          <div className="divide-y divide-slate-50">
           {filteredSales.map((sale) => (
             <div key={sale.id} className="px-4 py-3.5">
               <div className="flex items-center justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0">
-                    <ShoppingCart size={15} strokeWidth={2} />
+                  <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                    <ShoppingCart size={16} strokeWidth={2} />
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[13px] font-bold text-slate-900 truncate">{sale.category || 'SALES'}</span>
-                      {!!sale.reconciled && <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                      <span className="text-[13px] font-bold text-slate-800 truncate">{sale.category || 'SALES'}</span>
+                      {!!sale.reconciled && <Check size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                     </div>
-                    <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
-                      <span className="text-[10px] text-slate-400 font-medium">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
-                      <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
-                        {CHART_OF_ACCOUNTS[sale.category] || CHART_OF_ACCOUNTS['SALES'] || `#${sale.id}`}
-                      </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-[11px] text-slate-400 font-medium">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
                       {sale.docNumber && (
-                        <span className="text-[9px] font-mono text-slate-400 flex items-center gap-0.5">
-                          <Hash size={7} />{sale.docNumber}
-                        </span>
+                        <span className="text-[10px] font-mono text-slate-400">#{sale.docNumber}</span>
                       )}
                     </div>
                   </div>
                 </div>
-                <div className="flex flex-col items-end gap-1.5 shrink-0">
-                  <span className="text-sm font-bold text-emerald-600 font-display">RM {(sale.total || 0).toLocaleString()}</span>
-                  <div className="flex items-center gap-1">
+                <div className="flex flex-col items-end gap-2 shrink-0">
+                  <span className="text-[15px] font-bold text-emerald-600 font-display">RM {(sale.total || 0).toLocaleString('ms-MY', { minimumFractionDigits: 2 })}</span>
+                  <div className="flex items-center gap-0.5">
                     <InvoiceTemplate sale={sale} user={user} />
                     <button
                       onClick={() => downloadInvoice(sale)}
                       disabled={downloading === sale.id}
-                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
+                      className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
                     >
                       {downloading === sale.id ? <RefreshCw size={13} className="animate-spin" /> : <Download size={13} />}
                     </button>
                     <button
                       onClick={() => onDelete(sale.id)}
-                      className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                      className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
                     >
                       <Trash2 size={13} />
                     </button>
@@ -3203,13 +3204,14 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               </div>
             </div>
           ))}
+          </div>
           {filteredSales.length === 0 && (
             <div className="py-16 text-center">
               <div className="flex flex-col items-center gap-3">
-                <div className="w-14 h-14 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                  <ReceiptText size={28} />
+                <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200">
+                  <ReceiptText size={26} />
                 </div>
-                <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod jualan untuk tempoh ini.</p>
+                <p className="text-slate-400 text-xs font-semibold">Tiada rekod jualan untuk tempoh ini.</p>
               </div>
             </div>
           )}
