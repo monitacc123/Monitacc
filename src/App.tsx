@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -617,232 +617,328 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
 };
 
 const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: () => void, onAffiliateLogin: () => void }) => (
-  <div className="min-h-screen bg-slate-50 flex flex-col overflow-hidden relative">
-    <header className="p-6 md:px-12 flex justify-between items-center z-10 bg-white border-b border-slate-200">
-      <div className="flex items-center gap-3">
-        <div className="w-8 h-8 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg flex items-center justify-center text-white shadow-md shadow-emerald-100">
-          <CreditCard size={18} strokeWidth={2} />
+  <div className="min-h-screen bg-white flex flex-col">
+    {/* Navbar */}
+    <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 px-5 py-4">
+      <div className="max-w-6xl mx-auto flex justify-between items-center">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-emerald-600 rounded-lg flex items-center justify-center text-white shadow-sm">
+            <CreditCard size={16} strokeWidth={2.5} />
+          </div>
+          <span className="text-base font-bold tracking-tight text-slate-900 font-display">Monitacc</span>
         </div>
-        <h1 className="text-lg font-bold tracking-tight text-slate-900 font-display">Monitacc</h1>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={onAffiliateLogin}
+            className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-emerald-600 uppercase tracking-wider transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
+          >
+            Portal Affiliated
+          </button>
+          <button
+            onClick={onStart}
+            className="flex items-center gap-1.5 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
+          >
+            Log Masuk
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-4">
-        <button 
+    </header>
+
+    <main className="flex-1">
+      {/* Hero Section */}
+      <section className="px-5 pt-14 pb-16 text-center bg-white">
+        <div className="max-w-2xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold uppercase tracking-wider mb-7 border border-emerald-100"
+          >
+            <Zap size={10} fill="currentColor" /> Smart Accounting · Empower by Wekeyra 🇲🇾
+          </motion.div>
+
+          <motion.h2
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.05 }}
+            className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-slate-900 tracking-tight mb-5 font-display leading-[1.1]"
+          >
+            Urus Akaun Bisnes{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-emerald-400">
+              Semudah Ambil Gambar.
+            </span>
+          </motion.h2>
+
+          <motion.p
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.1 }}
+            className="text-base md:text-lg text-slate-500 font-medium max-w-lg mx-auto mb-9 leading-relaxed"
+          >
+            Gunakan AI untuk imbas resit, urus jualan, dan jana laporan untung rugi secara automatik.
+          </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: 0.15 }}
+            className="flex flex-col gap-3 items-center"
+          >
+            <button
+              onClick={onStart}
+              className="w-full max-w-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
+            >
+              Mula Sekarang — Percuma
+              <ArrowRight size={16} strokeWidth={2.5} />
+            </button>
+            <button
+              onClick={onAffiliateLogin}
+              className="w-full max-w-xs bg-white hover:bg-slate-50 text-slate-600 font-bold text-sm px-8 py-3.5 rounded-2xl transition-all border border-slate-200 sm:hidden"
+            >
+              Portal Affiliated
+            </button>
+          </motion.div>
+
+          {/* Trust indicators */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="flex items-center justify-center gap-6 mt-8"
+          >
+            {[
+              { label: 'Pengguna Aktif', value: '2,000+' },
+              { label: 'Transaksi Diimbas', value: '50k+' },
+              { label: 'Negeri di Malaysia', value: '14' },
+            ].map((stat, i) => (
+              <div key={i} className="text-center">
+                <p className="text-base font-extrabold text-slate-900 font-display">{stat.value}</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{stat.label}</p>
+              </div>
+            ))}
+          </motion.div>
+        </div>
+      </section>
+
+      {/* Feature Cards */}
+      <section className="px-5 py-14 bg-slate-50">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Kenapa Monitacc?</h3>
+            <p className="text-slate-500 text-sm font-medium">Direka khas untuk usahawan Malaysia.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { title: 'Imbasan AI', desc: 'Snap resit, AI terus ekstrak data secara automatik. Jimat masa berjam-jam.', icon: Camera },
+              { title: 'Laporan P&L', desc: 'Penyata untung rugi dikemaskini secara langsung. PDF sedia muat turun.', icon: PieChart },
+              { title: 'Akses Mobile', desc: 'Guna di mana-mana. Responsif untuk telefon, tablet, dan komputer.', icon: LayoutDashboard },
+            ].map((feature, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.07 }}
+                className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+              >
+                <div className="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-5">
+                  <feature.icon size={22} strokeWidth={2} />
+                </div>
+                <h4 className="text-base font-bold text-slate-900 font-display mb-2">{feature.title}</h4>
+                <p className="text-slate-500 text-sm leading-relaxed">{feature.desc}</p>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Testimonials */}
+      <section className="px-5 py-14 bg-white">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Apa Kata Pengguna</h3>
+            <p className="text-slate-500 text-sm font-medium">Ribuan usahawan Malaysia telah beralih ke Monitacc.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[
+              { name: 'Siti Aminah', role: 'Owner Kedai Makan', comment: 'Dulu kena simpan resit dalam kotak, sekarang ambil gambar saja! Senang gila.' },
+              { name: 'Khairul Ali', role: 'Freelancer Digital', comment: 'Laporan P&L yang dijana sangat membantu faham aliran tunai bisnes. Rekomended!' },
+              { name: 'Sarah Tan', role: 'Butik Pakaian', comment: 'User-friendly dan AI dia memang power. Jimat masa banyak untuk manage akaun.' },
+            ].map((t, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, scale: 0.97 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.07 }}
+                className="bg-slate-50 rounded-2xl p-6 border border-slate-100"
+              >
+                <div className="flex gap-0.5 text-amber-400 mb-4">
+                  {[...Array(5)].map((_, j) => <Sparkles key={j} size={13} fill="currentColor" />)}
+                </div>
+                <p className="text-slate-700 text-sm leading-relaxed mb-5">"{t.comment}"</p>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-bold text-sm shrink-0">
+                    {t.name.charAt(0)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-slate-900">{t.name}</p>
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">{t.role}</p>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing Section */}
+      <section className="px-5 py-14 bg-slate-50">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center mb-10">
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Pilih Pakej Anda</h3>
+            <p className="text-slate-500 text-sm font-medium">Mula percuma. Upgrade bila bisnes berkembang.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              {
+                name: 'Percuma',
+                price: '0',
+                features: [
+                  '5 Imbasan Transaksi / bulan',
+                  'Unlimited Rekod Manual',
+                  '1× Imbasan Bank Statement',
+                  'Monitacc Assistant',
+                ],
+                cta: 'Mula Percuma',
+                popular: false,
+              },
+              {
+                name: 'Starter',
+                price: '50',
+                period: '/bln',
+                features: [
+                  '100 Imbasan Transaksi / bulan',
+                  'Unlimited Rekod Manual',
+                  '3× Imbasan Bank Statement',
+                  'Monitacc Assistant',
+                  '1× Smart Analysis',
+                ],
+                cta: 'Pilih Starter',
+                popular: false,
+              },
+              {
+                name: 'Growth',
+                price: '100',
+                period: '/bln',
+                features: [
+                  '250 Imbasan Transaksi / bulan',
+                  'Unlimited Rekod Manual',
+                  '9× Imbasan Bank Statement',
+                  'Monitacc Assistant',
+                  '4× Smart Analysis',
+                ],
+                cta: 'Pilih Growth',
+                popular: false,
+              },
+              {
+                name: 'Ultimate',
+                price: '150',
+                period: '/bln',
+                features: [
+                  'Unlimited Imbasan Transaksi',
+                  'Unlimited Rekod Manual',
+                  'Unlimited Bank Statement',
+                  'Unlimited Smart Analysis',
+                  'P&L Report + Balance Sheet',
+                  'Reconciliation Features',
+                ],
+                cta: 'Pilih Ultimate',
+                popular: true,
+              },
+            ].map((p, i) => (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.07 }}
+                className={`rounded-2xl p-5 flex flex-col transition-all ${
+                  p.popular
+                    ? 'bg-slate-900 border-2 border-emerald-500 shadow-xl'
+                    : 'bg-white border border-slate-200 shadow-sm'
+                }`}
+              >
+                {p.popular && (
+                  <span className="self-start bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full mb-3">
+                    Paling Popular
+                  </span>
+                )}
+                <h4 className={`text-sm font-bold font-display mb-1 ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h4>
+                <div className="flex items-baseline gap-0.5 mb-4">
+                  <span className={`text-[10px] font-bold ${p.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
+                  <span className={`text-3xl font-extrabold font-display ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
+                  {p.period && <span className={`text-[10px] font-bold ml-0.5 ${p.popular ? 'text-white/60' : 'text-slate-500'}`}>{p.period}</span>}
+                </div>
+                <ul className="space-y-2.5 mb-5 flex-1">
+                  {p.features.map((f, j) => (
+                    <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${p.popular ? 'text-white/90' : 'text-slate-700'}`}>
+                      <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={onStart}
+                  className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
+                    p.popular
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-900'
+                  }`}
+                >
+                  {p.cta}
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Bottom CTA */}
+      <section className="px-5 py-16 bg-slate-900 text-white text-center">
+        <div className="max-w-lg mx-auto">
+          <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
+            <Zap size={26} className="text-emerald-400" strokeWidth={2} />
+          </div>
+          <h3 className="text-2xl md:text-3xl font-bold font-display mb-3">Mula Guna Monitacc Hari Ini</h3>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed">Daftar percuma. Tiada kredit kad diperlukan. Mula urus akaun bisnes dengan lebih mudah.</p>
+          <button
+            onClick={onStart}
+            className="w-full max-w-xs mx-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+          >
+            Daftar Percuma
+            <ArrowRight size={16} strokeWidth={2.5} />
+          </button>
+        </div>
+      </section>
+    </main>
+
+    <footer className="px-5 py-6 bg-slate-900 border-t border-white/5">
+      <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 bg-emerald-600 rounded-md flex items-center justify-center">
+            <CreditCard size={12} strokeWidth={2.5} className="text-white" />
+          </div>
+          <span className="text-sm font-bold text-slate-400">Monitacc</span>
+        </div>
+        <p className="text-slate-500 text-[11px] font-medium">&copy; 2026 Monitacc. Empower by Wekeyra.</p>
+        <button
           onClick={onAffiliateLogin}
-          className="text-xs font-bold text-slate-500 hover:text-emerald-600 uppercase tracking-wider transition-colors"
+          className="text-[11px] font-bold text-slate-500 hover:text-emerald-400 uppercase tracking-wider transition-colors"
         >
           Portal Affiliated
         </button>
-        <button 
-          onClick={onStart}
-          className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 px-4 py-2"
-        >
-          Log Masuk
-        </button>
       </div>
-    </header>
-    
-    <main className="flex-1 flex flex-col items-center justify-center px-6 text-center z-10 py-16">
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
-        className="max-w-4xl"
-      >
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ duration: 0.3 }}
-          className="inline-flex items-center gap-2 px-4 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[11px] font-bold uppercase tracking-wider mb-8 border border-emerald-100"
-        >
-          <Zap size={12} fill="currentColor" /> Smart Accounting empower by wekeyra 🇲🇾
-        </motion.div>
-        
-        <h2 className="text-5xl md:text-7xl font-extrabold text-slate-900 tracking-tight mb-6 font-display leading-[1.1]">
-          Urus Akaun Bisnes <br className="hidden md:block" /> <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-emerald-400">Semudah Ambil Gambar.</span>
-        </h2>
-        
-        <p className="text-lg md:text-xl text-slate-500 font-medium max-w-2xl mx-auto mb-12 leading-relaxed">
-          Monitacc menggunakan AI untuk mengimbas resit, mengurus jualan, dan menjana laporan untung rugi secara automatik.
-        </p>
-        
-        <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-20">
-          <button 
-            onClick={onStart}
-            className="btn-primary text-base px-10 py-4 w-full sm:w-auto"
-          >
-            Mula Sekarang — Percuma
-          </button>
-          <button className="px-10 py-4 rounded-lg font-semibold text-slate-600 hover:bg-slate-100 transition-all w-full sm:w-auto border border-slate-200 bg-white">
-            Lihat Demo
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-32">
-        {[
-          { title: 'Imbasan AI', desc: 'Ekstrak data resit secara automatik dengan ketepatan tinggi.', icon: Camera, color: 'bg-emerald-50 text-emerald-600' },
-          { title: 'Laporan P&L', desc: 'Penyata untung rugi yang sentiasa dikemaskini secara langsung.', icon: PieChart, color: 'bg-emerald-50 text-emerald-600' },
-          { title: 'Akses Mobile', desc: 'Aplikasi web responsif untuk kegunaan di mana-mana sahaja.', icon: LayoutDashboard, color: 'bg-emerald-50 text-emerald-600' },
-        ].map((feature, i) => (
-          <motion.div 
-            key={i}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 + (i * 0.05), duration: 0.4 }}
-            className="p-8 rounded-2xl bg-white border border-slate-200 text-left shadow-sm hover:shadow-md transition-all group"
-          >
-            <div className={`w-12 h-12 ${feature.color} rounded-xl flex items-center justify-center mb-6 shadow-sm`}>
-              <feature.icon size={24} strokeWidth={2.5} />
-            </div>
-            <h3 className="text-xl font-bold mb-3 text-slate-900 tracking-tight font-display">{feature.title}</h3>
-            <p className="text-slate-500 text-sm leading-relaxed font-medium">{feature.desc}</p>
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Testimonials Section */}
-      <div className="max-w-5xl mx-auto mb-32 w-full">
-        <div className="text-center mb-16">
-          <h3 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight font-display mb-4">Apa Kata Pengguna Kami</h3>
-          <p className="text-slate-500 font-medium">Ribuan usahawan Malaysia telah beralih ke Monitacc.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {[
-            { name: 'Siti Aminah', role: 'Owner Kedai Makan', comment: 'Monitacc sangat memudahkan kerja saya. Dulu kena simpan resit dalam kotak, sekarang ambil gambar saja!' },
-            { name: 'Khairul Ali', role: 'Freelancer Digital', comment: 'Laporan P&L yang dijana sangat membantu saya faham aliran tunai bisnes. Rekomended!' },
-            { name: 'Sarah Tan', role: 'Butik Pakaian', comment: 'Sangat user-friendly dan AI dia memang power. Jimat masa banyak!' },
-          ].map((t, i) => (
-            <motion.div 
-              key={i}
-              initial={{ opacity: 0, scale: 0.95 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              className="p-8 rounded-2xl bg-white border border-slate-200 shadow-sm relative"
-            >
-              <div className="flex gap-1 text-emerald-500 mb-4">
-                {[...Array(5)].map((_, i) => <Sparkles key={i} size={14} fill="currentColor" />)}
-              </div>
-              <p className="text-slate-600 italic mb-6 text-sm leading-relaxed">"{t.comment}"</p>
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400">
-                  <User size={20} />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-slate-900">{t.name}</p>
-                  <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">{t.role}</p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-
-      {/* Pricing Section */}
-      <div className="max-w-6xl mx-auto mb-32 w-full">
-        <div className="text-center mb-16">
-          <h3 className="text-3xl md:text-4xl font-bold text-slate-900 tracking-tight font-display mb-4">Pilih Pakej Anda</h3>
-          <p className="text-slate-500 font-medium">Mula secara percuma dan upgrade bila bisnes anda berkembang.</p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-          {[
-            { 
-              name: 'Percuma', 
-              price: '0', 
-              features: [
-                '5 Imbasan Transaksi / bulan', 
-                'Unlimited Rekod Transaksi Manual', 
-                '1× Imbasan Bank Statement', 
-                'Lifetime Updates Monitacc Assistant'
-              ],
-              cta: 'Mula Sekarang',
-              popular: false
-            },
-            { 
-              name: 'Starter', 
-              price: '50', 
-              period: '/bulan',
-              features: [
-                '100 Imbasan Transaksi / bulan', 
-                'Unlimited Rekod Transaksi Manual', 
-                '3× Imbasan Bank Statement', 
-                'Lifetime Updates Monitacc Assistant',
-                '1× Smart Analysis'
-              ],
-              cta: 'Pilih Starter',
-              popular: false
-            },
-            { 
-              name: 'Growth', 
-              price: '100', 
-              period: '/bulan',
-              features: [
-                '250 Imbasan Transaksi / bulan', 
-                'Unlimited Rekod Transaksi Manual', 
-                '9× Imbasan Bank Statement', 
-                'Lifetime Updates Monitacc Assistant',
-                '4× Smart Analysis'
-              ],
-              cta: 'Pilih Growth',
-              popular: false
-            },
-            { 
-              name: 'Ultimate', 
-              price: '150', 
-              period: '/bulan',
-              features: [
-                'Unlimited Imbasan Transaksi', 
-                'Unlimited Rekod Transaksi Manual', 
-                'Unlimited Imbasan Bank Statement', 
-                'Unlimited Smart Analysis',
-                'Lifetime Updates Monitacc Assistant',
-                'Lifetime Updates P&L Report',
-                'Lifetime Updates Balance Sheet',
-                'Reconciliation Features'
-              ],
-              cta: 'Pilih Ultimate',
-              popular: true
-            },
-          ].map((p, i) => (
-            <motion.div 
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              className={`p-6 rounded-3xl border-2 flex flex-col items-start text-left transition-all duration-300 ${p.popular ? 'border-emerald-500 bg-slate-900 text-white shadow-2xl scale-105 z-10' : 'border-slate-200 bg-white shadow-sm hover:shadow-md'}`}
-            >
-              {p.popular && (
-                <div className="bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-widest py-1 px-3 rounded-full self-start mb-4 shadow-lg shadow-emerald-500/20">
-                  Paling Popular
-                </div>
-              )}
-              <h4 className={`text-lg font-bold mb-1 font-display w-full text-center ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h4>
-              <div className="flex items-baseline mb-4 w-full justify-center">
-                <span className={`text-[9px] font-bold mr-0.5 ${p.popular ? 'text-white/70' : 'text-slate-600'}`}>RM</span>
-                <span className={`text-3xl font-extrabold ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
-                {p.period && <span className={`font-bold text-xs ml-1 ${p.popular ? 'text-white/70' : 'text-slate-600'}`}>{p.period}</span>}
-              </div>
-              <ul className="space-y-3 mb-6 flex-1">
-                {p.features.map((f, j) => (
-                  <li key={j} className={`flex items-start gap-2 text-[11px] font-bold leading-tight ${p.popular ? 'text-white' : 'text-slate-900'}`}>
-                    <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <button 
-                onClick={onStart}
-                className={`w-full py-3 rounded-xl font-bold text-xs transition-all ${p.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-600/30' : 'bg-slate-100 text-slate-900 hover:bg-slate-200'}`}
-              >
-                {p.cta}
-              </button>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-      </motion.div>
-    </main>
-
-    <footer className="p-8 text-center text-slate-400 text-xs font-bold uppercase tracking-widest border-t border-slate-200 bg-white">
-      &copy; 2026 Monitacc. Empower by wekeyra.
     </footer>
   </div>
 );
