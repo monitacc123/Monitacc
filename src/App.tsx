@@ -4854,39 +4854,49 @@ const RecordsView = ({
       <TransactionReportTemplate records={filtered} user={user} />
 
       {/* ── Mobile Header ── */}
-      <div className="lg:hidden px-4 pt-5 pb-3">
-        <div className="flex items-center justify-between mb-3">
+      <div className="lg:hidden bg-white border-b border-slate-100 px-4 pt-5 pb-4 space-y-3">
+        {/* Title row */}
+        <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">Rekod Transaksi</h2>
-            <p className="text-slate-400 text-[12px] font-medium mt-0.5">Senarai semua duit masuk dan duit keluar.</p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Rekod Transaksi</h2>
+            <p className="text-slate-400 text-[11px] mt-0.5">Semua duit masuk dan keluar</p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {selectedIds.size > 0 && (
               <button
                 onClick={handleBulkDeleteClick}
-                className="w-9 h-9 flex items-center justify-center bg-rose-500 text-white rounded-xl shadow-sm transition-all"
+                className="flex items-center gap-1.5 h-8 px-3 bg-rose-50 text-rose-600 rounded-xl text-[11px] font-bold transition-all"
               >
-                <Trash2 size={15} />
+                <Trash2 size={13} />
+                {selectedIds.size}
               </button>
             )}
             <button
               onClick={downloadReport}
               disabled={downloadingReport}
-              className="w-9 h-9 flex items-center justify-center bg-slate-800 text-white rounded-xl shadow-sm transition-all disabled:opacity-50"
+              className="h-8 px-3 flex items-center gap-1.5 bg-slate-900 text-white rounded-xl text-[11px] font-bold transition-all disabled:opacity-50"
             >
-              {downloadingReport ? <RefreshCw size={15} className="animate-spin" /> : <FileDown size={15} />}
+              {downloadingReport ? <RefreshCw size={13} className="animate-spin" /> : <FileDown size={13} />}
+              PDF
             </button>
           </div>
         </div>
 
-        {/* Type filter — full width */}
-        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5 mb-2">
-          {[{ id: 'all', label: 'Semua' }, { id: 'income', label: 'Masuk' }, { id: 'expense', label: 'Keluar' }, { id: 'sale', label: 'Jualan' }].map((opt) => (
+        {/* Type filter */}
+        <div className="grid grid-cols-4 bg-slate-100 rounded-2xl p-1 gap-1">
+          {[
+            { id: 'all', label: 'Semua' },
+            { id: 'income', label: 'Masuk' },
+            { id: 'expense', label: 'Keluar' },
+            { id: 'sale', label: 'Jualan' },
+          ].map((opt) => (
             <button
               key={opt.id}
               onClick={() => setFilter(opt.id as any)}
-              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
-                filter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'
+              className={`py-2 rounded-xl text-[11px] font-semibold transition-all ${
+                filter === opt.id
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600'
               }`}
             >
               {opt.label}
@@ -4894,14 +4904,21 @@ const RecordsView = ({
           ))}
         </div>
 
-        {/* Time filter — full width */}
-        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
-          {[{ id: 'all', label: 'Semua' }, { id: 'monthly', label: 'Bulan' }, { id: 'yearly', label: 'Tahun' }, { id: 'custom', label: 'Khas' }].map((opt) => (
+        {/* Time filter */}
+        <div className="grid grid-cols-4 bg-slate-100 rounded-2xl p-1 gap-1">
+          {[
+            { id: 'all', label: 'Semua' },
+            { id: 'monthly', label: 'Bulan' },
+            { id: 'yearly', label: 'Tahun' },
+            { id: 'custom', label: 'Khas' },
+          ].map((opt) => (
             <button
               key={opt.id}
               onClick={() => setTimeFilter(opt.id as any)}
-              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
-                timeFilter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'
+              className={`py-2 rounded-xl text-[11px] font-semibold transition-all ${
+                timeFilter === opt.id
+                  ? 'bg-emerald-500 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-600'
               }`}
             >
               {opt.label}
@@ -4911,45 +4928,41 @@ const RecordsView = ({
 
         {/* Secondary time selectors */}
         {(timeFilter === 'monthly' || timeFilter === 'yearly' || timeFilter === 'custom') && (
-          <div className="flex gap-2 items-center flex-wrap mt-2">
+          <div className="flex gap-2">
             {timeFilter === 'monthly' && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
               >
-                {months.map((m, i) => (
-                  <option key={i} value={i}>{m}</option>
-                ))}
+                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
               </select>
             )}
             {(timeFilter === 'monthly' || timeFilter === 'yearly') && (
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
               >
-                {years.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             )}
             {timeFilter === 'custom' && (
-              <div className="flex items-center gap-2 w-full">
+              <>
                 <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
                 />
-                <span className="text-slate-300 font-bold">—</span>
+                <span className="text-slate-300 self-center">—</span>
                 <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
                 />
-              </div>
+              </>
             )}
           </div>
         )}
