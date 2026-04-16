@@ -2081,7 +2081,6 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
     amount: 0,
     date: new Date().toISOString().split('T')[0],
     description: '',
-    remark: '',
     payment_method: 'bank',
     image_url: '',
     ...initialData
@@ -2149,7 +2148,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
-              <SearchableSelect
+              <SearchableSelect 
                 value={formData.category}
                 onChange={(val) => setFormData({...formData, category: val})}
                 options={Array.from(new Set([
@@ -2164,21 +2163,6 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 onAddNew={(val) => onAddNewCategory(val, formData.type)}
               />
             </div>
-
-            {ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()).includes(formData.category.trim().toUpperCase()) && (
-              <div className="space-y-1.5 animate-in fade-in duration-200">
-                <label className="text-xs font-bold text-amber-700 uppercase tracking-wider ml-1">Catatan / Remark</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.remark}
-                  onChange={(e) => setFormData({...formData, remark: e.target.value})}
-                  placeholder="Cth: Bayaran sewa pejabat, Modal permulaan, Pinjaman bank..."
-                  className="w-full px-4 py-3 bg-amber-50 border border-amber-200 rounded-lg font-medium text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 transition-all"
-                />
-                <p className="text-[9px] text-amber-600 font-medium ml-1">Sila nyatakan tujuan transaksi untuk kategori ini</p>
-              </div>
-            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div className="space-y-1.5">
@@ -3683,7 +3667,6 @@ const ManualReconcileModal = ({
                   <div className="flex flex-col">
                     <span className="text-xs font-bold text-slate-900">{r.category}</span>
                     <span className="text-[10px] text-slate-500">{r.date} • {r.description}</span>
-                    {r.remark && <span className="text-[9px] font-bold text-amber-600">{r.remark}</span>}
                   </div>
                   <div className="flex items-center gap-4">
                     <span className="text-sm font-bold text-slate-900">RM {r.amount.toFixed(2)}</span>
@@ -4659,11 +4642,6 @@ const RecordsView = ({
                       <div className="line-clamp-2 leading-relaxed break-words">
                         {record.description}
                       </div>
-                      {record.remark && (
-                        <div className="mt-1 text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded inline-block">
-                          {record.remark}
-                        </div>
-                      )}
                     </td>
                     <td className="px-2 py-4">
                       <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border inline-flex items-center gap-1 ${
