@@ -5571,17 +5571,153 @@ const ProfitLossReport = ({
     </td>
   );
 
+  const plPeriodLabel = reportType === 'monthly' && selectedMonth !== undefined
+    ? `${['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'][selectedMonth]} ${currentYear}`
+    : reportType === 'yearly' ? String(currentYear)
+    : reportType === 'custom' && startDate && endDate ? `${format(parseISO(startDate), 'dd/MM/yy')} – ${format(parseISO(endDate), 'dd/MM/yy')}`
+    : String(currentYear);
+
   return (
-    <div className="card-premium p-0 overflow-hidden bg-white mt-10 print:shadow-none print:border-none">
+    <div className="card-premium p-0 overflow-hidden bg-white mt-6 print:shadow-none print:border-none">
+
+      {/* ── Mobile-only toolbar ── */}
+      <div className="lg:hidden print:hidden">
+        <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-slate-100">
+          <div>
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">{isAnnual ? 'Laporan Tahunan' : 'P&L'}</p>
+            <h3 className="text-base font-bold text-slate-900">{plPeriodLabel}</h3>
+          </div>
+          <div className="flex items-center gap-2">
+            <div className="flex bg-slate-100 rounded-xl p-0.5">
+              <button onClick={() => setIsAnnual(false)} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${!isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Bulanan</button>
+              <button onClick={() => setIsAnnual(true)} className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${isAnnual ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'}`}>Tahunan</button>
+            </div>
+            <div className="relative">
+              <button onClick={() => setShowPdfMenu(v => !v)} className="h-8 px-2.5 flex items-center gap-1 bg-emerald-600 text-white rounded-xl text-[11px] font-bold">
+                <Download size={12} />
+                PDF
+                <ChevronDown size={10} className={`transition-transform ${showPdfMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showPdfMenu && (
+                <div className="absolute right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 py-1.5 min-w-[170px]">
+                  <p className="text-[9px] font-black text-slate-400 px-3 py-1.5 uppercase tracking-wider border-b border-slate-100 mb-1">Bahagian PDF</p>
+                  {([['all','Laporan Penuh'],['sales','Jualan'],['cogs','Kos Jualan'],['gross_profit','Untung Kasar'],['other_income','Pendapatan Lain'],['expenses','Perbelanjaan'],['net_profit','Untung/Rugi Bersih']] as [string,string][]).map(([val, label]) => (
+                    <button key={val} onClick={() => { setPdfSegment(val as any); setShowPdfMenu(false); }}
+                      className={`w-full text-left px-3 py-2 text-[11px] font-semibold flex items-center gap-2 ${pdfSegment === val ? 'text-emerald-700 bg-emerald-50' : 'text-slate-600'}`}>
+                      {pdfSegment === val ? <Check size={10} className="text-emerald-600 shrink-0" /> : <span className="w-[10px]" />}
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Mobile P&L card list */}
+        <div className="divide-y divide-slate-50">
+          {/* JUALAN header */}
+          <div className="px-4 py-2 bg-slate-50">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Jualan</span>
+          </div>
+          {Array.from(new Set([...Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'SALES'), 'JUALAN (REKOD)']))
+            .filter(cat => calculateRowTotal(`salesByCategory.${cat}`) !== 0)
+            .map(cat => (
+              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-[12px] text-slate-600">{cat}</span>
+                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`salesByCategory.${cat}`))}</span>
+              </div>
+            ))}
+          {calculateRowTotal('salesAdjustments') !== 0 && (
+            <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50/50">
+              <span className="text-[11px] text-slate-500 italic">Sales Adjustments</span>
+              <span className="text-[12px] font-semibold text-slate-700">{formatCurrency(calculateRowTotal('salesAdjustments'))}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between px-4 py-3 bg-white">
+            <span className="text-[12px] font-bold text-slate-900">Jumlah Jualan</span>
+            <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('sales'))}</span>
+          </div>
+
+          {/* COGS */}
+          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS').some(cat => calculateRowTotal(`cogs.${cat}`) !== 0) && (<>
+            <div className="px-4 py-2 bg-slate-50">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kos Jualan (COGS)</span>
+            </div>
+            {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'COGS' && calculateRowTotal(`cogs.${c}`) !== 0).map(cat => (
+              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-[12px] text-slate-600">{cat}</span>
+                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`cogs.${cat}`))}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-4 py-3 bg-white">
+              <span className="text-[12px] font-bold text-slate-900">Jumlah Kos Jualan</span>
+              <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('cogsTotal'))}</span>
+            </div>
+          </>)}
+
+          {/* GROSS PROFIT */}
+          <div className="flex items-center justify-between px-4 py-3.5 bg-emerald-50">
+            <span className="text-[12px] font-bold text-emerald-800">Gross Profit / (Loss)</span>
+            <span className="text-[15px] font-bold text-emerald-700">{formatCurrency(calculateRowTotal('grossProfit'))}</span>
+          </div>
+
+          {/* OTHER INCOME */}
+          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME').some(cat => calculateRowTotal(`otherIncome.${cat}`) !== 0) && (<>
+            <div className="px-4 py-2 bg-slate-50">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Pendapatan Lain</span>
+            </div>
+            {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calculateRowTotal(`otherIncome.${c}`) !== 0).map(cat => (
+              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+                <span className="text-[12px] text-slate-600">{cat}</span>
+                <span className="text-[12px] font-semibold text-slate-800">{formatCurrency(calculateRowTotal(`otherIncome.${cat}`))}</span>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-4 py-3 bg-white">
+              <span className="text-[12px] font-bold text-slate-900">Jumlah Pendapatan Lain</span>
+              <span className="text-[14px] font-bold text-slate-900">{formatCurrency(calculateRowTotal('otherIncomeTotal'))}</span>
+            </div>
+          </>)}
+
+          {/* PERBELANJAAN */}
+          <div className="px-4 py-2 bg-slate-50">
+            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Perbelanjaan</span>
+          </div>
+          {Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calculateRowTotal(`expenses.${c}`) !== 0).map(cat => (
+            <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+              <span className="text-[12px] text-slate-600">{cat}</span>
+              <span className="text-[12px] font-semibold text-rose-600">{formatCurrency(calculateRowTotal(`expenses.${cat}`))}</span>
+            </div>
+          ))}
+          <div className="flex items-center justify-between px-4 py-3 bg-white">
+            <span className="text-[12px] font-bold text-slate-900">Jumlah Perbelanjaan</span>
+            <span className="text-[14px] font-bold text-rose-600">{formatCurrency(calculateRowTotal('expensesTotal'))}</span>
+          </div>
+
+          {/* TAXATION */}
+          {calculateRowTotal('taxation') !== 0 && (
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+              <span className="text-[12px] font-semibold text-slate-700">Taxation</span>
+              <span className="text-[12px] font-semibold text-slate-700">{formatCurrency(calculateRowTotal('taxation'))}</span>
+            </div>
+          )}
+
+          {/* NET PROFIT */}
+          <div className="flex items-center justify-between px-4 py-4 bg-slate-900">
+            <span className="text-[13px] font-bold text-white uppercase tracking-wide">Net Profit / Loss</span>
+            <span className={`text-[17px] font-bold ${calculateRowTotal('netProfit') >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+              {formatCurrency(calculateRowTotal('netProfit'))}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Desktop toolbar (hidden on mobile) ── */}
+      <div className="hidden lg:block print:block">
       <div className="p-4 md:p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-3 bg-slate-50/50 print:hidden">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">
-            {isAnnual ? 'Laporan Tahunan' : 'P&L'} - {
-              reportType === 'monthly' && selectedMonth !== undefined ? `${['Jan', 'Feb', 'Mac', 'Apr', 'Mei', 'Jun', 'Jul', 'Ogo', 'Sep', 'Okt', 'Nov', 'Dis'][selectedMonth]} ${currentYear}` :
-              reportType === 'yearly' ? currentYear :
-              reportType === 'custom' && startDate && endDate ? `${format(parseISO(startDate), 'dd/MM/yy')} - ${format(parseISO(endDate), 'dd/MM/yy')}` :
-              currentYear
-            }
+            {isAnnual ? 'Laporan Tahunan' : 'P&L'} - {plPeriodLabel}
           </h3>
           <div className="flex bg-slate-100 p-1 rounded-lg">
             <button
@@ -6533,6 +6669,7 @@ const ProfitLossReport = ({
           <div className="mt-12 w-48 border-b border-slate-400 mx-auto"></div>
           <p className="mt-2 text-[9px] font-bold text-slate-500 uppercase tracking-widest">Tandatangan Pengarah / Pemilik</p>
         </div>
+      </div>
       </div>
     </div>
   );
