@@ -3065,34 +3065,34 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
   return (
-    <div className="p-4 md:p-6 pb-28 md:pl-72 md:pt-12 max-w-7xl mx-auto">
-      {/* Mobile Header */}
-      <header className="mb-5 lg:mb-10 lg:flex lg:justify-between lg:items-end lg:gap-6">
-        <div className="mb-4 lg:mb-0">
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Rekod Jualan</h2>
-          <p className="text-slate-400 text-xs font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
+    <div className="pb-28 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="px-4 md:px-6 pt-4 md:pt-0 mb-3">
+        <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Rekod Jualan</h2>
+        <p className="text-slate-400 text-xs font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
+      </div>
+
+      {/* Filter tabs — full-width scroll, no clipping */}
+      <div className="mb-3">
+        <div className="flex overflow-x-auto gap-1.5 px-4 md:px-6 pb-1 scrollbar-none">
+          {filterOptions.map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setTimeFilter(opt.id as any)}
+              className={`shrink-0 px-4 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
+                timeFilter === opt.id
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
         </div>
 
-        {/* Filter tabs — scrollable on mobile */}
-        <div className="flex flex-col gap-2">
-          <div className="flex overflow-x-auto gap-1.5 pb-0.5 scrollbar-none -mx-0.5 px-0.5">
-            {filterOptions.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setTimeFilter(opt.id as any)}
-                className={`shrink-0 px-3.5 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
-                  timeFilter === opt.id
-                    ? 'bg-emerald-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Secondary selectors */}
-          <div className="flex gap-2 items-center flex-wrap">
+        {/* Secondary selectors */}
+        {(timeFilter === 'monthly' || timeFilter === 'yearly' || timeFilter === 'custom') && (
+          <div className="flex gap-2 items-center flex-wrap px-4 md:px-6 mt-2">
             {timeFilter === 'monthly' && (
               <select
                 value={selectedMonth}
@@ -3133,8 +3133,10 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
               </div>
             )}
           </div>
-        </div>
-      </header>
+        )}
+      </div>
+
+      <div className="px-4 md:px-6">
 
       {/* Summary strip */}
       <div className="mb-4 bg-white rounded-2xl border border-slate-200 shadow-sm px-4 py-3 flex items-center justify-between">
@@ -3291,6 +3293,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
           </table>
         </div>
       </div>
+      </div>{/* end px-4 wrapper */}
 
       <AnimatePresence>
         {showAdd && (
