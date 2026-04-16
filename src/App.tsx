@@ -1322,29 +1322,49 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
-      <header className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-10 gap-6">
-        <div>
-          <motion.h2 
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.3 }}
-            className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display"
-          >
-            Selamat Kembali, {(user?.name?.split(' ')[0] || 'Ali')}
-          </motion.h2>
-          <p className="text-slate-500 font-medium tracking-tight">
-            Berikut adalah ringkasan prestasi perniagaan anda.
-          </p>
+      <header className="mb-6 md:mb-10">
+        <div className="flex items-start justify-between mb-4 md:mb-6">
+          <div>
+            <motion.h2
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3 }}
+              className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight mb-0.5 font-display"
+            >
+              Selamat Kembali, {(user?.name?.split(' ')[0] || 'Ali')}
+            </motion.h2>
+            <p className="text-sm text-slate-500 font-medium tracking-tight hidden sm:block">
+              Berikut adalah ringkasan prestasi perniagaan anda.
+            </p>
+          </div>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={onScan}
+              className="w-10 h-10 md:w-auto md:h-auto md:px-5 md:py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Camera size={16} />
+              <span className="hidden md:inline">Imbas Resit</span>
+            </button>
+            <label className="w-10 h-10 md:w-auto md:h-auto md:px-5 md:py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
+              <FileText size={16} />
+              <span className="hidden md:inline">Muat Naik PDF</span>
+              <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) onFileSelect(file);
+              }} />
+            </label>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+
+        <div className="overflow-x-auto -mx-1 px-1">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 w-fit min-w-full sm:min-w-0">
             {filterOptions.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setTimeFilter(opt.id as any)}
-                className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                  timeFilter === opt.id 
-                    ? 'bg-white shadow-sm text-emerald-600' 
+                className={`flex-1 sm:flex-none px-3 sm:px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                  timeFilter === opt.id
+                    ? 'bg-white shadow-sm text-emerald-600'
                     : 'text-slate-500 hover:text-slate-700'
                 }`}
               >
@@ -1352,32 +1372,14 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               </button>
             ))}
           </div>
-
-          <button 
-            onClick={onScan}
-            className="btn-primary flex items-center gap-2"
-          >
-            <Camera size={18} />
-            <span>Imbas Resit</span>
-          </button>
-          <label className="px-6 py-3 bg-white border border-slate-200 text-slate-700 rounded-2xl font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
-            <FileText size={18} />
-            <span>Muat Naik PDF</span>
-            <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) onFileSelect(file);
-            }} />
-          </label>
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-10">
         {user?.role === 'upload_only' ? (
           <>
             <StatCard label="Jumlah Resit" value={expense} icon={TrendingDown} color="rose" />
             <StatCard label="Bil. Resit" value={filteredRecords.length} icon={FileText} color="slate" />
-            <div className="hidden lg:block" />
-            <div className="hidden lg:block" />
           </>
         ) : (
           <>
@@ -1390,34 +1392,34 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
       </div>
 
       {user?.role !== 'upload_only' && (
-        <div className="mb-10">
+        <div className="mb-6 md:mb-10">
           <AIInsights records={records} sales={sales} />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
         {user?.role !== 'upload_only' && (
-          <div className="lg:col-span-2 card-premium p-8">
-            <div className="flex justify-between items-center mb-8">
-              <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Aliran Tunai</h3>
-              <div className="flex gap-4">
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Masuk</span>
+          <div className="lg:col-span-2 card-premium p-4 md:p-8">
+            <div className="flex justify-between items-center mb-4 md:mb-8">
+              <h3 className="text-base md:text-lg font-bold text-slate-900 tracking-tight font-display">Aliran Tunai</h3>
+              <div className="flex gap-3 md:gap-4">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-emerald-500" />
+                  <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Masuk</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2.5 h-2.5 rounded-full bg-rose-500" />
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Keluar</span>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-2 h-2 md:w-2.5 md:h-2.5 rounded-full bg-rose-500" />
+                  <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Keluar</span>
                 </div>
               </div>
             </div>
-            <div className="h-80">
+            <div className="h-48 md:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                   <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }} dy={10} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }} />
-                  <Tooltip 
+                  <Tooltip
                     cursor={{ fill: '#f8fafc' }}
                     contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', padding: '12px 16px' }}
                   />
@@ -1431,28 +1433,28 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
             </div>
           </div>
         )}
-        
-        <div className={`${user?.role === 'upload_only' ? 'lg:col-span-3' : ''} card-premium p-8`}>
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display mb-8">Transaksi Terkini</h3>
-          <div className="space-y-6">
+
+        <div className={`${user?.role === 'upload_only' ? 'lg:col-span-3' : ''} card-premium p-4 md:p-8`}>
+          <h3 className="text-base md:text-lg font-bold text-slate-900 tracking-tight font-display mb-4 md:mb-8">Transaksi Terkini</h3>
+          <div className="space-y-3 md:space-y-6">
             {filteredRecords.slice(0, 5).map((record, i) => {
               const Icon = getCategoryIcon(record.category);
               return (
                 <div key={i} className="flex items-center justify-between group cursor-pointer p-2 -mx-2 hover:bg-slate-50 rounded-2xl transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-11 h-11 rounded-2xl flex items-center justify-center shadow-sm border transition-transform group-hover:scale-105 ${record.type === 'income' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
-                      <Icon size={20} strokeWidth={2} />
+                  <div className="flex items-center gap-3 md:gap-4">
+                    <div className={`w-9 h-9 md:w-11 md:h-11 rounded-xl md:rounded-2xl flex items-center justify-center shadow-sm border transition-transform group-hover:scale-105 ${record.type === 'income' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>
+                      <Icon size={16} strokeWidth={2} />
                     </div>
                     <div>
-                      <p className="text-sm font-bold text-slate-900 truncate max-w-[140px] leading-tight">{record.category}</p>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{format(parseISO(record.date), 'dd MMM yyyy')}</p>
+                      <p className="text-xs md:text-sm font-bold text-slate-900 truncate max-w-[110px] md:max-w-[140px] leading-tight">{record.category}</p>
+                      <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">{format(parseISO(record.date), 'dd MMM yyyy')}</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-[10px] font-bold uppercase tracking-widest mb-0.5 ${record.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                    <p className={`text-[9px] md:text-[10px] font-bold uppercase tracking-widest mb-0.5 ${record.type === 'income' ? 'text-emerald-500' : 'text-rose-500'}`}>
                       {record.type === 'income' ? 'Masuk' : 'Keluar'}
                     </p>
-                    <p className={`text-sm font-bold font-display ${record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                    <p className={`text-xs md:text-sm font-bold font-display ${record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'}`}>
                       {record.type === 'income' ? '+' : '-'} RM {(record.amount || 0).toLocaleString()}
                     </p>
                   </div>
@@ -1460,9 +1462,9 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               );
             })}
           </div>
-          <button 
+          <button
             onClick={() => setView('records')}
-            className="w-full mt-10 py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-100 transition-all border border-slate-200"
+            className="w-full mt-6 md:mt-10 py-2.5 md:py-3 bg-slate-50 text-slate-600 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-slate-100 transition-all border border-slate-200"
           >
             Lihat Semua
           </button>
