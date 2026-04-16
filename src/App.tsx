@@ -3049,12 +3049,12 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   };
 
   const filterOptions = [
-    { id: 'all', label: 'Semua' },
-    { id: 'daily', label: 'Harian' },
-    { id: 'weekly', label: 'Mingguan' },
-    { id: 'monthly', label: 'Bulanan' },
-    { id: 'yearly', label: 'Tahunan' },
-    { id: 'custom', label: 'Khas' },
+    { id: 'all', label: 'Semua', short: 'Semua' },
+    { id: 'daily', label: 'Harian', short: 'Hari' },
+    { id: 'weekly', label: 'Mingguan', short: 'Mggu' },
+    { id: 'monthly', label: 'Bulanan', short: 'Bulan' },
+    { id: 'yearly', label: 'Tahunan', short: 'Tahun' },
+    { id: 'custom', label: 'Khas', short: 'Khas' },
   ];
 
   const months = [
@@ -3075,19 +3075,20 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
       {/* ── Filter tabs ── */}
       <div className="mb-4">
-        <div className="overflow-x-auto scrollbar-none px-4 md:px-6 pb-1">
-          <div className="inline-flex items-center bg-slate-800 rounded-2xl p-1 gap-0.5">
+        <div className="px-4 md:px-6">
+          <div className="flex items-center bg-slate-800 rounded-2xl p-1 gap-0.5 w-full">
             {filterOptions.map((opt) => (
               <button
                 key={opt.id}
                 onClick={() => setTimeFilter(opt.id as any)}
-                className={`shrink-0 px-4 py-1.5 rounded-xl text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
+                className={`flex-1 py-1.5 rounded-xl text-[10px] md:text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap text-center ${
                   timeFilter === opt.id
                     ? 'bg-emerald-500 text-white shadow-sm'
                     : 'text-slate-400 hover:text-white'
                 }`}
               >
-                {opt.label}
+                <span className="md:hidden">{opt.short}</span>
+                <span className="hidden md:inline">{opt.label}</span>
               </button>
             ))}
           </div>
