@@ -554,11 +554,11 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   return (
     <nav
       className={`fixed z-50 transition-all duration-300 ease-in-out
-        bottom-4 left-1/2 -translate-x-1/2 w-auto
-        bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-900/10
-        rounded-2xl px-2 py-1.5 flex items-center gap-0.5
-        md:translate-x-0 md:left-0 md:bottom-auto md:top-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:border-slate-200 md:bg-white md:backdrop-blur-none md:shadow-none md:gap-0
-        ${navVisible ? 'translate-y-0 opacity-100' : 'translate-y-28 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto'}
+        bottom-5 left-1/2 -translate-x-1/2
+        bg-white/95 backdrop-blur-xl border border-slate-200/80 shadow-2xl shadow-slate-900/15
+        rounded-2xl px-1.5 py-1.5 flex items-center
+        md:translate-x-0 md:left-0 md:bottom-auto md:top-0 md:w-64 md:h-screen md:flex-col md:justify-start md:py-8 md:px-4 md:rounded-none md:border-r md:border-slate-200 md:bg-white md:backdrop-blur-none md:shadow-none
+        ${navVisible ? 'translate-y-0 opacity-100' : 'translate-y-24 opacity-0 pointer-events-none md:translate-y-0 md:opacity-100 md:pointer-events-auto'}
       `}
       style={{ willChange: 'transform, opacity' }}
     >
@@ -572,7 +572,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         </div>
       </div>
 
-      <div className="flex items-center gap-0.5 md:flex-col md:gap-1 md:w-full">
+      <div className="flex items-center md:flex-col md:gap-1 md:w-full">
         {navItems.map((item) => {
           const isActive = activeView === item.id;
           return (
@@ -582,13 +582,19 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
               className={`relative flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-4 md:py-2.5 md:w-full md:rounded-lg md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-sm' : 'md:text-slate-500 md:hover:bg-slate-100 md:hover:text-slate-900'}`}
               style={{ WebkitTapHighlightColor: 'transparent' }}
             >
-              {/* Mobile pill button */}
-              <div className={`md:hidden flex items-center gap-1.5 px-3 py-2 rounded-xl transition-all duration-200 ${isActive ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400'}`}>
-                <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} />
-                {isActive && <span className="text-[11px] font-bold whitespace-nowrap pr-0.5">{item.label}</span>}
+              {/* Mobile: icon-only pill, active shows label */}
+              <div className={`md:hidden flex items-center justify-center transition-all duration-200 rounded-xl
+                ${isActive
+                  ? 'bg-emerald-600 text-white px-3 py-2 gap-1.5'
+                  : 'text-slate-400 hover:text-slate-600 px-2.5 py-2'
+                }`}>
+                <item.icon size={17} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                {isActive && (
+                  <span className="text-[11px] font-bold whitespace-nowrap leading-none">{item.label}</span>
+                )}
               </div>
               {/* Desktop */}
-              <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="hidden md:block" />
+              <item.icon size={18} strokeWidth={isActive ? 2.5 : 2} className="hidden md:block shrink-0" />
               <span className="hidden md:block text-[13px] font-semibold">{item.label}</span>
             </button>
           );
