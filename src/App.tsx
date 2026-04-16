@@ -4850,82 +4850,73 @@ const RecordsView = ({
   };
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+    <div className="pb-28 md:p-6 md:pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
       <TransactionReportTemplate records={filtered} user={user} />
-      <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
-        <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Rekod Transaksi</h2>
-          <p className="text-slate-500 text-sm font-medium">Senarai semua duit masuk dan duit keluar.</p>
+
+      {/* ── Mobile Header ── */}
+      <div className="lg:hidden px-4 pt-5 pb-3">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">Rekod Transaksi</h2>
+            <p className="text-slate-400 text-[12px] font-medium mt-0.5">Senarai semua duit masuk dan duit keluar.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedIds.size > 0 && (
+              <button
+                onClick={handleBulkDeleteClick}
+                className="w-9 h-9 flex items-center justify-center bg-rose-500 text-white rounded-xl shadow-sm transition-all"
+              >
+                <Trash2 size={15} />
+              </button>
+            )}
+            <button
+              onClick={downloadReport}
+              disabled={downloadingReport}
+              className="w-9 h-9 flex items-center justify-center bg-slate-800 text-white rounded-xl shadow-sm transition-all disabled:opacity-50"
+            >
+              {downloadingReport ? <RefreshCw size={15} className="animate-spin" /> : <FileDown size={15} />}
+            </button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            <button 
-              onClick={() => setFilter('all')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === 'all' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Semua
-            </button>
-            <button 
-              onClick={() => setFilter('income')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === 'income' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Masuk
-            </button>
-            <button 
-              onClick={() => setFilter('expense')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === 'expense' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Keluar
-            </button>
-            <button 
-              onClick={() => setFilter('sale')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === 'sale' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Jualan
-            </button>
-          </div>
 
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+        {/* Type filter — full width */}
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5 mb-2">
+          {[{ id: 'all', label: 'Semua' }, { id: 'income', label: 'Masuk' }, { id: 'expense', label: 'Keluar' }, { id: 'sale', label: 'Jualan' }].map((opt) => (
             <button
-              onClick={() => setTimeFilter('all')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                timeFilter === 'all' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
+              key={opt.id}
+              onClick={() => setFilter(opt.id as any)}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
+                filter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'
               }`}
             >
-              Semua Masa
+              {opt.label}
             </button>
-            <button
-              onClick={() => setTimeFilter('monthly')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                timeFilter === 'monthly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Bulan
-            </button>
-            <button
-              onClick={() => setTimeFilter('yearly')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                timeFilter === 'yearly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Tahun
-            </button>
-            <button
-              onClick={() => setTimeFilter('custom')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                timeFilter === 'custom' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Khas
-            </button>
-          </div>
+          ))}
+        </div>
 
-          <div className="flex gap-2 items-center">
+        {/* Time filter — full width */}
+        <div className="flex bg-slate-100 rounded-xl p-1 gap-0.5">
+          {[{ id: 'all', label: 'Semua' }, { id: 'monthly', label: 'Bulan' }, { id: 'yearly', label: 'Tahun' }, { id: 'custom', label: 'Khas' }].map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setTimeFilter(opt.id as any)}
+              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wide transition-all ${
+                timeFilter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Secondary time selectors */}
+        {(timeFilter === 'monthly' || timeFilter === 'yearly' || timeFilter === 'custom') && (
+          <div className="flex gap-2 items-center flex-wrap mt-2">
             {timeFilter === 'monthly' && (
               <select
                 value={selectedMonth}
                 onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 {months.map((m, i) => (
                   <option key={i} value={i}>{m}</option>
@@ -4936,7 +4927,7 @@ const RecordsView = ({
               <select
                 value={selectedYear}
                 onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
               >
                 {years.map((y) => (
                   <option key={y} value={y}>{y}</option>
@@ -4944,38 +4935,68 @@ const RecordsView = ({
               </select>
             )}
             {timeFilter === 'custom' && (
-              <div className="flex items-center gap-2">
-                <input 
+              <div className="flex items-center gap-2 w-full">
+                <input
                   type="date"
                   value={startDate}
                   onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
-                <span className="text-slate-400 font-bold text-xs">ke</span>
-                <input 
+                <span className="text-slate-300 font-bold">—</span>
+                <input
                   type="date"
                   value={endDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                  className="flex-1 bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
                 />
               </div>
             )}
           </div>
+        )}
+      </div>
 
-          <button 
-            onClick={downloadReport}
-            disabled={downloadingReport}
-            className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-800 transition-all disabled:opacity-50 shadow-lg"
-          >
+      {/* ── Desktop Header ── */}
+      <header className="hidden lg:flex mb-10 flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+        <div>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Rekod Transaksi</h2>
+          <p className="text-slate-500 text-sm font-medium">Senarai semua duit masuk dan duit keluar.</p>
+        </div>
+        <div className="flex flex-wrap gap-3 items-center">
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            {[{ id: 'all', label: 'Semua' }, { id: 'income', label: 'Masuk' }, { id: 'expense', label: 'Keluar' }, { id: 'sale', label: 'Jualan' }].map((opt) => (
+              <button key={opt.id} onClick={() => setFilter(opt.id as any)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{opt.label}</button>
+            ))}
+          </div>
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+            {[{ id: 'all', label: 'Semua Masa' }, { id: 'monthly', label: 'Bulan' }, { id: 'yearly', label: 'Tahun' }, { id: 'custom', label: 'Khas' }].map((opt) => (
+              <button key={opt.id} onClick={() => setTimeFilter(opt.id as any)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${timeFilter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{opt.label}</button>
+            ))}
+          </div>
+          <div className="flex gap-2 items-center">
+            {timeFilter === 'monthly' && (
+              <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+            )}
+            {(timeFilter === 'monthly' || timeFilter === 'yearly') && (
+              <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
+              </select>
+            )}
+            {timeFilter === 'custom' && (
+              <div className="flex items-center gap-2">
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                <span className="text-slate-400 font-bold text-xs">ke</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+              </div>
+            )}
+          </div>
+          <button onClick={downloadReport} disabled={downloadingReport} className="flex items-center gap-2 px-4 py-2.5 bg-slate-900 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-800 transition-all disabled:opacity-50 shadow-lg">
             {downloadingReport ? <RefreshCw size={14} className="animate-spin" /> : <FileDown size={14} />}
             Muat Turun Laporan
           </button>
-
           {selectedIds.size > 0 && (
-            <button 
-              onClick={handleBulkDeleteClick}
-              className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-rose-700 transition-all shadow-lg animate-in fade-in zoom-in duration-200"
-            >
+            <button onClick={handleBulkDeleteClick} className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-rose-700 transition-all shadow-lg animate-in fade-in zoom-in duration-200">
               <Trash2 size={14} />
               Padam Terpilih ({selectedIds.size})
             </button>
@@ -4987,8 +5008,8 @@ const RecordsView = ({
         {/* Mobile Card View */}
         <div className="lg:hidden">
           {filtered.length > 0 && (
-            <div className="p-3 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-              <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+              <label className="flex items-center gap-2 text-[10px] font-bold text-slate-500 uppercase tracking-wider cursor-pointer">
                 <input
                   type="checkbox"
                   checked={filtered.length > 0 && selectedIds.size === filtered.length}
@@ -4997,80 +5018,67 @@ const RecordsView = ({
                 />
                 Pilih Semua
               </label>
-              <span className="text-[10px] font-bold text-slate-400">{filtered.length} rekod</span>
+              <span className="text-[10px] font-semibold text-slate-400">{filtered.length} rekod</span>
             </div>
           )}
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-slate-50">
             {filtered.map((record) => {
               const CategoryIcon = getCategoryIcon(record.category);
               const accNo = CHART_OF_ACCOUNTS[record.category] || (record.origin === 'sale' ? CHART_OF_ACCOUNTS['SALES'] : null) || `#${record.id}`;
               return (
-                <div key={record.id} className={`p-4 ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/30' : ''}`}>
-                  <div className="flex items-start gap-3">
+                <div key={record.id} className={`px-4 py-3 ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/40' : ''}`}>
+                  <div className="flex items-center gap-3">
                     <input
                       type="checkbox"
                       checked={selectedIds.has(`${record.origin}-${record.id}`)}
                       onChange={() => toggleSelect(record.origin, record.id)}
-                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer mt-1 shrink-0"
+                      className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer shrink-0"
                     />
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-                      record.origin === 'sale' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-white'
+                    <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+                      record.origin === 'sale' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'
                     }`}>
-                      {record.origin === 'sale' ? <ShoppingCart size={16} strokeWidth={2} /> : <CategoryIcon size={16} strokeWidth={2} />}
+                      {record.origin === 'sale' ? <ShoppingCart size={15} strokeWidth={2} /> : <CategoryIcon size={15} strokeWidth={2} />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-1.5 flex-wrap">
-                            <span className="text-sm font-bold text-slate-900 truncate">{record.category}</span>
-                            {record.image_url && (
-                              <Paperclip size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />
-                            )}
-                            {!!record.reconciled && (
-                              <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />
-                            )}
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-[13px] font-bold text-slate-800 truncate">{record.category}</span>
+                            {record.image_url && <Paperclip size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                            {!!record.reconciled && <Check size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                           </div>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <span className="text-[10px] font-bold text-slate-400">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
-                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[8px] font-bold font-mono border border-slate-200">
-                              {accNo}
-                            </span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border ${
-                              record.origin === 'sale' ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'
-                            }`}>{record.docType || 'Rekod'}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold uppercase border inline-flex items-center gap-0.5 ${
-                              record.payment_method === 'cash' ? 'bg-amber-50 text-amber-700 border-amber-100' : 'bg-blue-50 text-blue-700 border-blue-100'
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <span className="text-[11px] text-slate-400 font-medium">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                              record.payment_method === 'cash' ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'
                             }`}>
                               {record.payment_method === 'cash' ? 'Tunai' : 'Bank'}
                             </span>
                           </div>
-                          {record.description && (
-                            <p className="text-[11px] text-slate-400 mt-1 line-clamp-1">{record.description}</p>
-                          )}
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className={`text-base font-bold font-display ${
-                            record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-600')
+                        <div className="flex flex-col items-end gap-1.5 shrink-0">
+                          <span className={`text-[14px] font-bold font-display ${
+                            record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-500')
                           }`}>
                             {record.type === 'income' ? '+' : '-'} RM {record.amount.toLocaleString()}
-                          </p>
+                          </span>
+                          <div className="flex items-center gap-0.5">
+                            {record.origin !== 'sale' && (
+                              <button
+                                onClick={() => setEditingRecord(record as TransactionRecord)}
+                                className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                              >
+                                <Eye size={13} />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => record.origin === 'sale' && record.sale_id ? onDeleteSale(record.sale_id) : onDelete(record.id)}
+                              className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-end gap-2 mt-2">
-                        {record.origin !== 'sale' && (
-                          <button
-                            onClick={() => setEditingRecord(record as TransactionRecord)}
-                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                          >
-                            <Eye size={16} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => record.origin === 'sale' && record.sale_id ? onDeleteSale(record.sale_id) : onDelete(record.id)}
-                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                        >
-                          <Trash2 size={16} />
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -5078,12 +5086,12 @@ const RecordsView = ({
               );
             })}
             {filtered.length === 0 && (
-              <div className="p-20 text-center">
+              <div className="py-16 text-center">
                 <div className="flex flex-col items-center gap-3">
-                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                    <ReceiptText size={32} />
+                  <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200">
+                    <ReceiptText size={26} />
                   </div>
-                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod ditemui.</p>
+                  <p className="text-slate-400 text-xs font-semibold">Tiada rekod ditemui.</p>
                 </div>
               </div>
             )}
