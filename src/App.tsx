@@ -1198,6 +1198,92 @@ const WelcomeView = ({ user, onComplete }: { user: UserType | null, onComplete: 
   );
 };
 
+const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRefresh }: {
+  insights: DashboardInsight[];
+  loading: boolean;
+  lastUpdated: string;
+  isQuotaExceeded: boolean;
+  onRefresh: () => void;
+}) => {
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  const getIcon = (type: string) => {
+    if (type === 'improvement') return <TrendingDown size={15} />;
+    if (type === 'attention') return <AlertCircle size={15} />;
+    return <TrendingUp size={15} />;
+  };
+
+  const getIconStyle = (type: string) => {
+    if (type === 'improvement') return 'bg-rose-500/20 text-rose-400';
+    if (type === 'attention') return 'bg-amber-500/20 text-amber-400';
+    return 'bg-emerald-500/20 text-emerald-400';
+  };
+
+  return (
+    <div className="rounded-2xl bg-slate-900 border border-slate-700/50 overflow-hidden shadow-xl">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700/50">
+        <div className="flex items-center gap-2.5">
+          <div className="p-1.5 bg-emerald-500/20 rounded-lg">
+            <Sparkles size={15} className="text-emerald-400" />
+          </div>
+          <div>
+            <span className="text-sm font-bold text-white tracking-tight">Smart Analisis</span>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className={`flex h-1.5 w-1.5 rounded-full ${isQuotaExceeded ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
+              <span className={`text-[9px] uppercase tracking-widest font-bold ${isQuotaExceeded ? 'text-amber-400/70' : 'text-emerald-400/70'}`}>
+                {isQuotaExceeded ? 'Berehat' : 'Langsung'}
+              </span>
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] text-slate-500 font-medium">{lastUpdated}</span>
+          <button
+            onClick={onRefresh}
+            className="p-1.5 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-all text-white/50 hover:text-white"
+          >
+            <RefreshCw size={12} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </div>
+
+      {/* Insight rows */}
+      <div className="divide-y divide-slate-700/40">
+        {insights.map((insight, idx) => {
+          const isOpen = expandedIdx === idx;
+          const isQuota = insight.title === 'Had Quota Dicapai';
+          return (
+            <button
+              key={idx}
+              onClick={() => setExpandedIdx(isOpen ? null : idx)}
+              className={`w-full text-left px-4 py-3 flex flex-col gap-0 transition-all duration-200
+                ${isQuota ? 'hover:bg-amber-500/5' : 'hover:bg-white/[0.03]'}`}
+            >
+              <div className="flex items-center gap-3">
+                <div className={`p-1.5 rounded-lg shrink-0 ${getIconStyle(insight.type)}`}>
+                  {getIcon(insight.type)}
+                </div>
+                <span className="text-[13px] font-semibold text-white/85 leading-snug flex-1 text-left">
+                  {insight.title}
+                </span>
+                <div className={`shrink-0 text-slate-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}>
+                  <ChevronDown size={14} />
+                </div>
+              </div>
+              {isOpen && (
+                <div className="mt-2.5 ml-9 text-xs text-slate-400 leading-relaxed text-left">
+                  {insight.description}
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
 const AIInsights = ({ records, sales }: { records: TransactionRecord[], sales: any[] }) => {
   const [insights, setInsights] = useState<DashboardInsight[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1245,85 +1331,13 @@ const AIInsights = ({ records, sales }: { records: TransactionRecord[], sales: a
   const isQuotaExceeded = insights.some(i => i.title === 'Had Quota Dicapai');
 
   return (
-    <div className="card-premium p-8 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white border-none shadow-2xl overflow-hidden relative group">
-      {/* Decorative Elements */}
-      <div className="absolute -top-24 -right-24 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl group-hover:bg-emerald-500/20 transition-all duration-700" />
-      <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/20 transition-all duration-700" />
-      
-      <div className="absolute top-0 right-0 p-6 opacity-5 rotate-12 group-hover:opacity-10 transition-opacity">
-        <Zap size={120} />
-      </div>
-      
-      <div className="relative z-10">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-emerald-500/20 rounded-xl shadow-inner border border-emerald-500/20">
-              <Sparkles size={20} className="text-emerald-400" />
-            </div>
-            <div>
-              <h3 className="text-xl font-bold tracking-tight font-display bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
-                Pembantu AI MonitAcc
-              </h3>
-              <div className="flex items-center gap-2 mt-0.5">
-                <span className={`flex h-2 w-2 rounded-full ${isQuotaExceeded ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
-                <span className={`text-[10px] uppercase tracking-widest font-bold ${isQuotaExceeded ? 'text-amber-400/80' : 'text-emerald-400/80'}`}>
-                  {isQuotaExceeded ? 'AI Sedang Berehat' : 'Analisis Langsung'}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setRefreshTrigger(prev => prev + 1)}
-              className="p-2 bg-white/5 hover:bg-white/10 rounded-lg border border-white/10 transition-all text-white/70 hover:text-white"
-              title="Refresh Smart Analysis"
-            >
-              <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            </button>
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-white/5 rounded-full border border-white/10 text-[10px] font-bold uppercase tracking-wider text-white/50">
-              <Clock size={12} />
-              <span>Kemas Kini: {lastUpdated}</span>
-            </div>
-            <div className="px-3 py-1.5 bg-emerald-500/10 text-emerald-400 rounded-full border border-emerald-500/20 text-[10px] font-black uppercase tracking-widest shadow-lg shadow-emerald-500/5">
-              Lifetime AI Updates
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          {insights.map((insight, idx) => (
-            <motion.div 
-              key={idx}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: idx * 0.1, duration: 0.5, ease: "easeOut" }}
-              className={`p-5 rounded-2xl border backdrop-blur-md transition-all duration-300 shadow-lg ${
-                insight.title === 'Had Quota Dicapai' 
-                ? 'bg-amber-500/10 border-amber-500/20 hover:bg-amber-500/20' 
-                : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 hover:-translate-y-1'
-              }`}
-            >
-              <div className="flex items-start gap-4">
-                <div className={`mt-1 p-2 rounded-xl shadow-lg ${
-                  insight.type === 'improvement' ? 'bg-rose-500/20 text-rose-400 border border-rose-500/20' : 
-                  insight.type === 'attention' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/20' : 
-                  'bg-emerald-500/20 text-emerald-400 border border-emerald-500/20'
-                }`}>
-                  {insight.type === 'improvement' ? <TrendingDown size={18} /> : 
-                   insight.type === 'attention' ? <AlertCircle size={18} /> : 
-                   <TrendingUp size={18} />}
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold mb-1.5 tracking-tight text-white/90">{insight.title}</h4>
-                  <p className="text-xs text-white/50 leading-relaxed font-medium">{insight.description}</p>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <AIInsightsCard
+      insights={insights}
+      loading={loading}
+      lastUpdated={lastUpdated}
+      isQuotaExceeded={isQuotaExceeded}
+      onRefresh={() => setRefreshTrigger(prev => prev + 1)}
+    />
   );
 };
 
