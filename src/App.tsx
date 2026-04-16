@@ -6683,138 +6683,166 @@ const ReportsView = ({
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
+  const handleReportPdf = () => {
+    if (reportType === 'yearly') {
+      const sm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const md: any = {};
+      sm.forEach(m => {
+        md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 };
+      });
+      sales.filter(s => parseISO(s.date).getFullYear() === selectedYear).forEach(s => {
+        const mi = sm[parseISO(s.date).getMonth()];
+        md[mi].sales += s.total;
+        const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
+        md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
+      });
+      const pdfAssetLiabSet2 = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+      records.filter(r => !r.sale_id && parseISO(r.date).getFullYear() === selectedYear).forEach(r => {
+        const mi = sm[parseISO(r.date).getMonth()];
+        const cat = r.category.trim().toUpperCase();
+        const type = categoryMappings[cat] || 'EXPENSE';
+        if (pdfAssetLiabSet2.has(cat) || type === 'ASSET_LIABILITY') return;
+        if (r.type === 'income') {
+          if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
+          else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
+          else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
+        } else {
+          if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
+          else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
+          else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
+        }
+      });
+      generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate, md, categoryMappings);
+    } else {
+      generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate);
+    }
+  };
+
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
-      <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-center print:hidden gap-6">
+    <div className="pb-28 md:p-6 md:pb-24 md:pl-72 md:pt-12 max-w-7xl mx-auto">
+
+      {/* ── Mobile Header ── */}
+      <div className="lg:hidden bg-white border-b border-slate-100 px-4 pt-5 pb-4 space-y-3 print:hidden">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Laporan Kewangan</h2>
+            <p className="text-slate-400 text-[11px] mt-0.5">Analisa prestasi perniagaan</p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => { setIsAnnualMode(true); setTimeout(() => { window.print(); setIsAnnualMode(false); }, 500); }}
+              className="h-8 w-8 flex items-center justify-center bg-slate-100 text-slate-600 rounded-xl transition-all"
+            >
+              <FileText size={14} />
+            </button>
+            <button
+              onClick={handleReportPdf}
+              className="h-8 px-3 flex items-center gap-1.5 bg-emerald-600 text-white rounded-xl text-[11px] font-bold transition-all"
+            >
+              <Download size={13} />
+              PDF
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 bg-slate-100 rounded-2xl p-1 gap-1">
+          {[
+            { id: 'monthly', label: 'Bulanan' },
+            { id: 'yearly', label: 'Tahunan' },
+            { id: 'custom', label: 'Khas' },
+          ].map((opt) => (
+            <button
+              key={opt.id}
+              onClick={() => setReportType(opt.id as any)}
+              className={`py-2 rounded-xl text-[11px] font-semibold transition-all ${
+                reportType === opt.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {(reportType === 'monthly' || reportType === 'yearly') && (
+          <div className="flex gap-2">
+            {reportType === 'monthly' && (
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+              >
+                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+              </select>
+            )}
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+            >
+              {years.map((y) => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+        )}
+        {reportType === 'custom' && (
+          <div className="flex items-center gap-2">
+            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none" />
+            <span className="text-slate-300">—</span>
+            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 outline-none" />
+          </div>
+        )}
+      </div>
+
+      {/* ── Desktop Header ── */}
+      <header className="hidden lg:flex mb-10 flex-row justify-between items-center print:hidden gap-6 px-0 pt-0">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Laporan Kewangan</h2>
           <p className="text-slate-500 text-sm font-medium">Analisa mendalam prestasi perniagaan anda.</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
-          <button
-            onClick={() => {
-              if (reportType === 'yearly') {
-                const sm = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-                const md: any = {};
-                sm.forEach(m => {
-                  md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 };
-                });
-                sales.filter(s => parseISO(s.date).getFullYear() === selectedYear).forEach(s => {
-                  const mi = sm[parseISO(s.date).getMonth()];
-                  md[mi].sales += s.total;
-                  const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
-                  md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
-                });
-                const pdfAssetLiabSet2 = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
-                records.filter(r => !r.sale_id && parseISO(r.date).getFullYear() === selectedYear).forEach(r => {
-                  const mi = sm[parseISO(r.date).getMonth()];
-                  const cat = r.category.trim().toUpperCase();
-                  const type = categoryMappings[cat] || 'EXPENSE';
-                  if (pdfAssetLiabSet2.has(cat) || type === 'ASSET_LIABILITY') return;
-                  if (r.type === 'income') {
-                    if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
-                    else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
-                    else md[mi].otherIncome[cat] = (md[mi].otherIncome[cat] || 0) + r.amount;
-                  } else {
-                    if (type === 'COGS') md[mi].cogs[cat] = (md[mi].cogs[cat] || 0) + r.amount;
-                    else if (type === 'TAXATION' || cat.includes('TAX') || cat.includes('CUKAI')) md[mi].taxation += r.amount;
-                    else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
-                  }
-                });
-                generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate, md, categoryMappings);
-              } else {
-                generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate);
-              }
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-sm"
-          >
+          <button onClick={handleReportPdf}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-sm">
             <Download size={16} />
             Muat Turun PDF
           </button>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            <button
-              onClick={() => setReportType('monthly')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                reportType === 'monthly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Bulanan
-            </button>
-            <button
-              onClick={() => setReportType('yearly')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                reportType === 'yearly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Tahunan
-            </button>
-            <button
-              onClick={() => setReportType('custom')}
-              className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                reportType === 'custom' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-              }`}
-            >
-              Khas
-            </button>
+            <button onClick={() => setReportType('monthly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'monthly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Bulanan</button>
+            <button onClick={() => setReportType('yearly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'yearly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Tahunan</button>
+            <button onClick={() => setReportType('custom')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'custom' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Khas</button>
           </div>
-
           <div className="flex gap-2 items-center">
             {reportType === 'monthly' && (
-              <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-              >
-                {months.map((m, i) => (
-                  <option key={i} value={i}>{m}</option>
-                ))}
+              <select value={selectedMonth} onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
               </select>
             )}
             {(reportType === 'monthly' || reportType === 'yearly') && (
-              <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-              >
-                {years.map((y) => (
-                  <option key={y} value={y}>{y}</option>
-                ))}
+              <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20">
+                {years.map((y) => <option key={y} value={y}>{y}</option>)}
               </select>
             )}
             {reportType === 'custom' && (
               <div className="flex items-center gap-2">
-                <input 
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
                 <span className="text-slate-400 font-bold text-xs">ke</span>
-                <input 
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                />
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
               </div>
             )}
           </div>
-
-          <button 
-            onClick={() => {
-              setIsAnnualMode(true);
-              setTimeout(() => {
-                window.print();
-                setIsAnnualMode(false);
-              }, 500);
-            }}
-            className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all shadow-xl"
-          >
+          <button onClick={() => { setIsAnnualMode(true); setTimeout(() => { window.print(); setIsAnnualMode(false); }, 500); }}
+            className="flex items-center gap-2 px-6 py-3 bg-slate-900 text-white rounded-2xl text-sm font-bold hover:bg-slate-800 transition-all shadow-xl">
             <FileText size={18} />
             Cetak Laporan
           </button>
         </div>
       </header>
+
+      <div className="px-4 md:px-0">
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
         <div className="lg:col-span-8 card-premium p-4 md:p-8 bg-white">
@@ -7039,6 +7067,7 @@ const ReportsView = ({
           onCategoryClick={onCategoryClick}
           categoryMappings={categoryMappings}
         />
+      </div>
       </div>
     </div>
   );
