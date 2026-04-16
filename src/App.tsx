@@ -3074,20 +3074,22 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
       {/* Filter tabs — full-width scroll, no clipping */}
       <div className="mb-3">
-        <div className="flex overflow-x-auto gap-1.5 px-4 md:px-6 pb-1 scrollbar-none">
-          {filterOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setTimeFilter(opt.id as any)}
-              className={`shrink-0 px-4 py-1.5 rounded-lg text-[11px] font-bold tracking-wide transition-all ${
-                timeFilter === opt.id
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="overflow-x-auto scrollbar-none px-4 md:px-6 pb-1">
+          <div className="inline-flex items-center bg-slate-800 rounded-xl p-1 gap-0.5">
+            {filterOptions.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => setTimeFilter(opt.id as any)}
+                className={`shrink-0 px-4 py-1.5 rounded-lg text-[11px] font-semibold tracking-wide transition-all whitespace-nowrap ${
+                  timeFilter === opt.id
+                    ? 'bg-emerald-500 text-white shadow-sm'
+                    : 'text-slate-300 hover:text-white'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Secondary selectors */}
