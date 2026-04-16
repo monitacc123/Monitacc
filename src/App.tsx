@@ -654,7 +654,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
 };
 
 const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: () => void, onAffiliateLogin: () => void }) => (
-  <div className="min-h-screen bg-white flex flex-col">
+  <div className="min-h-screen bg-white flex flex-col overflow-x-hidden">
     {/* Navbar */}
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 px-5 py-4">
       <div className="max-w-6xl mx-auto flex justify-between items-center">
