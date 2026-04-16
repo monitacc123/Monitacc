@@ -1207,8 +1207,9 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
     return true;
   });
 
-  const income = filteredRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const expense = filteredRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
+  const dashAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+  const income = filteredRecords.filter(r => r.type === 'income' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
+  const expense = filteredRecords.filter(r => r.type === 'expense' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
 
   const chartData = [
     { name: 'Masuk', value: income, fill: '#10b981' },
@@ -3146,8 +3147,9 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 };
 
 const TransactionReportTemplate = ({ records, user }: { records: any[], user: UserType | null }) => {
-  const income = records.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const expense = records.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
+  const rptAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+  const income = records.filter(r => r.type === 'income' && !rptAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
+  const expense = records.filter(r => r.type === 'expense' && !rptAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
   const balance = income - expense;
 
   return (
