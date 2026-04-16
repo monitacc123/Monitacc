@@ -71,8 +71,9 @@ export async function apiFetchDashboard(userId: string, role: string) {
   const records = (recordsRes.data || []).map(mapRecord);
   const sales = (salesRes.data || []).map(mapSale);
 
-  const total_income = records.filter(r => r.type === 'income').reduce((s, r) => s + Number(r.amount), 0);
-  const total_expense = records.filter(r => r.type === 'expense').reduce((s, r) => s + Number(r.amount), 0);
+  const apiAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+  const total_income = records.filter(r => r.type === 'income' && !apiAssetLiabSet.has((r.category || '').trim().toUpperCase())).reduce((s, r) => s + Number(r.amount), 0);
+  const total_expense = records.filter(r => r.type === 'expense' && !apiAssetLiabSet.has((r.category || '').trim().toUpperCase())).reduce((s, r) => s + Number(r.amount), 0);
 
   const categoryMap: Record<string, Record<string, number>> = {};
   for (const r of records) {
