@@ -5067,6 +5067,7 @@ const ProfitLossReport = ({
                   const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
                   md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
                 });
+                const pdfAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
                 records.filter(r => {
                   if (r.sale_id) return false;
                   const d = parseISO(r.date);
@@ -5075,7 +5076,7 @@ const ProfitLossReport = ({
                   const mi = sm[parseISO(r.date).getMonth()];
                   const cat = r.category.trim().toUpperCase();
                   const type = categoryMappings[cat] || 'EXPENSE';
-                  if (type === 'ASSET_LIABILITY') return;
+                  if (pdfAssetLiabSet.has(cat) || type === 'ASSET_LIABILITY') return;
                   if (r.type === 'income') {
                     if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
                     else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
@@ -6054,13 +6055,15 @@ const ReportsView = ({
   
   let salesFromRecords = 0;
 
+  const assetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
+
   filteredRecords.forEach(r => {
     if (r.sale_id) return;
     const category = r.category.trim().toUpperCase();
     const type = categoryMappings[category] || 'EXPENSE';
 
     // Skip Asset/Liability categories for P&L stats
-    if (type === 'ASSET_LIABILITY') return;
+    if (assetLiabSet.has(category) || type === 'ASSET_LIABILITY') return;
 
     if (r.type === 'income') {
       if (type === 'SALES') {
@@ -6141,11 +6144,12 @@ const ReportsView = ({
                   const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
                   md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
                 });
+                const pdfAssetLiabSet2 = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
                 records.filter(r => !r.sale_id && parseISO(r.date).getFullYear() === selectedYear).forEach(r => {
                   const mi = sm[parseISO(r.date).getMonth()];
                   const cat = r.category.trim().toUpperCase();
                   const type = categoryMappings[cat] || 'EXPENSE';
-                  if (type === 'ASSET_LIABILITY') return;
+                  if (pdfAssetLiabSet2.has(cat) || type === 'ASSET_LIABILITY') return;
                   if (r.type === 'income') {
                     if (type === 'SALES') { md[mi].sales += r.amount; md[mi].salesByCategory[cat] = (md[mi].salesByCategory[cat] || 0) + r.amount; }
                     else if (cat.includes('ADJUSTMENT')) md[mi].salesAdjustments += r.amount;
@@ -6664,8 +6668,7 @@ const BalanceSheetReport = ({
   const fixedAssets = getBalance(fixedAssetCats) + getBalance(contraAssetCats);
   const cash = filteredRecords.reduce((sum, r) => {
     const category = r.category.trim().toUpperCase();
-    const mappingType = categoryMappings[category] || 'EXPENSE';
-    const isAssetLiability = mappingType === 'ASSET_LIABILITY';
+    const isAssetLiability = assetLiabilitySet.has(category) || categoryMappings[category] === 'ASSET_LIABILITY';
     const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
 
     // 1. Direct adjustments where Cash is the category
