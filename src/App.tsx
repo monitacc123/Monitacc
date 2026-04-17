@@ -12163,7 +12163,7 @@ export default function App() {
               };
               reader.readAsDataURL(file);
             }} />}
-            {view === 'admin-auth' && <AdminLoginView onLogin={() => { setIsAdminAuthenticated(true); setView('admin-dashboard'); }} onBack={() => setView('landing')} />}
+
             {view === 'affiliate-auth' && <AffiliateLoginView onLogin={(aff) => { setCurrentAffiliate(aff); setIsAffiliateAuthenticated(true); setView('affiliate-dashboard'); }} onBack={() => setView('landing')} />}
             {view === 'affiliate-dashboard' && <AffiliateDashboardView affiliate={currentAffiliate} onLogout={() => { setIsAffiliateAuthenticated(false); setCurrentAffiliate(null); setView('landing'); }} />}
             {view === 'sales' && (
