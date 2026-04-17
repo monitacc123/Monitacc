@@ -992,31 +992,78 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         </div>
       </section>
 
-      <section className="px-5 py-14 bg-slate-50">
-        <div className="max-w-5xl mx-auto">
-          <div className="text-center mb-10">
-            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Kenapa Monitacc?</h3>
-            <p className="text-slate-500 text-sm font-medium">Direka khas untuk usahawan Malaysia.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <section className="px-5 py-20 bg-slate-950 relative overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/4 w-80 h-80 bg-emerald-500/6 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-80 h-80 bg-teal-400/5 rounded-full blur-3xl" />
+        </div>
+        <div className="max-w-5xl mx-auto relative">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-14"
+          >
+            <span className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full mb-5">
+              <span className="w-1 h-1 bg-emerald-400 rounded-full" />
+              Kenapa Monitacc?
+            </span>
+            <h3 className="text-3xl md:text-4xl font-black text-white tracking-tight font-display mb-3">Direka untuk usahawan<br className="hidden sm:block" /> Malaysia yang serius.</h3>
+            <p className="text-slate-500 text-sm font-medium max-w-sm mx-auto">Bukan sekadar akaun. Ia sistem kewangan pintar untuk bisnes anda.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             {[
-              { title: 'Imbasan AI', desc: 'Snap resit, AI terus ekstrak data secara automatik. Jimat masa berjam-jam.', icon: Camera },
-              { title: 'Laporan P&L', desc: 'Penyata untung rugi dikemaskini secara langsung. PDF sedia muat turun.', icon: PieChart },
-              { title: 'Akses Mobile', desc: 'Guna di mana-mana. Responsif untuk telefon, tablet, dan komputer.', icon: LayoutDashboard },
+              {
+                title: 'Imbasan AI',
+                desc: 'Snap resit, AI terus ekstrak data secara automatik. Jimat masa berjam-jam.',
+                icon: Camera,
+                num: '01',
+                accent: 'from-emerald-400/20 to-emerald-600/5',
+                iconBg: 'bg-emerald-500/15',
+                iconColor: 'text-emerald-400',
+                border: 'border-emerald-500/15',
+              },
+              {
+                title: 'Laporan P&L',
+                desc: 'Penyata untung rugi dikemaskini secara langsung. PDF sedia muat turun.',
+                icon: PieChart,
+                num: '02',
+                accent: 'from-teal-400/20 to-teal-600/5',
+                iconBg: 'bg-teal-500/15',
+                iconColor: 'text-teal-400',
+                border: 'border-teal-500/15',
+              },
+              {
+                title: 'Akses Mobile',
+                desc: 'Guna di mana-mana. Responsif untuk telefon, tablet, dan komputer.',
+                icon: LayoutDashboard,
+                num: '03',
+                accent: 'from-cyan-400/20 to-cyan-600/5',
+                iconBg: 'bg-cyan-500/15',
+                iconColor: 'text-cyan-400',
+                border: 'border-cyan-500/15',
+              },
             ].map((feature, i) => (
               <motion.div
                 key={i}
-                initial={{ opacity: 0, y: 16 }}
+                initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.07 }}
-                className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm"
+                transition={{ delay: i * 0.1 }}
+                className={`relative bg-white/4 hover:bg-white/6 rounded-3xl p-6 border ${feature.border} backdrop-blur-sm transition-all duration-300 group overflow-hidden`}
               >
-                <div className="w-11 h-11 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center mb-5">
-                  <feature.icon size={22} strokeWidth={2} />
+                <div className={`absolute inset-0 bg-gradient-to-br ${feature.accent} opacity-60 rounded-3xl`} />
+                <div className="relative">
+                  <div className="flex items-start justify-between mb-6">
+                    <div className={`w-12 h-12 ${feature.iconBg} rounded-2xl flex items-center justify-center`}>
+                      <feature.icon size={22} className={feature.iconColor} strokeWidth={2} />
+                    </div>
+                    <span className="text-4xl font-black text-white/5 font-display leading-none select-none">{feature.num}</span>
+                  </div>
+                  <h4 className="text-base font-bold text-white font-display mb-2 tracking-tight">{feature.title}</h4>
+                  <p className="text-slate-400 text-sm leading-relaxed">{feature.desc}</p>
                 </div>
-                <h4 className="text-base font-bold text-slate-900 font-display mb-2">{feature.title}</h4>
-                <p className="text-slate-500 text-sm leading-relaxed">{feature.desc}</p>
               </motion.div>
             ))}
           </div>
