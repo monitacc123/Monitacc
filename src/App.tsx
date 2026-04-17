@@ -36,6 +36,8 @@ import {
   apiGetUsers,
   apiAddUser,
   apiUpdateUserRole,
+  apiUpdateUserPlan,
+  apiUpdateUserStatus,
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 
@@ -535,8 +537,9 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   const adminNavItems = [
     { id: 'admin-dashboard', label: 'Admin Panel', icon: ShieldCheck },
     { id: 'user-management', label: 'Pengguna', icon: Users },
+    { id: 'subscription-management', label: 'Langganan', icon: Receipt },
     { id: 'affiliated-management', label: 'Affiliated', icon: Users },
-    { id: 'token-usage', label: 'Token Usage by User', icon: Zap },
+    { id: 'token-usage', label: 'Token Usage', icon: Zap },
     { id: 'plans', label: 'Pakej Harga', icon: CreditCard },
     { id: 'profile', label: 'Akaun', icon: User },
   ];
@@ -8858,6 +8861,300 @@ const TermsView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const PLAN_CONFIG: { name: string; price: number; color: string; features: string[] }[] = [
+  { name: 'free', price: 0, color: 'slate', features: ['5 Imbasan / bulan', 'Unlimited Manual', '1x Bank Statement'] },
+  { name: 'Starter', price: 50, color: 'emerald', features: ['100 Imbasan / bulan', '3x Bank Statement', '1x Smart Analysis'] },
+  { name: 'Growth', price: 100, color: 'emerald', features: ['250 Imbasan / bulan', '9x Bank Statement', '4x Smart Analysis'] },
+  { name: 'Ultimate', price: 150, color: 'emerald', features: ['Unlimited Imbasan', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L + Balance Sheet'] },
+];
+
+const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filterPlan, setFilterPlan] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
+  const [editPlan, setEditPlan] = useState('');
+  const [editPlanEnd, setEditPlanEnd] = useState('');
+
+  const fetchUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await apiGetUsers();
+      setUsers(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchUsers(); }, []);
+
+  const handleUpdatePlan = async (userId: string) => {
+    try {
+      await apiUpdateUserPlan(userId, editPlan, editPlanEnd || undefined);
+      setEditingUser(null);
+      setEditPlan('');
+      setEditPlanEnd('');
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleToggleStatus = async (userId: string, currentStatus: string) => {
+    const newStatus = currentStatus === 'active' ? 'cancelled' : 'active';
+    try {
+      await apiUpdateUserStatus(userId, newStatus);
+      fetchUsers();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const filtered = users.filter(u => {
+    if (filterPlan !== 'all' && (u.plan || 'free') !== filterPlan) return false;
+    if (filterStatus !== 'all' && (u.status || 'active') !== filterStatus) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.company_name?.toLowerCase().includes(q));
+    }
+    return true;
+  });
+
+  const planCounts = PLAN_CONFIG.map(p => ({
+    ...p,
+    count: users.filter(u => (u.plan || 'free') === p.name).length,
+  }));
+
+  const activeCount = users.filter(u => (u.status || 'active') === 'active' && u.plan !== 'free').length;
+  const totalRevenue = users.reduce((sum, u) => {
+    const cfg = PLAN_CONFIG.find(p => p.name === (u.plan || 'free'));
+    if ((u.status || 'active') === 'active' && cfg) return sum + cfg.price;
+    return sum;
+  }, 0);
+
+  const planBadge = (plan: string) => {
+    const cls = plan === 'Ultimate' ? 'bg-slate-900 text-white' :
+      plan === 'Growth' ? 'bg-emerald-600 text-white' :
+      plan === 'Starter' ? 'bg-emerald-100 text-emerald-700' :
+      'bg-slate-100 text-slate-500';
+    return <span className={`px-2.5 py-1 rounded-lg text-[9px] font-bold uppercase tracking-wider ${cls}`}>{plan || 'free'}</span>;
+  };
+
+  const statusBadge = (status: string) => {
+    const s = status || 'active';
+    const cls = s === 'active' ? 'bg-emerald-100 text-emerald-700' : s === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700';
+    return <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${cls}`}>{s === 'active' ? 'Aktif' : s === 'cancelled' ? 'Batal' : 'Tamat'}</span>;
+  };
+
+  return (
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center gap-4">
+          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"><ArrowLeft size={20} /></button>
+          <div>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Pengurusan Langganan</h2>
+            <p className="text-sm text-slate-500 font-medium">Pantau subscriber mengikut pakej</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+        {planCounts.map(p => (
+          <button
+            key={p.name}
+            onClick={() => setFilterPlan(filterPlan === p.name ? 'all' : p.name)}
+            className={`p-4 rounded-2xl border transition-all text-left ${filterPlan === p.name ? 'border-emerald-500 ring-2 ring-emerald-100 bg-white' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+          >
+            <div className="flex items-center justify-between mb-2">
+              {planBadge(p.name)}
+              <span className="text-[10px] font-bold text-slate-400">RM{p.price}/bln</span>
+            </div>
+            <p className="text-2xl font-bold text-slate-900">{p.count}</p>
+            <p className="text-[10px] font-medium text-slate-400 mt-0.5">pengguna</p>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+        <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
+          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Subscriber Aktif (Berbayar)</p>
+          <p className="text-2xl font-bold text-emerald-900">{activeCount}</p>
+        </div>
+        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Anggaran Hasil Bulanan</p>
+          <p className="text-2xl font-bold text-slate-900">RM {totalRevenue.toLocaleString()}</p>
+        </div>
+        <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Jumlah Pengguna</p>
+          <p className="text-2xl font-bold text-slate-900">{users.length}</p>
+        </div>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3 mb-6">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Cari nama, email, syarikat..."
+            className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-300 transition-all"
+          />
+        </div>
+        <div className="flex gap-2">
+          {['all', 'active', 'cancelled'].map(s => (
+            <button
+              key={s}
+              onClick={() => setFilterStatus(s)}
+              className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${filterStatus === s ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
+            >
+              {s === 'all' ? 'Semua' : s === 'active' ? 'Aktif' : 'Batal'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={24} className="animate-spin text-emerald-500" />
+        </div>
+      ) : (
+        <div className="card-premium overflow-hidden bg-white">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="bg-slate-50 border-b border-slate-100">
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pengguna</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pakej</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tempoh</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Affiliate</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Tindakan</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.length === 0 ? (
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400 font-medium">Tiada pengguna dijumpai</td></tr>
+                ) : filtered.map(u => (
+                  <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
+                    <td className="px-5 py-4">
+                      <div className="text-sm font-bold text-slate-900">{u.name || '-'}</div>
+                      <div className="text-[10px] text-slate-400 font-medium">{u.email}</div>
+                      {u.company_name && <div className="text-[10px] text-emerald-600 font-bold mt-0.5 uppercase tracking-tighter">{u.company_name}</div>}
+                    </td>
+                    <td className="px-5 py-4">{planBadge(u.plan || 'free')}</td>
+                    <td className="px-5 py-4">{statusBadge(u.status || 'active')}</td>
+                    <td className="px-5 py-4">
+                      <div className="text-[10px] text-slate-500 font-medium">
+                        {u.plan_start ? <span>Mula: {format(parseISO(u.plan_start), 'dd MMM yyyy')}</span> : <span className="text-slate-300">-</span>}
+                      </div>
+                      {u.plan_end && (
+                        <div className="text-[10px] text-slate-400 font-medium">
+                          Tamat: {format(parseISO(u.plan_end), 'dd MMM yyyy')}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${u.referred_by ? 'bg-blue-500' : 'bg-slate-200'}`} />
+                        <span className="text-xs font-medium text-slate-600">{u.referred_by || 'Direct'}</span>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4">
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          onClick={() => { setEditingUser(u); setEditPlan(u.plan || 'free'); setEditPlanEnd(u.plan_end || ''); }}
+                          className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-all"
+                        >
+                          Tukar Pakej
+                        </button>
+                        <button
+                          onClick={() => handleToggleStatus(u.id, u.status || 'active')}
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${(u.status || 'active') === 'active' ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
+                        >
+                          {(u.status || 'active') === 'active' ? 'Batal' : 'Aktifkan'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400">{filtered.length} daripada {users.length} pengguna</span>
+            {filterPlan !== 'all' && (
+              <button onClick={() => setFilterPlan('all')} className="text-[10px] font-bold text-emerald-600 hover:underline">Reset Penapis</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      <AnimatePresence>
+        {editingUser && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setEditingUser(null)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+              <div className="p-6 bg-slate-900 text-white">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold tracking-tight font-display">Tukar Pakej Langganan</h3>
+                    <p className="text-sm text-slate-400 font-medium mt-0.5">{editingUser.name} - {editingUser.email}</p>
+                  </div>
+                  <button onClick={() => setEditingUser(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"><X size={18} /></button>
+                </div>
+              </div>
+              <div className="p-6 space-y-5">
+                <div>
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pakej Semasa</p>
+                  {planBadge(editingUser.plan || 'free')}
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pakej Baru</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PLAN_CONFIG.map(p => (
+                      <button
+                        key={p.name}
+                        onClick={() => setEditPlan(p.name)}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${editPlan === p.name ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:border-slate-200'}`}
+                      >
+                        <div className="text-xs font-bold text-slate-900">{p.name === 'free' ? 'Percuma' : p.name}</div>
+                        <div className="text-[10px] text-slate-500 font-medium">RM{p.price}/bln</div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {editPlan !== 'free' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tarikh Tamat (Pilihan)</label>
+                    <input
+                      type="date"
+                      value={editPlanEnd}
+                      onChange={e => setEditPlanEnd(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
+                    />
+                  </div>
+                )}
+                <button
+                  onClick={() => handleUpdatePlan(editingUser.id)}
+                  className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-[0.98]"
+                >
+                  Kemaskini Pakej
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 const PlansView = () => (
   <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
     <header className="mb-12 text-center">
@@ -10655,6 +10952,7 @@ export default function App() {
               />
             )}
             {view === 'plans' && <PlansView />}
+            {view === 'subscription-management' && <SubscriptionManagementView onBack={() => setView('admin-dashboard')} />}
             {view === 'admin-dashboard' && <AdminDashboardView />}
             {view === 'token-usage' && <TokenUsageView />}
             {view === 'affiliated-management' && <AffiliatedManagementView />}

@@ -39,9 +39,12 @@ export interface User {
   financial_year_end?: string;
   role: string;
   plan: string;
-  status?: 'active' | 'cancelled';
+  status?: 'active' | 'cancelled' | 'expired';
   referred_by?: string;
   special_id?: string;
+  plan_start?: string;
+  plan_end?: string;
+  created_at?: string;
 }
 
 export interface Sale {
@@ -60,5 +63,5 @@ export interface Sale {
   payment_method?: 'cash' | 'bank';
 }
 
-export type AppView = 'landing' | 'auth' | 'welcome' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard';
+export type AppView = 'landing' | 'auth' | 'welcome' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard' | 'subscription-management';
 

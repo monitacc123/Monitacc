@@ -398,10 +398,33 @@ export async function apiUpdateBusinessSettings(userId: string, settings: {
 export async function apiGetUsers(): Promise<UserType[]> {
   const { data, error } = await supabase
     .from('users')
-    .select('id, name, email, phone, role, company_name');
+    .select('id, name, email, phone, role, company_name, plan, status, plan_start, plan_end, referred_by, special_id, created_at')
+    .order('created_at', { ascending: false });
 
   if (error) throw new Error(error.message);
   return (data || []) as unknown as UserType[];
+}
+
+export async function apiUpdateUserPlan(userId: string, plan: string, planEnd?: string): Promise<void> {
+  const updates: any = { plan, plan_start: new Date().toISOString() };
+  if (planEnd) updates.plan_end = planEnd;
+  if (plan === 'free') {
+    updates.plan_end = null;
+    updates.status = 'active';
+  }
+  const { error } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', userId);
+  if (error) throw new Error(error.message);
+}
+
+export async function apiUpdateUserStatus(userId: string, status: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ status })
+    .eq('id', userId);
+  if (error) throw new Error(error.message);
 }
 
 export async function apiAddUser(userData: { name: string; email: string; password: string; role: string; company_name: string }): Promise<UserType> {
