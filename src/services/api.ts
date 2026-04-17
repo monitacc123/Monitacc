@@ -551,3 +551,48 @@ export async function apiLogAiUsage(userId: string, tokensUsed: number, operatio
     .insert([{ user_id: userId, tokens_used: tokensUsed, operation }]);
   if (error) console.error('Failed to log AI usage:', error.message);
 }
+
+export const PLAN_SCAN_LIMITS: Record<string, number> = {
+  free: 5,
+  Percuma: 5,
+  Starter: 100,
+  Growth: 250,
+  Ultimate: Infinity,
+};
+
+export const PLAN_PDF_LIMITS: Record<string, number> = {
+  free: 1,
+  Percuma: 1,
+  Starter: 3,
+  Growth: 9,
+  Ultimate: Infinity,
+};
+
+function getCurrentYearMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export async function apiGetScanUsageThisMonth(userId: string): Promise<{ receipt: number; pdf: number }> {
+  const yearMonth = getCurrentYearMonth();
+  const { data, error } = await supabase
+    .from('scan_usage')
+    .select('scan_type')
+    .eq('user_id', userId)
+    .eq('year_month', yearMonth);
+  if (error) {
+    console.error('Failed to get scan usage:', error.message);
+    return { receipt: 0, pdf: 0 };
+  }
+  const receipt = (data || []).filter(r => r.scan_type === 'receipt').length;
+  const pdf = (data || []).filter(r => r.scan_type === 'pdf').length;
+  return { receipt, pdf };
+}
+
+export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf'): Promise<void> {
+  const yearMonth = getCurrentYearMonth();
+  const { error } = await supabase
+    .from('scan_usage')
+    .insert([{ user_id: userId, scan_type: scanType, year_month: yearMonth }]);
+  if (error) console.error('Failed to log scan usage:', error.message);
+}

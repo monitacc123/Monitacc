@@ -40,6 +40,10 @@ import {
   apiUpdateUserStatus,
   apiGetAdminDashboardStats,
   apiGetTokenUsageByUser,
+  apiGetScanUsageThisMonth,
+  apiLogScanUsage,
+  PLAN_SCAN_LIMITS,
+  PLAN_PDF_LIMITS,
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 import { createCheckoutSession, openCustomerPortal, type PaidPlan } from './services/stripeService';
@@ -2307,21 +2311,46 @@ const CameraView = ({ onCapture, onCancel }: { onCapture: (base64: string) => vo
   );
 };
 
-const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCategory, records, sales }: { onSave: (data: any) => void, initialImage?: string | null, onCancel: () => void, allCategories: string[], onAddNewCategory: (name: string, type: string) => void, records: TransactionRecord[], sales: Sale[] }) => {
+const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCategory, records, sales, user, onUpgrade }: { onSave: (data: any) => void, initialImage?: string | null, onCancel: () => void, allCategories: string[], onAddNewCategory: (name: string, type: string) => void, records: TransactionRecord[], sales: Sale[], user: UserType | null, onUpgrade: () => void }) => {
   const [image, setImage] = useState<string | null>(initialImage || null);
   const [mimeType, setMimeType] = useState<string>("image/jpeg");
   const [analyzing, setAnalyzing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [results, setResults] = useState<any[]>([]);
   const [showCamera, setShowCamera] = useState(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
+
+  const planKey = user?.plan || 'free';
+  const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
+  const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
+
+  const checkLimitAndAnalyze = async (base64: string, type: string) => {
+    const isPdf = type === 'application/pdf';
+    const scanType = isPdf ? 'pdf' : 'receipt';
+    if (user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
+      const usage = await apiGetScanUsageThisMonth(user.id);
+      const used = isPdf ? usage.pdf : usage.receipt;
+      const limit = isPdf ? pdfLimit : receiptLimit;
+      if (used >= limit) {
+        setShowUpgradeModal({ type: scanType, used, limit });
+        return;
+      }
+      await apiLogScanUsage(user.id, scanType);
+    }
+    analyze(base64, type);
+  };
 
   useEffect(() => {
     if (initialImage) {
       if (initialImage.startsWith('data:')) {
         const match = initialImage.match(/^data:([^;]+);/);
-        if (match) setMimeType(match[1]);
+        if (match) {
+          setMimeType(match[1]);
+          checkLimitAndAnalyze(initialImage, match[1]);
+          return;
+        }
       }
-      analyze(initialImage);
+      checkLimitAndAnalyze(initialImage, 'image/jpeg');
     }
   }, [initialImage]);
 
@@ -2333,7 +2362,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
         const base64 = reader.result as string;
         setImage(base64);
         setMimeType(file.type);
-        analyze(base64, file.type);
+        checkLimitAndAnalyze(base64, file.type);
       };
       reader.readAsDataURL(file);
     }
@@ -2351,8 +2380,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       // Deduplicate within the extracted data - only if EXACTLY the same
       const uniqueData = data.filter((item, index, self) =>
         index === self.findIndex((t) => (
-          t.date === item.date && 
-          Math.abs(t.amount - item.amount) < 0.01 && 
+          t.date === item.date &&
+          Math.abs(t.amount - item.amount) < 0.01 &&
           t.description.toLowerCase().trim() === item.description.toLowerCase().trim() &&
           t.type === item.type
         ))
@@ -2439,13 +2468,13 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
           </div>
 
           {showCamera && (
-            <CameraView 
+            <CameraView
               onCapture={(base64) => {
                 setImage(base64);
-                analyze(base64);
                 setShowCamera(false);
-              }} 
-              onCancel={() => setShowCamera(false)} 
+                checkLimitAndAnalyze(base64, 'image/jpeg');
+              }}
+              onCancel={() => setShowCamera(false)}
             />
           )}
         </div>
@@ -2721,6 +2750,59 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {showUpgradeModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden">
+            <div className="bg-gradient-to-br from-slate-900 to-slate-700 p-8 text-white text-center relative overflow-hidden">
+              <div className="absolute inset-0 opacity-10">
+                <Zap size={200} className="absolute -top-10 -right-10 rotate-12" />
+              </div>
+              <div className="relative z-10">
+                <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                  <Zap size={28} className="text-amber-400" />
+                </div>
+                <h3 className="text-xl font-black tracking-tight font-display mb-2">Had {showUpgradeModal.type === 'pdf' ? 'PDF' : 'Imbasan'} Dicapai</h3>
+                <p className="text-white/60 text-sm font-medium">
+                  Anda telah menggunakan {showUpgradeModal.used}/{showUpgradeModal.limit} {showUpgradeModal.type === 'pdf' ? 'imbasan PDF' : 'imbasan resit'} bulan ini.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 rounded-2xl p-4">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Naik Taraf Untuk Lebih Banyak</p>
+                <div className="space-y-2">
+                  {[
+                    { plan: 'Starter', receipt: '100 imbasan', pdf: '3× PDF', price: 'RM 50/bln' },
+                    { plan: 'Growth', receipt: '250 imbasan', pdf: '9× PDF', price: 'RM 100/bln' },
+                    { plan: 'Ultimate', receipt: 'Unlimited', pdf: 'Unlimited PDF', price: 'RM 150/bln' },
+                  ].map(p => (
+                    <div key={p.plan} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                      <div>
+                        <span className="text-sm font-bold text-slate-800">{p.plan}</span>
+                        <span className="text-xs text-slate-400 ml-2">{showUpgradeModal.type === 'pdf' ? p.pdf : p.receipt}</span>
+                      </div>
+                      <span className="text-xs font-bold text-emerald-600">{p.price}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <button
+                onClick={() => { setShowUpgradeModal(null); onUpgrade(); }}
+                className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm rounded-2xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2"
+              >
+                <TrendingUp size={16} /> Naik Taraf Sekarang
+              </button>
+              <button
+                onClick={() => { setShowUpgradeModal(null); onCancel(); }}
+                className="w-full py-3 text-slate-400 text-sm font-bold hover:text-slate-600 transition-colors"
+              >
+                Kembali ke Dashboard
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -11704,14 +11786,16 @@ export default function App() {
               />
             )}
             {view === 'scan' && (
-              <ScanView 
-                onSave={handleSaveRecord} 
-                initialImage={pendingImage} 
-                onCancel={() => { setView('dashboard'); setPendingImage(null); }} 
-                allCategories={allAvailableCategories} 
+              <ScanView
+                onSave={handleSaveRecord}
+                initialImage={pendingImage}
+                onCancel={() => { setView('dashboard'); setPendingImage(null); }}
+                allCategories={allAvailableCategories}
                 onAddNewCategory={(name, type) => ensureCategoryExists(name, type === 'income' ? 'SALES' : 'EXPENSE')}
                 records={records}
                 sales={sales}
+                user={user}
+                onUpgrade={() => setView('plans')}
               />
             )}
             {view === 'records' && (
