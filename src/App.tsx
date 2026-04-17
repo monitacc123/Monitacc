@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -532,14 +532,14 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   }, []);
 
   const userNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'sales', label: 'Jualan', icon: ShoppingCart },
-    { id: 'records', label: 'Transaksi', icon: FileText },
-    { id: 'reports', label: 'Laporan', icon: PieChart },
-    { id: 'ledger', label: 'Lejar', icon: BookOpen },
-    { id: 'reconcile', label: 'Padanan Bank', icon: RefreshCw },
-    { id: 'ai-analysis', label: 'Smart Analisis', icon: Sparkles },
-    { id: 'profile', label: 'Akaun', icon: User },
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, premium: null },
+    { id: 'sales', label: 'Jualan', icon: ShoppingCart, premium: null },
+    { id: 'records', label: 'Transaksi', icon: FileText, premium: null },
+    { id: 'reports', label: 'Laporan', icon: PieChart, premium: null },
+    { id: 'ledger', label: 'Lejar', icon: BookOpen, premium: null },
+    { id: 'reconcile', label: 'Padanan Bank', icon: RefreshCw, premium: 'Ultimate' },
+    { id: 'ai-analysis', label: 'Smart Analisis', icon: Sparkles, premium: 'Starter' },
+    { id: 'profile', label: 'Akaun', icon: User, premium: null },
   ];
 
   const adminNavItems = [
@@ -551,6 +551,15 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
     { id: 'plans', label: 'Pakej Harga', icon: CreditCard },
     { id: 'profile', label: 'Akaun', icon: User },
   ];
+
+  const PLAN_ORDER: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+  const userPlanLevel = PLAN_ORDER[user?.plan || 'free'] ?? 0;
+
+  const isPremiumLocked = (requiredPlan: string | null | undefined): boolean => {
+    if (!requiredPlan) return false;
+    const required = PLAN_ORDER[requiredPlan] ?? 99;
+    return userPlanLevel < required;
+  };
 
   const navItems = (isAdmin ? adminNavItems : userNavItems).filter(item => {
     if (!user) return true;
@@ -587,29 +596,52 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         {navItems.map((item, i) => {
           const isActive = activeView === item.id;
           const showDivider = !isAdmin && (i === 3 || i === 5);
+          const locked = !isAdmin && isPremiumLocked((item as any).premium);
+          const premiumLabel = (item as any).premium;
           return (
             <div key={item.id} className="md:w-full">
               {showDivider && <div className="hidden md:block mx-3 my-2 border-t border-slate-100" />}
               <button
-                onClick={() => setView(item.id as AppView)}
-                className={`relative w-full flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-3 md:py-2 md:w-full md:rounded-xl md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-md md:shadow-emerald-600/20' : 'md:text-slate-500 md:hover:bg-slate-50 md:hover:text-slate-800'}`}
+                onClick={() => {
+                  if (locked) {
+                    setView('plans');
+                  } else {
+                    setView(item.id as AppView);
+                  }
+                }}
+                className={`relative w-full flex items-center justify-center transition-all duration-200 md:flex-row md:gap-3 md:px-3 md:py-2 md:w-full md:rounded-xl md:text-left ${isActive ? 'md:bg-emerald-600 md:text-white md:shadow-md md:shadow-emerald-600/20' : locked ? 'md:text-slate-300 md:hover:bg-slate-50 md:hover:text-slate-400' : 'md:text-slate-500 md:hover:bg-slate-50 md:hover:text-slate-800'}`}
                 style={{ WebkitTapHighlightColor: 'transparent' }}
               >
-                <div className={`md:hidden flex items-center justify-center transition-all duration-200 rounded-xl
+                <div className={`md:hidden flex items-center justify-center transition-all duration-200 rounded-xl relative
                   ${isActive
                     ? 'bg-emerald-600 text-white px-3 py-2 gap-1.5'
-                    : 'text-slate-400 hover:text-slate-600 px-2.5 py-2'
+                    : locked ? 'text-slate-300 px-2.5 py-2' : 'text-slate-400 hover:text-slate-600 px-2.5 py-2'
                   }`}>
                   <item.icon size={17} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
                   {isActive && (
                     <span className="text-[11px] font-bold whitespace-nowrap leading-none">{item.label}</span>
                   )}
+                  {locked && !isActive && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 rounded-full flex items-center justify-center">
+                      <Lock size={7} className="text-white" strokeWidth={3} />
+                    </span>
+                  )}
                 </div>
-                <div className={`hidden md:flex items-center justify-center w-7 h-7 rounded-lg shrink-0 ${isActive ? 'bg-white/15' : 'bg-slate-100'}`}>
+                <div className={`hidden md:flex items-center justify-center w-7 h-7 rounded-lg shrink-0 relative ${isActive ? 'bg-white/15' : locked ? 'bg-slate-50' : 'bg-slate-100'}`}>
                   <item.icon size={15} strokeWidth={isActive ? 2.5 : 2} className="shrink-0" />
+                  {locked && (
+                    <span className="absolute -top-1 -right-1 w-3.5 h-3.5 bg-amber-400 rounded-full flex items-center justify-center shadow-sm">
+                      <Lock size={7} className="text-white" strokeWidth={3} />
+                    </span>
+                  )}
                 </div>
-                <span className="hidden md:block text-[13px] font-semibold flex-1">{item.label}</span>
+                <span className={`hidden md:block text-[13px] font-semibold flex-1 ${locked ? 'text-slate-300' : ''}`}>{item.label}</span>
                 {isActive && <div className="hidden md:block w-1.5 h-1.5 rounded-full bg-white/60 shrink-0" />}
+                {locked && !isActive && premiumLabel && (
+                  <span className="hidden md:inline-flex items-center px-1.5 py-0.5 bg-amber-50 text-amber-600 text-[9px] font-bold rounded-md border border-amber-100 shrink-0">
+                    {premiumLabel}
+                  </span>
+                )}
               </button>
             </div>
           );
@@ -8974,6 +9006,106 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const PREMIUM_GATE_INFO: Record<string, { title: string; desc: string; icon: React.ElementType; requiredPlan: string; features: string[] }> = {
+  'ai-analysis': {
+    title: 'Smart Analisis',
+    desc: 'Analisis kewangan pintar menggunakan AI untuk memberi pandangan mendalam tentang perniagaan anda.',
+    icon: Sparkles,
+    requiredPlan: 'Starter',
+    features: ['Analisis trend bulanan', 'Cadangan penghematan kos', 'Laporan AI automatik', 'Insight perniagaan'],
+  },
+  reconcile: {
+    title: 'Padanan Bank',
+    desc: 'Padankan transaksi bank dengan rekod akaun anda secara automatik dan tepat.',
+    icon: RefreshCw,
+    requiredPlan: 'Ultimate',
+    features: ['Auto-padanan transaksi', 'Import penyata bank PDF', 'Kesan perbezaan', 'Laporan reconciliation'],
+  },
+};
+
+const PremiumGateView = ({ featureId, onUpgrade, onBack }: { featureId: string; onUpgrade: () => void; onBack: () => void }) => {
+  const info = PREMIUM_GATE_INFO[featureId];
+  if (!info) return null;
+  const Icon = info.icon;
+
+  const upgradePlans: Record<string, { plans: string[]; prices: string[] }> = {
+    Starter: { plans: ['Starter', 'Growth', 'Ultimate'], prices: ['RM 50/bln', 'RM 100/bln', 'RM 150/bln'] },
+    Ultimate: { plans: ['Ultimate'], prices: ['RM 150/bln'] },
+  };
+  const planOptions = upgradePlans[info.requiredPlan] || { plans: [], prices: [] };
+
+  return (
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-2xl mx-auto flex items-center justify-center min-h-[80vh]">
+      <div className="w-full">
+        <div className="card-premium overflow-hidden shadow-2xl">
+          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-10 text-white text-center relative overflow-hidden">
+            <div className="absolute inset-0 opacity-5">
+              <Crown size={300} className="absolute -top-20 -right-20" />
+            </div>
+            <div className="relative z-10">
+              <div className="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl border border-white/10">
+                <Icon size={36} className="text-white" strokeWidth={1.5} />
+                <span className="absolute -top-2 -right-2 w-7 h-7 bg-amber-400 rounded-full flex items-center justify-center shadow-lg">
+                  <Lock size={12} className="text-white" strokeWidth={2.5} />
+                </span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400/20 border border-amber-400/30 rounded-full text-amber-300 text-[10px] font-bold uppercase tracking-widest mb-4">
+                <Crown size={10} />
+                Pakej {info.requiredPlan} & ke atas
+              </div>
+              <h2 className="text-2xl font-black tracking-tight font-display mb-3">{info.title}</h2>
+              <p className="text-white/60 text-sm font-medium max-w-sm mx-auto leading-relaxed">{info.desc}</p>
+            </div>
+          </div>
+
+          <div className="p-8 bg-white">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 text-center">Ciri-ciri yang akan anda dapat</p>
+            <div className="grid grid-cols-2 gap-3 mb-8">
+              {info.features.map((f, i) => (
+                <div key={i} className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl">
+                  <div className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
+                    <CheckCircle2 size={12} />
+                  </div>
+                  <span className="text-xs font-semibold text-slate-700">{f}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-4 mb-6">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Pilih pakej anda</p>
+              <div className="space-y-2">
+                {planOptions.plans.map((plan, i) => (
+                  <div key={plan} className={`flex items-center justify-between p-3 rounded-xl border-2 ${plan === 'Ultimate' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
+                    <div className="flex items-center gap-2">
+                      {plan === 'Ultimate' && <Crown size={14} className="text-amber-500" />}
+                      <span className="text-sm font-bold text-slate-800">{plan}</span>
+                      {plan === 'Ultimate' && <span className="text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full">Popular</span>}
+                    </div>
+                    <span className="text-sm font-black text-emerald-600">{planOptions.prices[i]}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <button
+              onClick={onUpgrade}
+              className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm rounded-2xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 mb-3"
+            >
+              <Crown size={16} /> Naik Taraf Sekarang
+            </button>
+            <button
+              onClick={onBack}
+              className="w-full py-3 text-slate-400 text-sm font-bold hover:text-slate-600 transition-colors"
+            >
+              Kembali ke Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; period: string | null; color: string; badgeBg: string; badgeText: string; features: { text: string; included: boolean }[] }> = {
   Percuma: {
     label: 'Percuma',
@@ -11844,31 +11976,49 @@ export default function App() {
               />
             )}
             {view === 'reconcile' && (
-              <ReconcileView 
-                records={records} 
-                sales={sales} 
-                onUpdateRecord={handleUpdateRecord}
-                onUpdateSale={handleUpdateSale}
-                onAddMissingRecord={(bt) => {
-                  const type = bt.type === 'credit' || bt.type === 'income' ? 'income' : 'expense';
-                  setShowManualEntry({
-                    show: true,
-                    type,
-                    initialData: {
-                      amount: bt.amount,
-                      description: bt.description,
-                      date: bt.date,
-                      category: bt.category || '',
-                      docType: bt.docType || (type === 'income' ? 'Duit Masuk Bank' : 'Duit Keluar Bank')
-                    }
-                  });
-                }}
-                onBulkAdd={handleSaveRecord}
-                onRefresh={fetchData}
-                user={user}
-              />
+              (() => {
+                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+                const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
+                if (userLevel < planOrderMain['Ultimate']) {
+                  return <PremiumGateView featureId="reconcile" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
+                }
+                return (
+                  <ReconcileView
+                    records={records}
+                    sales={sales}
+                    onUpdateRecord={handleUpdateRecord}
+                    onUpdateSale={handleUpdateSale}
+                    onAddMissingRecord={(bt) => {
+                      const type = bt.type === 'credit' || bt.type === 'income' ? 'income' : 'expense';
+                      setShowManualEntry({
+                        show: true,
+                        type,
+                        initialData: {
+                          amount: bt.amount,
+                          description: bt.description,
+                          date: bt.date,
+                          category: bt.category || '',
+                          docType: bt.docType || (type === 'income' ? 'Duit Masuk Bank' : 'Duit Keluar Bank')
+                        }
+                      });
+                    }}
+                    onBulkAdd={handleSaveRecord}
+                    onRefresh={fetchData}
+                    user={user}
+                  />
+                );
+              })()
             )}
-            {view === 'ai-analysis' && <AIAnalysisView records={records} sales={sales} user={user} />}
+            {view === 'ai-analysis' && (
+              (() => {
+                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+                const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
+                if (userLevel < planOrderMain['Starter']) {
+                  return <PremiumGateView featureId="ai-analysis" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
+                }
+                return <AIAnalysisView records={records} sales={sales} user={user} />;
+              })()
+            )}
             {view === 'profile' && <ProfileView user={user} setView={setView} onLogout={handleLogout} onEdit={() => setShowProfileEdit(true)} onBusinessSettings={() => setShowBusinessSettings(true)} onUserManagement={() => setView('user-management')} />}
             {view === 'user-management' && <UserManagementView onBack={() => setView('profile')} />}
             {view === 'categories' && (
