@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -9515,34 +9515,53 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <div className="space-y-6">
         {/* Profile Header Card */}
-        <div className="card-premium p-8 text-center relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-emerald-500 to-emerald-700 opacity-10" />
+        <div className="card-premium overflow-hidden relative">
+          <div className="h-20 bg-gradient-to-r from-emerald-500 to-teal-600 relative">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_50%,rgba(255,255,255,0.15),transparent_60%)]" />
+          </div>
 
-          <div className="relative z-10">
-            <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center text-slate-900 mx-auto mb-6 shadow-xl border border-slate-100 relative group transition-transform hover:scale-105 duration-300">
-              <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20 group-hover:border-emerald-500/50 transition-colors" />
-              <User size={48} strokeWidth={1.5} className="text-slate-700 group-hover:text-emerald-600 transition-colors" />
-              <div className="absolute -bottom-1 -right-1 w-8 h-8 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-lg border-2 border-white group-hover:scale-110 transition-transform">
-                <CheckCircle2 size={14} />
+          <div className="px-6 pb-6 relative">
+            <div className="flex items-end justify-between -mt-10 mb-4">
+              <div className="relative">
+                <div className="w-20 h-20 bg-white rounded-2xl flex items-center justify-center shadow-lg border-4 border-white">
+                  <User size={36} strokeWidth={1.5} className="text-slate-600" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow border-2 border-white">
+                  <CheckCircle2 size={11} />
+                </div>
               </div>
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight mb-1 font-display">{companyName}</h2>
-            <p className="text-slate-600 text-sm font-bold mb-1">{name}</p>
-            <p className="text-slate-500 text-xs font-medium mb-1">{email}</p>
-            {user?.phone && <p className="text-slate-400 text-xs font-medium mb-4">{user.phone}</p>}
-
-            <div className="flex flex-col items-center gap-4 mt-4">
-              <div className={`inline-flex items-center gap-2 px-4 py-1.5 ${planDetails.badgeBg} ${planDetails.badgeText} text-[10px] font-bold rounded-full uppercase tracking-wider shadow-sm border border-current/10`}>
-                <CheckCircle2 size={12} />
-                PAKEJ {planDetails.label.toUpperCase()}
-              </div>
-
               <button
                 onClick={onEdit}
-                className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                className="mb-1 inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-600 hover:text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg transition-colors"
               >
-                Kemaskini Profil
+                <Edit2 size={11} />
+                Edit Profil
               </button>
+            </div>
+
+            <h2 className="text-lg font-black text-slate-900 tracking-tight font-display leading-tight">{companyName}</h2>
+            <p className="text-slate-500 text-sm font-medium mt-0.5">{name}</p>
+
+            <div className="mt-4 space-y-2">
+              <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">
+                  <Mail size={12} className="text-slate-400" />
+                </div>
+                <span className="font-medium truncate">{email}</span>
+              </div>
+              {user?.phone && (
+                <div className="flex items-center gap-2.5 text-xs text-slate-500">
+                  <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center shrink-0">
+                    <Phone size={12} className="text-slate-400" />
+                  </div>
+                  <span className="font-medium">{user.phone}</span>
+                </div>
+              )}
+            </div>
+
+            <div className={`mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 ${planDetails.badgeBg} ${planDetails.badgeText} text-[10px] font-black rounded-full uppercase tracking-widest`}>
+              <CheckCircle2 size={10} />
+              Pakej {planDetails.label}
             </div>
           </div>
         </div>
