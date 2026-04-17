@@ -8892,18 +8892,118 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
+const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; period: string | null; color: string; badgeBg: string; badgeText: string; features: { text: string; included: boolean }[] }> = {
+  Percuma: {
+    label: 'Percuma',
+    price: 'RM 0',
+    period: null,
+    color: 'from-slate-600 to-slate-800',
+    badgeBg: 'bg-slate-100',
+    badgeText: 'text-slate-700',
+    features: [
+      { text: '5 Imbasan Transaksi / bulan', included: true },
+      { text: 'Unlimited Rekod Manual', included: true },
+      { text: '1× Imbasan Bank Statement', included: true },
+      { text: 'Monitacc Assistant', included: true },
+      { text: 'Smart Analysis', included: false },
+      { text: 'P&L Report + Balance Sheet', included: false },
+      { text: 'Reconciliation Features', included: false },
+    ],
+  },
+  free: {
+    label: 'Percuma',
+    price: 'RM 0',
+    period: null,
+    color: 'from-slate-600 to-slate-800',
+    badgeBg: 'bg-slate-100',
+    badgeText: 'text-slate-700',
+    features: [
+      { text: '5 Imbasan Transaksi / bulan', included: true },
+      { text: 'Unlimited Rekod Manual', included: true },
+      { text: '1× Imbasan Bank Statement', included: true },
+      { text: 'Monitacc Assistant', included: true },
+      { text: 'Smart Analysis', included: false },
+      { text: 'P&L Report + Balance Sheet', included: false },
+      { text: 'Reconciliation Features', included: false },
+    ],
+  },
+  Starter: {
+    label: 'Starter',
+    price: 'RM 50',
+    period: '/bulan',
+    color: 'from-emerald-600 to-emerald-800',
+    badgeBg: 'bg-emerald-50',
+    badgeText: 'text-emerald-700',
+    features: [
+      { text: '100 Imbasan Transaksi / bulan', included: true },
+      { text: 'Unlimited Rekod Manual', included: true },
+      { text: '3× Imbasan Bank Statement', included: true },
+      { text: 'Monitacc Assistant', included: true },
+      { text: '1× Smart Analysis / bulan', included: true },
+      { text: 'P&L Report + Balance Sheet', included: false },
+      { text: 'Reconciliation Features', included: false },
+    ],
+  },
+  Growth: {
+    label: 'Growth',
+    price: 'RM 100',
+    period: '/bulan',
+    color: 'from-teal-600 to-teal-800',
+    badgeBg: 'bg-teal-50',
+    badgeText: 'text-teal-700',
+    features: [
+      { text: '250 Imbasan Transaksi / bulan', included: true },
+      { text: 'Unlimited Rekod Manual', included: true },
+      { text: '9× Imbasan Bank Statement', included: true },
+      { text: 'Monitacc Assistant', included: true },
+      { text: '4× Smart Analysis / bulan', included: true },
+      { text: 'P&L Report + Balance Sheet', included: false },
+      { text: 'Reconciliation Features', included: false },
+    ],
+  },
+  Ultimate: {
+    label: 'Ultimate',
+    price: 'RM 150',
+    period: '/bulan',
+    color: 'from-slate-900 to-slate-700',
+    badgeBg: 'bg-amber-50',
+    badgeText: 'text-amber-700',
+    features: [
+      { text: 'Unlimited Imbasan Transaksi', included: true },
+      { text: 'Unlimited Rekod Manual', included: true },
+      { text: 'Unlimited Bank Statement', included: true },
+      { text: 'Monitacc Assistant', included: true },
+      { text: 'Unlimited Smart Analysis', included: true },
+      { text: 'P&L Report + Balance Sheet', included: true },
+      { text: 'Reconciliation Features', included: true },
+    ],
+  },
+};
+
 const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUserManagement }: { user: UserType | null, setView: (v: AppView) => void, onLogout: () => void, onEdit: () => void, onBusinessSettings: () => void, onUserManagement: () => void }) => {
   const name = user?.name || 'Ahmad bin Ali';
   const companyName = user?.company_name || 'Ahmad Business';
   const email = user?.email || 'monitacc2026@gmail.com';
-  
+
+  const currentPlanKey = user?.plan || 'free';
+  const planDetails = PROFILE_PLAN_DETAILS[currentPlanKey] || PROFILE_PLAN_DETAILS['free'];
+  const isFreePlan = currentPlanKey === 'free' || currentPlanKey === 'Percuma';
+
+  const planEnd = user?.plan_end ? new Date(user.plan_end) : null;
+  const planEndFormatted = planEnd
+    ? planEnd.toLocaleDateString('ms-MY', { day: 'numeric', month: 'long', year: 'numeric' })
+    : null;
+  const daysLeft = planEnd
+    ? Math.max(0, Math.ceil((planEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <div className="space-y-6">
         {/* Profile Header Card */}
         <div className="card-premium p-8 text-center relative overflow-hidden">
           <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-r from-emerald-500 to-emerald-700 opacity-10" />
-          
+
           <div className="relative z-10">
             <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center text-slate-900 mx-auto mb-6 shadow-xl border border-slate-100 relative group transition-transform hover:scale-105 duration-300">
               <div className="absolute inset-0 rounded-full border-2 border-emerald-500/20 group-hover:border-emerald-500/50 transition-colors" />
@@ -8916,14 +9016,14 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
             <p className="text-slate-600 text-sm font-bold mb-1">{name}</p>
             <p className="text-slate-500 text-xs font-medium mb-1">{email}</p>
             {user?.phone && <p className="text-slate-400 text-xs font-medium mb-4">{user.phone}</p>}
-            
+
             <div className="flex flex-col items-center gap-4 mt-4">
-              <div className="inline-flex items-center gap-2 px-4 py-1.5 bg-slate-900 text-white text-[10px] font-bold rounded-full uppercase tracking-wider shadow-lg">
-                <CheckCircle2 size={12} className="text-emerald-400" />
-                MONITACC PRO USER
+              <div className={`inline-flex items-center gap-2 px-4 py-1.5 ${planDetails.badgeBg} ${planDetails.badgeText} text-[10px] font-bold rounded-full uppercase tracking-wider shadow-sm border border-current/10`}>
+                <CheckCircle2 size={12} />
+                PAKEJ {planDetails.label.toUpperCase()}
               </div>
-              
-              <button 
+
+              <button
                 onClick={onEdit}
                 className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
               >
@@ -8933,52 +9033,68 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
           </div>
         </div>
 
-        {/* Upgrade Card */}
-        <button 
-          onClick={() => setView('plans')}
-          className="w-full card-premium p-6 flex items-center justify-between group bg-gradient-to-r from-slate-900 to-slate-800 text-white border-none shadow-xl relative overflow-hidden"
-        >
-          <div className="absolute top-0 right-0 p-4 opacity-10 rotate-12">
-            <Zap size={80} />
-          </div>
-          <div className="flex items-center relative z-10">
-            <div className="p-3 bg-white/10 backdrop-blur-md text-white rounded-xl mr-4 group-hover:scale-105 transition-transform">
-              <TrendingUp size={20} strokeWidth={2} />
-            </div>
-            <div className="text-left">
-              <p className="font-bold text-lg tracking-tight font-display">Naik Taraf Plan</p>
-              <p className="text-xs font-medium text-white/60">Dapatkan lebih banyak ciri pintar & imbasan tanpa had.</p>
-            </div>
-          </div>
-          <ChevronRight size={20} className="text-white/30 group-hover:translate-x-1 transition-transform relative z-10" />
-        </button>
-
-        {/* Setup Guidelines */}
-        <div className="card-premium p-8 bg-emerald-50/50 border-emerald-100 relative overflow-hidden">
-          <div className="absolute top-0 right-0 p-4 opacity-10">
-            <Sparkles size={60} className="text-emerald-600" />
-          </div>
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display mb-6 flex items-center gap-2">
-            <CheckCircle2 size={20} className="text-emerald-600" />
-            Panduan Persediaan Akaun
-          </h3>
-          <div className="space-y-6">
-            {[
-              { title: 'Lengkapkan Profil', desc: 'Pastikan nama perniagaan dan maklumat hubungan anda tepat.', icon: UserCircle },
-              { title: 'Sediakan Kategori', desc: 'Semak kategori transaksi untuk pengelasan yang lebih baik.', icon: Tag },
-              { title: 'Imbas Resit Pertama', desc: 'Gunakan AI untuk mengekstrak data dari resit fizikal anda.', icon: Camera },
-              { title: 'Pantau Laporan', desc: 'Lihat Penyata Untung Rugi anda yang dijana secara automatik.', icon: PieChart },
-            ].map((step, i) => (
-              <div key={i} className="flex gap-4">
-                <div className="w-8 h-8 rounded-full bg-white border border-emerald-100 flex items-center justify-center text-emerald-600 shrink-0 shadow-sm font-bold text-xs">
-                  {i + 1}
-                </div>
-                <div>
-                  <h4 className="text-sm font-bold text-slate-900 mb-1">{step.title}</h4>
-                  <p className="text-xs text-slate-500 font-medium leading-relaxed">{step.desc}</p>
+        {/* Current Plan Card */}
+        <div className={`card-premium overflow-hidden shadow-xl`}>
+          <div className={`bg-gradient-to-r ${planDetails.color} p-6 text-white`}>
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">Pakej Semasa</p>
+                <h3 className="text-2xl font-bold tracking-tight font-display">{planDetails.label}</h3>
+                <div className="flex items-baseline gap-1 mt-1">
+                  <span className="text-3xl font-black">{planDetails.price}</span>
+                  {planDetails.period && <span className="text-white/60 text-sm font-medium">{planDetails.period}</span>}
                 </div>
               </div>
-            ))}
+              <div className="p-3 bg-white/10 rounded-xl">
+                <Zap size={24} className="text-white" />
+              </div>
+            </div>
+
+            {!isFreePlan && planEndFormatted && (
+              <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Tamat Langganan</p>
+                  <p className="text-white text-sm font-bold mt-0.5">{planEndFormatted}</p>
+                </div>
+                {daysLeft !== null && (
+                  <div className={`px-3 py-1.5 rounded-lg text-xs font-bold ${daysLeft <= 7 ? 'bg-red-500/20 text-red-200' : 'bg-white/10 text-white/80'}`}>
+                    {daysLeft} hari lagi
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="p-6 bg-white">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Ciri-ciri Yang Disertakan</p>
+            <div className="space-y-3">
+              {planDetails.features.map((f, i) => (
+                <div key={i} className="flex items-center gap-3">
+                  <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${f.included ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-300'}`}>
+                    {f.included ? <CheckCircle2 size={12} /> : <X size={12} />}
+                  </div>
+                  <span className={`text-sm font-medium ${f.included ? 'text-slate-700' : 'text-slate-300 line-through'}`}>{f.text}</span>
+                </div>
+              ))}
+            </div>
+
+            {isFreePlan ? (
+              <button
+                onClick={() => setView('plans')}
+                className="mt-6 w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-sm font-bold rounded-xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-md shadow-emerald-100 flex items-center justify-center gap-2"
+              >
+                <TrendingUp size={16} />
+                Naik Taraf Sekarang
+              </button>
+            ) : (
+              <button
+                onClick={() => setView('plans')}
+                className="mt-6 w-full py-3 bg-slate-100 text-slate-700 text-sm font-bold rounded-xl hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
+              >
+                <TrendingUp size={16} />
+                Urus Langganan
+              </button>
+            )}
           </div>
         </div>
 
@@ -9006,7 +9122,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
           ))}
         </div>
 
-        <button 
+        <button
           onClick={onLogout}
           className="w-full py-6 text-rose-500 font-bold tracking-wider uppercase text-[10px] hover:text-rose-600 transition-all hover:bg-rose-50 rounded-xl"
         >
