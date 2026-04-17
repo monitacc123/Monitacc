@@ -1041,11 +1041,9 @@ const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserTy
       } else {
         userData = await apiRegister(name, email, phone, password, companyName);
         if (selectedPlan && selectedPlan !== 'Percuma') {
-          try {
-            const url = await createCheckoutSession(selectedPlan as PaidPlan);
-            window.location.href = url;
-            return;
-          } catch (_) {}
+          const url = await createCheckoutSession(selectedPlan as PaidPlan);
+          window.location.href = url;
+          return;
         }
         onAuthSuccess(userData, true);
       }
@@ -1186,11 +1184,13 @@ const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserTy
 
           <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 text-sm">
             {loading
-              ? 'Sila Tunggu...'
+              ? selectedPlan !== 'Percuma' && !isLogin
+                ? 'Mendaftar akaun...'
+                : 'Sila Tunggu...'
               : isLogin
               ? 'Log Masuk'
               : selectedPlan !== 'Percuma'
-              ? `Daftar & Teruskan ke Pembayaran`
+              ? `Daftar & Bayar Pakej ${selectedPlan}`
               : 'Daftar Percuma'}
           </button>
         </form>
