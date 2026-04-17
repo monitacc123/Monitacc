@@ -14,8 +14,8 @@ const stripe = new Stripe(stripeSecret, {
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
 const PRICE_TO_PLAN: Record<string, string> = {
-  'price_1TN805AWhTSR0PgOln3BX8V5': 'Starter',
-  'price_1TN806AWhTSR0PgO52mdKu32': 'Growth',
+  'price_1TN9SvAWhTSR0PgOYmTX9xDY': 'Starter',
+  'price_1TN9SvAWhTSR0PgO4r2IshXx': 'Growth',
   'price_1TN806AWhTSR0PgOSQ9JyXsK': 'Ultimate',
 };
 
