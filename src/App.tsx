@@ -11057,6 +11057,12 @@ const DuplicateWarningModal = ({ data, existing, onCancel, onConfirm }: { data: 
 
 // --- Main App ---
 
+const PROTECTED_VIEWS: AppView[] = [
+  'dashboard', 'sales', 'scan', 'records', 'reports', 'ledger',
+  'reconcile', 'ai-analysis', 'profile', 'user-management', 'categories',
+  'plans', 'token-usage', 'faq', 'terms', 'choose-plan', 'welcome',
+];
+
 export default function App() {
   const [view, setView] = useState<AppView>('landing');
   const [user, setUser] = useState<UserType | null>(null);
@@ -11241,6 +11247,14 @@ export default function App() {
       setIsFetching(false);
     }
   };
+
+  const safeSetView = useCallback((v: AppView) => {
+    if (PROTECTED_VIEWS.includes(v) && !user) {
+      setView('landing');
+      return;
+    }
+    setView(v);
+  }, [user]);
 
   const handleLogout = async () => {
     await apiLogout();
@@ -11481,6 +11495,25 @@ export default function App() {
     );
   }
 
+  if (!user && PROTECTED_VIEWS.includes(view)) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center shadow-lg">
+            <CreditCard size={24} className="text-white" />
+          </div>
+          <p className="text-sm text-slate-500">Sila log masuk untuk meneruskan...</p>
+          <button
+            onClick={() => setView('landing')}
+            className="px-5 py-2 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
+          >
+            Log Masuk
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       {connectionError && (
@@ -11500,10 +11533,10 @@ export default function App() {
           </button>
         </div>
       )}
-      <Navbar 
-        activeView={view} 
-        setView={setView} 
-        user={user} 
+      <Navbar
+        activeView={view}
+        setView={safeSetView}
+        user={user}
         isAdminAuthenticated={isAdminAuthenticated}
         onLogoutAdmin={() => {
           setIsAdminAuthenticated(false);
