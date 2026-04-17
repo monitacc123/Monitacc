@@ -5,19 +5,22 @@ import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import html2canvas from 'html2canvas';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
   Cell,
   PieChart as RePieChart,
-  Pie
+  Pie,
+  LineChart,
+  Line,
+  Legend,
 } from 'recharts';
-import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO } from 'date-fns';
+import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
 import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
 import {
@@ -1841,6 +1844,52 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
   const income = filteredRecords.filter(r => r.type === 'income' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
   const expense = filteredRecords.filter(r => r.type === 'expense' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
 
+  const timeSeriesChartData = useMemo(() => {
+    const nonAssetRecords = filteredRecords.filter(r => !dashAssetLiabSet.has(r.category.trim().toUpperCase()));
+
+    if (timeFilter === 'daily') {
+      return [
+        { name: 'Masuk', masuk: nonAssetRecords.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0), keluar: 0 },
+        { name: 'Keluar', masuk: 0, keluar: nonAssetRecords.filter(r => r.type === 'expense').reduce((s, r) => s + r.amount, 0) },
+      ];
+    }
+
+    if (timeFilter === 'weekly') {
+      const days = eachDayOfInterval({ start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) });
+      return days.map(day => {
+        const label = format(day, 'EEE');
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        return { name: label, masuk, keluar };
+      });
+    }
+
+    if (timeFilter === 'monthly') {
+      const days = eachDayOfInterval({ start: startOfMonth(now), end: endOfMonth(now) });
+      return days.map(day => {
+        const label = format(day, 'd');
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        return { name: label, masuk, keluar };
+      });
+    }
+
+    if (timeFilter === 'yearly') {
+      const months = eachMonthOfInterval({ start: startOfYear(now), end: endOfYear(now) });
+      return months.map(month => {
+        const label = format(month, 'MMM');
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameMonth(parseISO(r.date), month)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameMonth(parseISO(r.date), month)).reduce((s, r) => s + r.amount, 0);
+        return { name: label, masuk, keluar };
+      });
+    }
+
+    return [
+      { name: 'Masuk', masuk: income, keluar: 0 },
+      { name: 'Keluar', masuk: 0, keluar: expense },
+    ];
+  }, [filteredRecords, timeFilter, dashAssetLiabSet, income, expense, now]);
+
   const chartData = [
     { name: 'Masuk', value: income, fill: '#10b981' },
     { name: 'Keluar', value: expense, fill: '#f43f5e' },
@@ -2013,20 +2062,55 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               </div>
               <div className="h-40 md:h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} dy={8} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
-                    <Tooltip
-                      cursor={{ fill: '#f8fafc' }}
-                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
-                    />
-                    <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
+                  {(timeFilter === 'all' || timeFilter === 'daily') ? (
+                    <BarChart data={timeFilter === 'all' ? chartData : timeSeriesChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} dy={8} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
+                      <Tooltip
+                        cursor={{ fill: '#f8fafc' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
+                        formatter={timeFilter === 'daily' ? ((val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']) : undefined}
+                      />
+                      {timeFilter === 'all' ? (
+                        <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
+                          {chartData.map((entry, index) => (
+                            <Cell key={`cell-${index}`} fill={entry.fill} />
+                          ))}
+                        </Bar>
+                      ) : (
+                        <>
+                          <Bar dataKey="masuk" fill="#10b981" radius={[6, 6, 0, 0]} barSize={48} name="Masuk" />
+                          <Bar dataKey="keluar" fill="#f43f5e" radius={[6, 6, 0, 0]} barSize={48} name="Keluar" />
+                        </>
+                      )}
+                    </BarChart>
+                  ) : timeFilter === 'monthly' ? (
+                    <BarChart data={timeSeriesChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} dy={6} interval={4} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 9, fontWeight: 600, fill: '#94a3b8' }} />
+                      <Tooltip
+                        cursor={{ fill: '#f8fafc' }}
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
+                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']}
+                      />
+                      <Bar dataKey="masuk" fill="#10b981" radius={[3, 3, 0, 0]} barSize={6} name="Masuk" />
+                      <Bar dataKey="keluar" fill="#f43f5e" radius={[3, 3, 0, 0]} barSize={6} name="Keluar" />
+                    </BarChart>
+                  ) : (
+                    <LineChart data={timeSeriesChartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} dy={6} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
+                      <Tooltip
+                        contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
+                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']}
+                      />
+                      <Line type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2} dot={false} name="Masuk" />
+                      <Line type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2} dot={false} name="Keluar" />
+                    </LineChart>
+                  )}
                 </ResponsiveContainer>
               </div>
             </div>
