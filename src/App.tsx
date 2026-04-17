@@ -901,9 +901,10 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         <div className="flex items-center gap-2">
           <button
             onClick={onAffiliateLogin}
-            className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-emerald-600 uppercase tracking-wider transition-colors px-3 py-2 rounded-lg hover:bg-slate-50"
+            className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50 group"
           >
             Portal Affiliated
+            <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ml-0.5 group-hover:bg-amber-200 transition-colors">Soon</span>
           </button>
           <button
             onClick={() => onStart()}
@@ -963,9 +964,10 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             </button>
             <button
               onClick={onAffiliateLogin}
-              className="w-full max-w-xs bg-white hover:bg-slate-50 text-slate-600 font-bold text-sm px-8 py-3.5 rounded-2xl transition-all border border-slate-200 sm:hidden"
+              className="w-full max-w-xs bg-white hover:bg-slate-50 text-slate-600 font-bold text-sm px-8 py-3.5 rounded-2xl transition-all border border-slate-200 sm:hidden flex items-center justify-center gap-2"
             >
               Portal Affiliated
+              <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full">Soon</span>
             </button>
           </motion.div>
 
@@ -1146,9 +1148,10 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         <p className="text-slate-500 text-[11px] font-medium">&copy; 2026 Monitacc. Empower by Wekeyra.</p>
         <button
           onClick={onAffiliateLogin}
-          className="text-[11px] font-bold text-slate-500 hover:text-emerald-400 uppercase tracking-wider transition-colors"
+          className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-300 uppercase tracking-wider transition-colors group"
         >
           Portal Affiliated
+          <span className="bg-amber-400/20 text-amber-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full group-hover:bg-amber-400/30 transition-colors">Soon</span>
         </button>
       </div>
     </footer>
@@ -10528,79 +10531,98 @@ const AdminLoginView = ({ onLogin, onBack }: { onLogin: () => void, onBack: () =
   );
 };
 
-const AffiliateLoginView = ({ onLogin, onBack }: { onLogin: (affiliate: any) => void, onBack: () => void }) => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Mock authentication
-    if (email === 'ali@affiliated.com' && password === 'ali123') {
-      onLogin({ id: 1, name: 'Ejen Ali', email: 'ali@affiliated.com', referrals: 45, commission: 1250.50, special_id: 'AFF-0001' });
-    } else if (email === 'bakar@affiliated.com' && password === 'bakar123') {
-      onLogin({ id: 2, name: 'Ejen Bakar', email: 'bakar@affiliated.com', referrals: 28, commission: 840.00, special_id: 'AFF-0002' });
-    } else {
-      setError('Emel atau kata laluan salah.');
-    }
-  };
+const AffiliateLoginView = ({ onLogin: _onLogin, onBack }: { onLogin: (affiliate: any) => void, onBack: () => void }) => {
+  const perks = [
+    { icon: TrendingUp, label: 'Komisen 10% Lifetime', desc: 'Jana pendapatan pasif setiap bulan' },
+    { icon: Users, label: 'Dashboard Ejen', desc: 'Pantau rujukan dan komisen secara real-time' },
+    { icon: Zap, label: 'Link Rujukan Unik', desc: 'Kongsi dan jejak setiap pengguna baru' },
+    { icon: DollarSign, label: 'Bayaran Automatik', desc: 'Komisen dibayar terus ke akaun bank' },
+  ];
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
+    <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-5 relative overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none select-none overflow-hidden">
+        <div className="absolute -top-32 -left-32 w-96 h-96 bg-amber-400/5 rounded-full blur-3xl" />
+        <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-emerald-500/5 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-amber-400/3 rounded-full blur-3xl" />
+      </div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 24 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="relative w-full max-w-lg"
       >
-        <div className="p-8 bg-emerald-600 text-white text-center relative">
-          <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4 backdrop-blur-md">
-            <Users size={32} />
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight font-display">Portal Affiliated</h2>
-          <p className="text-emerald-100 text-sm mt-2">Log masuk untuk pantau rujukan dan komisen anda.</p>
-        </div>
-        
-        <form onSubmit={handleLogin} className="p-8 space-y-4">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Emel Ejen</label>
-            <input 
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="ejen@monitacc.com"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Kata Laluan</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all"
-              required
-            />
-            {error && <p className="text-rose-600 text-[10px] font-bold mt-2 uppercase tracking-wider">{error}</p>}
+        <div className="text-center mb-8">
+          <div className="flex items-center justify-center gap-2 mb-6">
+            <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/30">
+              <CreditCard size={16} className="text-white" />
+            </div>
+            <span className="text-white font-bold tracking-tight text-sm">Monitacc</span>
           </div>
 
-          <div className="flex flex-col gap-3 pt-4">
-            <button 
-              type="submit"
-              className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95"
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ delay: 0.1, type: 'spring', bounce: 0.3 }}
+            className="inline-flex items-center gap-2 bg-amber-400/15 border border-amber-400/30 text-amber-400 text-[10px] font-black uppercase tracking-widest px-4 py-2 rounded-full mb-6"
+          >
+            <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+            Coming Soon
+          </motion.div>
+
+          <h1 className="text-3xl md:text-4xl font-black text-white tracking-tight font-display mb-3">
+            Portal Affiliated
+          </h1>
+          <p className="text-slate-400 text-sm font-medium max-w-sm mx-auto leading-relaxed">
+            Kami sedang membina platform ejen terbaik. Jana pendapatan dengan kongsi Monitacc kepada orang sekeliling anda.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3 mb-8">
+          {perks.map((perk, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 + i * 0.07 }}
+              className="bg-white/5 border border-white/8 rounded-2xl p-4 backdrop-blur-sm"
             >
-              Log Masuk Portal
-            </button>
-            <button 
-              type="button"
-              onClick={onBack}
-              className="w-full py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
-            >
-              Kembali
+              <div className="w-8 h-8 bg-amber-400/15 rounded-xl flex items-center justify-center mb-3">
+                <perk.icon size={15} className="text-amber-400" strokeWidth={2} />
+              </div>
+              <p className="text-white text-[11px] font-bold mb-0.5 leading-tight">{perk.label}</p>
+              <p className="text-slate-500 text-[10px] font-medium leading-snug">{perk.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.5 }}
+          className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6 text-center"
+        >
+          <p className="text-slate-400 text-[11px] font-medium mb-3">Nak jadi ejen awal? Tinggalkan emel anda</p>
+          <div className="flex gap-2">
+            <input
+              type="email"
+              placeholder="emel@anda.com"
+              className="flex-1 px-4 py-2.5 bg-white/8 border border-white/15 rounded-xl text-white text-xs placeholder-slate-600 outline-none focus:border-amber-400/50 focus:ring-2 focus:ring-amber-400/10 transition-all"
+            />
+            <button className="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-900 font-bold text-[10px] uppercase tracking-wider rounded-xl transition-all active:scale-95 whitespace-nowrap shadow-lg shadow-amber-400/20">
+              Daftar Minat
             </button>
           </div>
-        </form>
+        </motion.div>
+
+        <button
+          onClick={onBack}
+          className="w-full py-3 bg-white/6 hover:bg-white/10 border border-white/10 text-slate-400 hover:text-white rounded-2xl font-bold text-xs uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2"
+        >
+          <ArrowRight size={13} className="rotate-180" />
+          Kembali ke Laman Utama
+        </button>
       </motion.div>
     </div>
   );
