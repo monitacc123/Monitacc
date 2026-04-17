@@ -1581,56 +1581,53 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {plans.map((plan, i) => {
             const isLoading = loadingPlan === plan.name;
+            const ct = plan.name === 'Ultimate'
+              ? { card: 'bg-slate-900 border-amber-400/60 shadow-2xl scale-[1.03] z-10', headerBg: 'bg-gradient-to-br from-amber-400/20 to-amber-600/10', name: 'text-white', rm: 'text-amber-300/70', price: 'text-white', period: 'text-amber-300/60', check: 'text-amber-400', feature: 'text-white/85', badge: 'bg-amber-400 text-slate-900', btn: 'bg-amber-400 hover:bg-amber-300 text-slate-900 font-black' }
+              : plan.name === 'Growth'
+              ? { card: 'bg-white border-teal-200 shadow-md', headerBg: 'bg-gradient-to-br from-teal-50 to-cyan-50', name: 'text-teal-900', rm: 'text-teal-400', price: 'text-teal-900', period: 'text-teal-400', check: 'text-teal-500', feature: 'text-slate-600', badge: 'bg-teal-500 text-white', btn: 'bg-teal-600 hover:bg-teal-500 text-white' }
+              : plan.name === 'Starter'
+              ? { card: 'bg-white border-emerald-200 shadow-md', headerBg: 'bg-gradient-to-br from-emerald-50 to-green-50', name: 'text-emerald-900', rm: 'text-emerald-400', price: 'text-emerald-900', period: 'text-emerald-400', check: 'text-emerald-500', feature: 'text-slate-600', badge: 'bg-emerald-500 text-white', btn: 'bg-emerald-600 hover:bg-emerald-500 text-white' }
+              : { card: 'bg-white border-slate-200 shadow-sm', headerBg: 'bg-gradient-to-br from-slate-50 to-slate-100', name: 'text-slate-700', rm: 'text-slate-400', price: 'text-slate-800', period: 'text-slate-400', check: 'text-slate-400', feature: 'text-slate-600', badge: '', btn: 'bg-slate-100 hover:bg-slate-200 text-slate-600' };
             return (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 + i * 0.08 }}
-                className={`relative rounded-2xl p-6 flex flex-col border transition-all duration-300 hover:-translate-y-1 ${
-                  plan.popular
-                    ? 'bg-slate-900 border-emerald-500 ring-4 ring-emerald-100 shadow-2xl scale-[1.03] z-10'
-                    : 'bg-white border-slate-200 shadow-sm hover:shadow-md'
-                }`}
+                className={`relative rounded-2xl flex flex-col border overflow-hidden transition-all duration-300 hover:-translate-y-1 ${ct.card}`}
               >
                 {plan.popular && (
-                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-widest shadow-lg whitespace-nowrap">
-                    PALING POPULAR
-                  </span>
+                  <div className={`text-center py-1 text-[8px] font-black uppercase tracking-widest ${ct.badge}`}>Paling Popular</div>
                 )}
-                <h3 className={`text-base font-bold tracking-tight font-display text-center mb-1 ${plan.popular ? 'text-white' : 'text-slate-900'}`}>
-                  {plan.name}
-                </h3>
-                <div className="flex items-baseline justify-center mb-5">
-                  <span className={`text-[10px] font-bold ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
-                  <span className={`text-3xl font-extrabold font-display mx-0.5 ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
-                  {plan.period && <span className={`text-[10px] font-medium ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>{plan.period}</span>}
+                <div className={`px-5 pt-4 pb-3 ${ct.headerBg}`}>
+                  <h3 className={`text-base font-bold tracking-tight font-display text-center mb-1 ${ct.name}`}>{plan.name}</h3>
+                  <div className="flex items-baseline justify-center">
+                    <span className={`text-[10px] font-bold ${ct.rm}`}>RM</span>
+                    <span className={`text-3xl font-extrabold font-display mx-0.5 ${ct.price}`}>{plan.price}</span>
+                    {plan.period && <span className={`text-[10px] font-medium ${ct.period}`}>{plan.period}</span>}
+                  </div>
                 </div>
-                <ul className="space-y-2.5 mb-6 flex-1">
-                  {plan.features.map((f, j) => (
-                    <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${plan.popular ? 'text-white/90' : 'text-slate-600'}`}>
-                      <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => handlePlanClick(plan)}
-                  disabled={isLoading}
-                  className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                    plan.popular
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30'
-                      : plan.name === 'Percuma'
-                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-                      : 'bg-slate-900 hover:bg-slate-700 text-white'
-                  }`}
-                >
-                  {isLoading ? (
-                    <><Loader2 size={13} className="animate-spin" /> Memproses...</>
-                  ) : (
-                    plan.cta
-                  )}
-                </button>
+                <div className="px-5 py-4 flex-1 flex flex-col">
+                  <ul className="space-y-2.5 mb-5 flex-1">
+                    {plan.features.map((f, j) => (
+                      <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${ct.feature}`}>
+                        <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 ${ct.check}`} />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    onClick={() => handlePlanClick(plan)}
+                    disabled={isLoading}
+                    className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${ct.btn}`}
+                  >
+                    {isLoading ? (
+                      <><Loader2 size={13} className="animate-spin" /> Memproses...</>
+                    ) : (
+                      plan.cta
+                    )}
+                  </button>
+                </div>
               </motion.div>
             );
           })}
