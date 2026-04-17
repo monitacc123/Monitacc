@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -9386,8 +9386,9 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
 
         <button
           onClick={onLogout}
-          className="w-full py-6 text-rose-500 font-bold tracking-wider uppercase text-[10px] hover:text-rose-600 transition-all hover:bg-rose-50 rounded-xl"
+          className="w-full flex items-center justify-center gap-2.5 py-4 px-6 bg-white border-2 border-rose-200 text-rose-500 font-semibold text-sm rounded-2xl hover:bg-rose-500 hover:text-white hover:border-rose-500 active:scale-[0.98] transition-all duration-200 shadow-sm hover:shadow-md group"
         >
+          <LogOut size={16} className="group-hover:translate-x-0.5 transition-transform duration-200" strokeWidth={2.5} />
           Log Keluar Akaun
         </button>
       </div>
