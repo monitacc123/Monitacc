@@ -461,3 +461,93 @@ export async function apiUpdateUserRole(userId: string, role: string): Promise<v
 
   if (error) throw new Error(error.message);
 }
+
+export async function apiGetAdminDashboardStats() {
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, plan, status, referred_by');
+  if (usersError) throw new Error(usersError.message);
+
+  const allUsers = users || [];
+  const totalUsers = allUsers.length;
+  const activeSubscribers = allUsers.filter(u => (u.status || 'active') === 'active').length;
+  const cancelledUsers = allUsers.filter(u => u.status === 'cancelled').length;
+  const totalAffiliated = allUsers.filter(u => u.referred_by && u.referred_by !== '').length;
+
+  const planPrices: Record<string, number> = { free: 0, Starter: 50, Growth: 100, Ultimate: 150 };
+  const monthlyRevenue = allUsers
+    .filter(u => (u.status || 'active') === 'active')
+    .reduce((sum, u) => sum + (planPrices[u.plan || 'free'] || 0), 0);
+
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+
+  const { data: usageRows, error: usageError } = await supabase
+    .from('ai_usage')
+    .select('tokens_used, created_at')
+    .gte('created_at', sevenDaysAgo.toISOString());
+  if (usageError) throw new Error(usageError.message);
+
+  const totalTokensUsed = (usageRows || []).reduce((sum, r) => sum + (r.tokens_used || 0), 0);
+
+  const days = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
+  const tokenByDay: Record<string, number> = {};
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    tokenByDay[days[d.getDay()]] = 0;
+  }
+  (usageRows || []).forEach(r => {
+    const dayName = days[new Date(r.created_at).getDay()];
+    if (dayName in tokenByDay) tokenByDay[dayName] += r.tokens_used || 0;
+  });
+  const tokenUsageData = Object.entries(tokenByDay).map(([day, tokens]) => ({ day, tokens }));
+
+  const planCounts: Record<string, number> = { free: 0, Starter: 0, Growth: 0, Ultimate: 0 };
+  allUsers.forEach(u => {
+    const plan = u.plan || 'free';
+    if (plan in planCounts) planCounts[plan]++;
+    else planCounts['free']++;
+  });
+  const packageDistribution = [
+    { name: 'Percuma', value: planCounts['free'], fill: '#94a3b8' },
+    { name: 'Starter', value: planCounts['Starter'], fill: '#10b981' },
+    { name: 'Growth', value: planCounts['Growth'], fill: '#059669' },
+    { name: 'Ultimate', value: planCounts['Ultimate'], fill: '#064e3b' },
+  ];
+
+  return { totalUsers, activeSubscribers, cancelledUsers, totalTokensUsed, monthlyRevenue, totalAffiliated, tokenUsageData, packageDistribution };
+}
+
+export async function apiGetTokenUsageByUser() {
+  const { data: users, error: usersError } = await supabase
+    .from('users')
+    .select('id, name, email, plan, status')
+    .order('name');
+  if (usersError) throw new Error(usersError.length > 0 ? usersError.message : 'Error');
+
+  const { data: usageRows, error: usageError } = await supabase
+    .from('ai_usage')
+    .select('user_id, tokens_used, created_at')
+    .order('created_at', { ascending: false });
+  if (usageError) throw new Error(usageError.message);
+
+  const planLimits: Record<string, number> = { free: 500, Starter: 10000, Growth: 25000, Ultimate: 100000 };
+
+  const result = (users || []).map(u => {
+    const userUsage = (usageRows || []).filter(r => r.user_id === u.id);
+    const tokensUsed = userUsage.reduce((sum, r) => sum + (r.tokens_used || 0), 0);
+    const lastUsed = userUsage.length > 0 ? userUsage[0].created_at : null;
+    const limit = planLimits[u.plan || 'free'] || 500;
+    return { ...u, tokensUsed, limit, lastUsed };
+  });
+
+  return result;
+}
+
+export async function apiLogAiUsage(userId: string, tokensUsed: number, operation: string): Promise<void> {
+  const { error } = await supabase
+    .from('ai_usage')
+    .insert([{ user_id: userId, tokens_used: tokensUsed, operation }]);
+  if (error) console.error('Failed to log AI usage:', error.message);
+}

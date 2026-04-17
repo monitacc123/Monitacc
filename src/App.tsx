@@ -38,6 +38,8 @@ import {
   apiUpdateUserRole,
   apiUpdateUserPlan,
   apiUpdateUserStatus,
+  apiGetAdminDashboardStats,
+  apiGetTokenUsageByUser,
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 
@@ -9510,30 +9512,54 @@ const AffiliateDashboardView = ({ affiliate, onLogout }: { affiliate: any, onLog
 };
 
 const AdminDashboardView = () => {
+  const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
-    totalUsers: 1240,
-    activeSubscribers: 850,
-    totalTokensUsed: 450000,
-    monthlyRevenue: 12500,
-    totalAffiliated: 156
+    totalUsers: 0,
+    activeSubscribers: 0,
+    cancelledUsers: 0,
+    totalTokensUsed: 0,
+    monthlyRevenue: 0,
+    totalAffiliated: 0,
   });
+  const [packageDistribution, setPackageDistribution] = useState<{ name: string; value: number; fill: string }[]>([]);
+  const [tokenUsageData, setTokenUsageData] = useState<{ day: string; tokens: number }[]>([]);
+  const [recentUsers, setRecentUsers] = useState<UserType[]>([]);
 
-  const packageDistribution = [
-    { name: 'Percuma', value: 400, fill: '#94a3b8' },
-    { name: 'Starter', value: 300, fill: '#10b981' },
-    { name: 'Growth', value: 100, fill: '#059669' },
-    { name: 'Ultimate', value: 50, fill: '#064e3b' },
-  ];
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [dashData, usersData] = await Promise.all([
+          apiGetAdminDashboardStats(),
+          apiGetUsers(),
+        ]);
+        setStats({
+          totalUsers: dashData.totalUsers,
+          activeSubscribers: dashData.activeSubscribers,
+          cancelledUsers: dashData.cancelledUsers,
+          totalTokensUsed: dashData.totalTokensUsed,
+          monthlyRevenue: dashData.monthlyRevenue,
+          totalAffiliated: dashData.totalAffiliated,
+        });
+        setPackageDistribution(dashData.packageDistribution);
+        setTokenUsageData(dashData.tokenUsageData);
+        setRecentUsers(usersData.slice(0, 8));
+      } catch (err) {
+        console.error('Error loading admin dashboard:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
-  const tokenUsageData = [
-    { day: 'Isnin', tokens: 12000 },
-    { day: 'Selasa', tokens: 15000 },
-    { day: 'Rabu', tokens: 18000 },
-    { day: 'Khamis', tokens: 14000 },
-    { day: 'Jumaat', tokens: 22000 },
-    { day: 'Sabtu', tokens: 25000 },
-    { day: 'Ahad', tokens: 20000 },
-  ];
+  if (loading) {
+    return (
+      <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto flex items-center justify-center min-h-[60vh]">
+        <Loader2 size={32} className="animate-spin text-emerald-500" />
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
@@ -9542,18 +9568,18 @@ const AdminDashboardView = () => {
         <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan token dan langganan pengguna.</p>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-10">
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
         {[
-          { label: 'Jumlah Pengguna', value: stats.totalUsers, icon: User, color: 'blue' },
-          { label: 'Pelanggan Aktif', value: stats.activeSubscribers, icon: CreditCard, color: 'emerald' },
-          { label: 'Pengguna Batal', value: 390, icon: X, color: 'rose' },
-          { label: 'Token Digunakan', value: stats.totalTokensUsed.toLocaleString(), icon: Zap, color: 'amber' },
-          { label: 'Pendapatan (RM)', value: stats.monthlyRevenue.toLocaleString(), icon: DollarSign, color: 'emerald' },
-          { label: 'Jumlah Affiliated', value: stats.totalAffiliated, icon: Users, color: 'indigo' },
+          { label: 'Jumlah Pengguna', value: stats.totalUsers, icon: User, bg: 'bg-blue-50', text: 'text-blue-600' },
+          { label: 'Pelanggan Aktif', value: stats.activeSubscribers, icon: CreditCard, bg: 'bg-emerald-50', text: 'text-emerald-600' },
+          { label: 'Pengguna Batal', value: stats.cancelledUsers, icon: X, bg: 'bg-rose-50', text: 'text-rose-600' },
+          { label: 'Token Digunakan', value: stats.totalTokensUsed.toLocaleString(), icon: Zap, bg: 'bg-amber-50', text: 'text-amber-600' },
+          { label: 'Pendapatan (RM)', value: stats.monthlyRevenue.toLocaleString(), icon: DollarSign, bg: 'bg-emerald-50', text: 'text-emerald-600' },
+          { label: 'Jumlah Affiliated', value: stats.totalAffiliated, icon: Users, bg: 'bg-slate-100', text: 'text-slate-600' },
         ].map((item, i) => (
-          <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-            <div className={`w-10 h-10 rounded-xl bg-${item.color}-50 text-${item.color}-600 flex items-center justify-center mb-4`}>
-              <item.icon size={20} />
+          <div key={i} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+            <div className={`w-9 h-9 rounded-xl ${item.bg} ${item.text} flex items-center justify-center mb-3`}>
+              <item.icon size={18} />
             </div>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{item.label}</p>
             <p className="text-2xl font-bold text-slate-900 tracking-tight font-display">{item.value}</p>
@@ -9570,10 +9596,7 @@ const AdminDashboardView = () => {
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
                 <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
-                <Tooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
-                  cursor={{ fill: '#f8fafc' }}
-                />
+                <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} cursor={{ fill: '#f8fafc' }} />
                 <Bar dataKey="tokens" fill="#10b981" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
@@ -9585,15 +9608,7 @@ const AdminDashboardView = () => {
           <div className="h-64 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
-                <Pie
-                  data={packageDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
+                <Pie data={packageDistribution} cx="50%" cy="50%" innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
                   {packageDistribution.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
@@ -9601,11 +9616,11 @@ const AdminDashboardView = () => {
                 <Tooltip />
               </RePieChart>
             </ResponsiveContainer>
-            <div className="flex flex-col gap-2 ml-4">
+            <div className="flex flex-col gap-2 ml-4 shrink-0">
               {packageDistribution.map((item, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.fill }} />
-                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">{item.name}: {item.value}</span>
+                  <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.fill }} />
+                  <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider whitespace-nowrap">{item.name}: {item.value}</span>
                 </div>
               ))}
             </div>
@@ -9614,46 +9629,47 @@ const AdminDashboardView = () => {
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Transaksi Terkini (Sistem)</h3>
-          <button className="text-xs font-bold text-emerald-600 hover:underline uppercase tracking-widest">Lihat Semua</button>
+        <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Pengguna Terkini</h3>
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{recentUsers.length} terkini</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-4">Pengguna</th>
-                <th className="px-4 py-4">Pakej</th>
-                <th className="px-4 py-4">Status</th>
-                <th className="px-4 py-4">Token Digunakan</th>
-                <th className="px-4 py-4">Tarikh</th>
+                <th className="px-5 py-3.5">Pengguna</th>
+                <th className="px-5 py-3.5">Pakej</th>
+                <th className="px-5 py-3.5">Status</th>
+                <th className="px-5 py-3.5">Affiliate</th>
+                <th className="px-5 py-3.5">Tarikh Daftar</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
-              {[
-                { user: 'Ahmad Ibrahim', plan: 'Ultimate', status: 'Aktif', tokens: 1250, date: '08/04/2026' },
-                { user: 'Siti Nurhaliza', plan: 'Starter', status: 'Aktif', tokens: 450, date: '08/04/2026' },
-                { user: 'Chong Wei', plan: 'Growth', status: 'Tamat Tempoh', tokens: 890, date: '07/04/2026' },
-                { user: 'Muthu Samy', plan: 'Percuma', status: 'Aktif', tokens: 120, date: '07/04/2026' },
-              ].map((row, i) => (
-                <tr key={i} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-4 text-sm font-bold text-slate-900">{row.user}</td>
-                  <td className="px-4 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                      row.plan === 'Ultimate' ? 'bg-emerald-100 text-emerald-700' :
-                      row.plan === 'Growth' ? 'bg-blue-100 text-blue-700' :
-                      row.plan === 'Starter' ? 'bg-amber-100 text-amber-700' :
-                      'bg-slate-100 text-slate-600'
-                    }`}>{row.plan}</span>
+            <tbody className="divide-y divide-slate-50">
+              {recentUsers.length === 0 ? (
+                <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-400">Tiada pengguna lagi</td></tr>
+              ) : recentUsers.map((u) => (
+                <tr key={u.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-5 py-4">
+                    <div className="text-sm font-bold text-slate-900">{u.name || '-'}</div>
+                    <div className="text-[10px] text-slate-400 font-medium">{u.email}</div>
+                    {u.company_name && <div className="text-[10px] text-emerald-600 font-bold uppercase">{u.company_name}</div>}
                   </td>
-                  <td className="px-4 py-4">
-                    <span className={`flex items-center gap-1.5 text-[10px] font-bold ${row.status === 'Aktif' ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${row.status === 'Aktif' ? 'bg-emerald-600' : 'bg-rose-600'}`} />
-                      {row.status}
+                  <td className="px-5 py-4">
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
+                      (u.plan || 'free') === 'Ultimate' ? 'bg-slate-900 text-white' :
+                      (u.plan || 'free') === 'Growth' ? 'bg-emerald-600 text-white' :
+                      (u.plan || 'free') === 'Starter' ? 'bg-emerald-100 text-emerald-700' :
+                      'bg-slate-100 text-slate-600'
+                    }`}>{u.plan || 'free'}</span>
+                  </td>
+                  <td className="px-5 py-4">
+                    <span className={`flex items-center gap-1.5 text-[10px] font-bold ${(u.status || 'active') === 'active' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${(u.status || 'active') === 'active' ? 'bg-emerald-600' : 'bg-rose-600'}`} />
+                      {(u.status || 'active') === 'active' ? 'Aktif' : 'Batal'}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-sm font-mono text-slate-600">{row.tokens}</td>
-                  <td className="px-4 py-4 text-xs font-medium text-slate-400">{row.date}</td>
+                  <td className="px-5 py-4 text-xs font-medium text-slate-500">{u.referred_by || 'Direct'}</td>
+                  <td className="px-5 py-4 text-xs font-medium text-slate-400">{u.created_at ? format(parseISO(u.created_at), 'dd/MM/yyyy') : '-'}</td>
                 </tr>
               ))}
             </tbody>
@@ -9940,30 +9956,29 @@ const AffiliatedManagementView = () => {
 };
 
 const TokenUsageView = () => {
-  const [usageData, setUsageData] = useState([
-    { id: 1, name: 'Ahmad Ibrahim', email: 'ahmad@example.com', plan: 'Ultimate', tokensUsed: 12500, limit: 50000, lastUsed: '08/04/2026' },
-    { id: 2, name: 'Siti Nurhaliza', email: 'siti@example.com', plan: 'Starter', tokensUsed: 4500, limit: 10000, lastUsed: '08/04/2026' },
-    { id: 3, name: 'Chong Wei', email: 'chong@example.com', plan: 'Growth', tokensUsed: 8900, limit: 25000, lastUsed: '07/04/2026' },
-    { id: 4, name: 'Muthu Samy', email: 'muthu@example.com', plan: 'Percuma', tokensUsed: 1200, limit: 2000, lastUsed: '07/04/2026' },
-    { id: 5, name: 'Sarah Tan', email: 'sarah@example.com', plan: 'Ultimate', tokensUsed: 32000, limit: 50000, lastUsed: '08/04/2026' },
-    { id: 6, name: 'Zul Ariffin', email: 'zul@example.com', plan: 'Growth', tokensUsed: 15600, limit: 25000, lastUsed: '06/04/2026' },
-  ]);
-
+  const [usageData, setUsageData] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
   const [showTopUp, setShowTopUp] = useState<{ show: boolean, user: any | null }>({ show: false, user: null });
   const [topUpAmount, setTopUpAmount] = useState('');
 
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const data = await apiGetTokenUsageByUser();
+      setUsageData(data);
+    } catch (err) {
+      console.error('Error fetching token usage:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchData(); }, []);
+
   const handleTopUp = () => {
     if (!showTopUp.user || !topUpAmount) return;
-    
     const amount = parseInt(topUpAmount);
     if (isNaN(amount) || amount <= 0) return;
-
-    setUsageData(prev => prev.map(u => 
-      u.id === showTopUp.user.id 
-        ? { ...u, limit: u.limit + amount } 
-        : u
-    ));
-
     setShowTopUp({ show: false, user: null });
     setTopUpAmount('');
   };
@@ -9975,54 +9990,61 @@ const TokenUsageView = () => {
         <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan kuota AI bagi setiap pengguna.</p>
       </header>
 
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <Loader2 size={28} className="animate-spin text-emerald-500" />
+        </div>
+      ) : (
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <tr>
-                <th className="px-8 py-4">Pengguna</th>
-                <th className="px-8 py-4">Pelan</th>
-                <th className="px-8 py-4">Penggunaan</th>
-                <th className="px-8 py-4">Status Kuota</th>
-                <th className="px-8 py-4">Kegunaan Terakhir</th>
-                <th className="px-8 py-4 text-right">Tindakan</th>
+                <th className="px-6 py-4">Pengguna</th>
+                <th className="px-6 py-4">Pelan</th>
+                <th className="px-6 py-4">Penggunaan</th>
+                <th className="px-6 py-4">Status Kuota</th>
+                <th className="px-6 py-4">Kegunaan Terakhir</th>
+                <th className="px-6 py-4 text-right">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {usageData.map((user) => {
-                const percentage = (user.tokensUsed / user.limit) * 100;
+              {usageData.length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">Tiada data penggunaan token lagi</td></tr>
+              ) : usageData.map((user) => {
+                const percentage = user.limit > 0 ? (user.tokensUsed / user.limit) * 100 : 0;
                 return (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-8 py-5">
+                    <td className="px-6 py-5">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-500 font-bold text-xs">
-                          {user.name.charAt(0)}
+                          {(user.name || user.email || '?').charAt(0).toUpperCase()}
                         </div>
                         <div>
-                          <p className="text-sm font-bold text-slate-900">{user.name}</p>
+                          <p className="text-sm font-bold text-slate-900">{user.name || '-'}</p>
                           <p className="text-[10px] text-slate-400 font-medium">{user.email}</p>
                         </div>
                       </div>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 py-5">
                       <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                        user.plan === 'Ultimate' ? 'bg-emerald-100 text-emerald-700' :
-                        user.plan === 'Growth' ? 'bg-blue-100 text-blue-700' :
-                        user.plan === 'Starter' ? 'bg-amber-100 text-amber-700' :
+                        (user.plan || 'free') === 'Ultimate' ? 'bg-slate-900 text-white' :
+                        (user.plan || 'free') === 'Growth' ? 'bg-emerald-600 text-white' :
+                        (user.plan || 'free') === 'Starter' ? 'bg-emerald-100 text-emerald-700' :
                         'bg-slate-100 text-slate-600'
-                      }`}>{user.plan}</span>
+                      }`}>{user.plan || 'free'}</span>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 py-5">
                       <div className="flex flex-col gap-1.5 min-w-[120px]">
                         <div className="flex justify-between text-[10px] font-bold">
-                          <span className="text-slate-900">{user.tokensUsed.toLocaleString()}</span>
-                          <span className="text-slate-400">/ {user.limit.toLocaleString()}</span>
+                          <span className="text-slate-900">{(user.tokensUsed || 0).toLocaleString()}</span>
+                          <span className="text-slate-400">/ {(user.limit || 0).toLocaleString()}</span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className={`h-full transition-all duration-500 ${
-                              percentage > 90 ? 'bg-rose-500' : 
-                              percentage > 70 ? 'bg-amber-500' : 
+                              percentage > 90 ? 'bg-rose-500' :
+                              percentage > 70 ? 'bg-amber-500' :
                               'bg-emerald-500'
                             }`}
                             style={{ width: `${Math.min(percentage, 100)}%` }}
@@ -10030,20 +10052,20 @@ const TokenUsageView = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-8 py-5">
+                    <td className="px-6 py-5">
                       <span className={`text-[10px] font-bold uppercase tracking-wider ${
-                        percentage > 90 ? 'text-rose-600' : 
-                        percentage > 70 ? 'text-amber-600' : 
+                        percentage > 90 ? 'text-rose-600' :
+                        percentage > 70 ? 'text-amber-600' :
                         'text-emerald-600'
                       }`}>
                         {percentage > 90 ? 'Hampir Tamat' : percentage > 70 ? 'Sederhana' : 'Mencukupi'}
                       </span>
                     </td>
-                    <td className="px-8 py-5 text-xs font-medium text-slate-400">
-                      {user.lastUsed}
+                    <td className="px-6 py-5 text-xs font-medium text-slate-400">
+                      {user.lastUsed ? format(parseISO(user.lastUsed), 'dd/MM/yyyy') : '-'}
                     </td>
-                    <td className="px-8 py-5 text-right">
-                      <button 
+                    <td className="px-6 py-5 text-right">
+                      <button
                         onClick={() => setShowTopUp({ show: true, user })}
                         className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-100 transition-all flex items-center gap-1.5 ml-auto"
                       >
@@ -10058,6 +10080,7 @@ const TokenUsageView = () => {
           </table>
         </div>
       </div>
+      )}
 
       <AnimatePresence>
         {showTopUp.show && (
