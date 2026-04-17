@@ -1349,11 +1349,21 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
         </form>
 
         <div className="mt-8 text-center">
-          <button 
+          <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-xs font-bold text-slate-400 hover:text-emerald-600 transition-colors uppercase tracking-widest"
+            className="relative text-xs font-bold text-slate-400 hover:text-emerald-600 transition-colors duration-300 uppercase tracking-widest group overflow-hidden px-2 py-1"
           >
-            {isLogin ? 'Tiada akaun? Daftar di sini' : 'Sudah ada akaun? Log masuk'}
+            <span className="relative z-10 inline-flex items-center gap-1.5">
+              <span
+                key={isLogin ? 'register' : 'login'}
+                className="inline-block"
+                style={{ animation: 'fadeSlideUp 0.35s ease forwards' }}
+              >
+                {isLogin ? 'Tiada akaun? Daftar di sini' : 'Sudah ada akaun? Log masuk'}
+              </span>
+              <span className="inline-block transition-transform duration-300 group-hover:translate-x-0.5">→</span>
+            </span>
+            <span className="absolute bottom-0 left-0 h-[1.5px] w-0 bg-emerald-500 group-hover:w-full transition-all duration-300 rounded-full" />
           </button>
         </div>
       </motion.div>
