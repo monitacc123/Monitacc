@@ -9023,86 +9023,134 @@ const PREMIUM_GATE_INFO: Record<string, { title: string; desc: string; icon: Rea
   },
 };
 
+const PLAN_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  Starter: { bg: 'bg-sky-50', text: 'text-sky-700', border: 'border-sky-200', dot: 'bg-sky-500' },
+  Growth: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-200', dot: 'bg-emerald-500' },
+  Ultimate: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', dot: 'bg-amber-500' },
+};
+
 const PremiumGateView = ({ featureId, onUpgrade, onBack }: { featureId: string; onUpgrade: () => void; onBack: () => void }) => {
   const info = PREMIUM_GATE_INFO[featureId];
   if (!info) return null;
   const Icon = info.icon;
 
-  const upgradePlans: Record<string, { plans: string[]; prices: string[] }> = {
-    Starter: { plans: ['Starter', 'Growth', 'Ultimate'], prices: ['RM 50/bln', 'RM 100/bln', 'RM 150/bln'] },
-    Ultimate: { plans: ['Ultimate'], prices: ['RM 150/bln'] },
+  const upgradePlans: Record<string, { name: string; price: string; period: string; highlight: boolean }[]> = {
+    Starter: [
+      { name: 'Starter', price: 'RM 50', period: '/bulan', highlight: false },
+      { name: 'Growth', price: 'RM 100', period: '/bulan', highlight: false },
+      { name: 'Ultimate', price: 'RM 150', period: '/bulan', highlight: true },
+    ],
+    Ultimate: [
+      { name: 'Ultimate', price: 'RM 150', period: '/bulan', highlight: true },
+    ],
   };
-  const planOptions = upgradePlans[info.requiredPlan] || { plans: [], prices: [] };
+  const planOptions = upgradePlans[info.requiredPlan] || [];
 
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-2xl mx-auto flex items-center justify-center min-h-[80vh]">
-      <div className="w-full">
-        <div className="card-premium overflow-hidden shadow-2xl">
-          <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-10 text-white text-center relative overflow-hidden">
-            <div className="absolute inset-0 opacity-5">
-              <Crown size={300} className="absolute -top-20 -right-20" />
-            </div>
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.35, ease: 'easeOut' }}
+      className="min-h-screen flex items-center justify-center px-4 py-12 md:pl-64"
+    >
+      <div className="w-full max-w-lg">
+        <div className="bg-white rounded-3xl overflow-hidden shadow-2xl shadow-slate-200/80 border border-slate-100">
+
+          <div className="relative bg-gradient-to-b from-slate-950 to-slate-800 pt-12 pb-10 px-8 text-center overflow-hidden">
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-80 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 right-0 w-48 h-48 bg-amber-400/8 rounded-full blur-2xl pointer-events-none" />
+
             <div className="relative z-10">
-              <div className="w-20 h-20 bg-white/10 backdrop-blur-sm rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-xl border border-white/10">
-                <Icon size={36} className="text-white" strokeWidth={1.5} />
-                <span className="absolute -top-2 -right-2 w-7 h-7 bg-amber-400 rounded-full flex items-center justify-center shadow-lg">
-                  <Lock size={12} className="text-white" strokeWidth={2.5} />
+              <div className="relative inline-flex mb-6">
+                <div className="w-20 h-20 rounded-[22px] bg-white/8 border border-white/10 flex items-center justify-center backdrop-blur-sm shadow-2xl">
+                  <Icon size={34} className="text-white" strokeWidth={1.5} />
+                </div>
+                <span className="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-amber-400 to-amber-500 rounded-full flex items-center justify-center shadow-lg shadow-amber-500/30 border-2 border-slate-950">
+                  <Lock size={13} className="text-white" strokeWidth={2.5} />
                 </span>
               </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-400/20 border border-amber-400/30 rounded-full text-amber-300 text-[10px] font-bold uppercase tracking-widest mb-4">
-                <Crown size={10} />
-                Pakej {info.requiredPlan} & ke atas
+
+              <div className="inline-flex items-center gap-1.5 px-3.5 py-1.5 bg-amber-400/15 border border-amber-400/25 rounded-full mb-5">
+                <Crown size={10} className="text-amber-300" />
+                <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">Pakej {info.requiredPlan} & ke atas</span>
               </div>
-              <h2 className="text-2xl font-black tracking-tight font-display mb-3">{info.title}</h2>
-              <p className="text-white/60 text-sm font-medium max-w-sm mx-auto leading-relaxed">{info.desc}</p>
+
+              <h1 className="text-[26px] font-black text-white tracking-tight font-display mb-3 leading-tight">
+                {info.title}
+              </h1>
+              <p className="text-white/50 text-[13px] leading-relaxed max-w-xs mx-auto font-medium">
+                {info.desc}
+              </p>
             </div>
           </div>
 
-          <div className="p-8 bg-white">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 text-center">Ciri-ciri yang akan anda dapat</p>
-            <div className="grid grid-cols-2 gap-3 mb-8">
-              {info.features.map((f, i) => (
-                <div key={i} className="flex items-center gap-2.5 p-3 bg-slate-50 rounded-xl">
-                  <div className="w-5 h-5 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
-                    <CheckCircle2 size={12} />
-                  </div>
-                  <span className="text-xs font-semibold text-slate-700">{f}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-slate-50 rounded-2xl p-4 mb-6">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3 text-center">Pilih pakej anda</p>
-              <div className="space-y-2">
-                {planOptions.plans.map((plan, i) => (
-                  <div key={plan} className={`flex items-center justify-between p-3 rounded-xl border-2 ${plan === 'Ultimate' ? 'border-amber-200 bg-amber-50' : 'border-slate-200 bg-white'}`}>
-                    <div className="flex items-center gap-2">
-                      {plan === 'Ultimate' && <Crown size={14} className="text-amber-500" />}
-                      <span className="text-sm font-bold text-slate-800">{plan}</span>
-                      {plan === 'Ultimate' && <span className="text-[9px] font-bold bg-amber-400 text-white px-1.5 py-0.5 rounded-full">Popular</span>}
+          <div className="px-7 py-7">
+            <div className="mb-7">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Apa yang anda dapat</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                {info.features.map((f, i) => (
+                  <div key={i} className="flex items-center gap-2.5 bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
+                    <div className="w-6 h-6 rounded-lg bg-emerald-100 flex items-center justify-center shrink-0">
+                      <Check size={12} className="text-emerald-600" strokeWidth={2.5} />
                     </div>
-                    <span className="text-sm font-black text-emerald-600">{planOptions.prices[i]}</span>
+                    <span className="text-[12px] font-semibold text-slate-700 leading-tight">{f}</span>
                   </div>
                 ))}
               </div>
             </div>
 
+            {planOptions.length > 0 && (
+              <div className="mb-7">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Pakej yang sesuai</p>
+                <div className="space-y-2.5">
+                  {planOptions.map((plan) => {
+                    const colors = PLAN_COLORS[plan.name] || PLAN_COLORS['Starter'];
+                    return (
+                      <div
+                        key={plan.name}
+                        className={`flex items-center justify-between px-4 py-3.5 rounded-2xl border-2 transition-all ${
+                          plan.highlight
+                            ? 'border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 shadow-sm'
+                            : `border-slate-100 bg-slate-50`
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <div className={`w-2 h-2 rounded-full ${colors.dot}`} />
+                          <span className={`text-[13px] font-bold ${plan.highlight ? 'text-amber-800' : 'text-slate-700'}`}>{plan.name}</span>
+                          {plan.highlight && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-400 text-white text-[9px] font-black rounded-full uppercase tracking-wide">
+                              <Crown size={7} /> Popular
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-right">
+                          <span className={`text-[15px] font-black ${plan.highlight ? 'text-amber-700' : 'text-slate-800'}`}>{plan.price}</span>
+                          <span className="text-[10px] text-slate-400 font-medium">{plan.period}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <button
               onClick={onUpgrade}
-              className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm rounded-2xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2 mb-3"
+              className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-[14px] rounded-2xl hover:from-emerald-600 hover:to-emerald-700 active:scale-[0.98] transition-all duration-200 shadow-lg shadow-emerald-200 flex items-center justify-center gap-2.5 mb-3"
             >
-              <Crown size={16} /> Naik Taraf Sekarang
+              <Crown size={16} strokeWidth={2} />
+              Naik Taraf Sekarang
             </button>
             <button
               onClick={onBack}
-              className="w-full py-3 text-slate-400 text-sm font-bold hover:text-slate-600 transition-colors"
+              className="w-full py-3 text-slate-400 text-[13px] font-semibold hover:text-slate-600 transition-colors rounded-xl hover:bg-slate-50"
             >
               Kembali ke Dashboard
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };
 
