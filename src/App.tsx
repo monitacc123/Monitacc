@@ -991,14 +991,22 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
   </div>
 );
 
-const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void }) => {
-  const [isLogin, setIsLogin] = useState(true);
+const AUTH_PLANS = [
+  { name: 'Percuma', price: '0', period: null, desc: '5 Imbasan / bln' },
+  { name: 'Starter', price: '50', period: '/bln', desc: '100 Imbasan / bln' },
+  { name: 'Growth', price: '100', period: '/bln', desc: '250 Imbasan / bln' },
+  { name: 'Ultimate', price: '150', period: '/bln', desc: 'Unlimited Imbasan' },
+];
+
+const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null }) => {
+  const [isLogin, setIsLogin] = useState(!initialPlan);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string>(initialPlan || 'Percuma');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -1032,6 +1040,13 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType, isNewUser
         onAuthSuccess(userData, false);
       } else {
         userData = await apiRegister(name, email, phone, password, companyName);
+        if (selectedPlan && selectedPlan !== 'Percuma') {
+          try {
+            const url = await createCheckoutSession(selectedPlan as PaidPlan);
+            window.location.href = url;
+            return;
+          } catch (_) {}
+        }
         onAuthSuccess(userData, true);
       }
     } catch (err: any) {
@@ -1084,14 +1099,50 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType, isNewUser
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Telefon</label>
-                <input 
-                  type="tel" 
+                <input
+                  type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   placeholder="Contoh: 0123456789"
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Pilih Pakej</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {AUTH_PLANS.map((plan) => {
+                    const isSelected = selectedPlan === plan.name;
+                    return (
+                      <button
+                        key={plan.name}
+                        type="button"
+                        onClick={() => setSelectedPlan(plan.name)}
+                        className={`relative p-3 rounded-xl border-2 text-left transition-all ${
+                          isSelected
+                            ? plan.name === 'Ultimate'
+                              ? 'border-slate-800 bg-slate-900 text-white'
+                              : 'border-emerald-500 bg-emerald-50'
+                            : 'border-slate-200 bg-slate-50 hover:border-slate-300'
+                        }`}
+                      >
+                        {plan.name === 'Ultimate' && (
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full whitespace-nowrap">Popular</span>
+                        )}
+                        <div className={`text-xs font-bold mb-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white' : isSelected ? 'text-emerald-700' : 'text-slate-700'}`}>{plan.name}</div>
+                        <div className={`flex items-baseline gap-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white' : isSelected ? 'text-emerald-600' : 'text-slate-500'}`}>
+                          <span className="text-[10px] font-bold">RM</span>
+                          <span className="text-base font-extrabold">{plan.price}</span>
+                          {plan.period && <span className="text-[9px] font-medium">{plan.period}</span>}
+                        </div>
+                        <div className={`text-[9px] font-medium mt-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white/70' : 'text-slate-400'}`}>{plan.desc}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {selectedPlan !== 'Percuma' && (
+                  <p className="text-[10px] text-slate-400 font-medium text-center pt-0.5">Anda akan diarahkan ke halaman pembayaran selepas mendaftar.</p>
+                )}
               </div>
             </>
           )}
@@ -1134,7 +1185,13 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType, isNewUser
           {error && <p className="text-rose-500 text-xs font-bold text-center">{error}</p>}
 
           <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 text-sm">
-            {loading ? 'Sila Tunggu...' : isLogin ? 'Log Masuk' : 'Daftar Sekarang'}
+            {loading
+              ? 'Sila Tunggu...'
+              : isLogin
+              ? 'Log Masuk'
+              : selectedPlan !== 'Percuma'
+              ? `Daftar & Teruskan ke Pembayaran`
+              : 'Daftar Percuma'}
           </button>
         </form>
 
@@ -11289,7 +11346,7 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {view === 'landing' && <LandingPage onStart={(plan) => { if (plan) setPendingPlan(plan); setView('auth'); }} onAffiliateLogin={() => setView('affiliate-auth')} />}
-            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} />}
+            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} initialPlan={pendingPlan} />}
             {view === 'choose-plan' && <ChoosePlanView user={user} onComplete={() => setView('welcome')} />}
             {view === 'welcome' && <WelcomeView user={user} onComplete={() => setView('dashboard')} />}
             {view === 'dashboard' && <Dashboard stats={stats} records={records} sales={sales} user={user} setView={setView} salesStats={salesStats} onAddSale={() => { setTriggerAddSale(prev => prev + 1); setView('sales'); }} onScan={() => setView('scan')} onFileSelect={(file) => {
