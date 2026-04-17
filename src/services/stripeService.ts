@@ -60,8 +60,13 @@ export async function createCheckoutSession(plan: PaidPlan, accessToken?: string
     }
   );
 
-  const data = await response.json();
-  if (!response.ok) throw new Error(data.error || 'Gagal mencipta sesi pembayaran');
+  let data: any;
+  try {
+    data = await response.json();
+  } catch {
+    throw new Error(`Gagal mencipta sesi pembayaran (HTTP ${response.status})`);
+  }
+  if (!response.ok) throw new Error(data?.error || `Gagal mencipta sesi pembayaran (HTTP ${response.status})`);
   if (!data.url) throw new Error('Tiada URL pembayaran diterima');
 
   return data.url;
