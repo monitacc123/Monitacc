@@ -10945,16 +10945,25 @@ export default function App() {
     setView('landing');
   };
 
-  const handleAuthSuccess = (userData: UserType, isNewUser: boolean) => {
+  const handleAuthSuccess = async (userData: UserType, isNewUser: boolean) => {
     setUser(userData);
+    const planToProcess = pendingPlan;
+    setPendingPlan(null);
+
+    if (planToProcess && planToProcess !== 'Percuma') {
+      try {
+        const url = await createCheckoutSession(planToProcess as PaidPlan);
+        window.location.href = url;
+        return;
+      } catch (err) {
+        console.error('Checkout error:', err);
+      }
+    }
+
     if (isNewUser) {
       setView('choose-plan');
-    } else if (pendingPlan && pendingPlan !== 'Percuma') {
-      setPendingPlan(null);
-      setView('plans');
     } else {
-      setPendingPlan(null);
-      setView('welcome');
+      setView('dashboard');
     }
   };
 
