@@ -664,9 +664,175 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   );
 };
 
-const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) => void, onAffiliateLogin: () => void }) => (
+const LANDING_PLANS = [
+  {
+    name: 'Percuma',
+    price: '0',
+    features: [
+      '5 Imbasan Transaksi / bulan',
+      'Unlimited Rekod Manual',
+      '1× Imbasan Bank Statement',
+      'Monitacc Assistant',
+    ],
+    cta: 'Mula Percuma',
+    popular: false,
+  },
+  {
+    name: 'Starter',
+    price: '50',
+    period: '/bln',
+    features: [
+      '100 Imbasan Transaksi / bulan',
+      'Unlimited Rekod Manual',
+      '3× Imbasan Bank Statement',
+      'Monitacc Assistant',
+      '1× Smart Analysis',
+    ],
+    cta: 'Pilih Starter',
+    popular: false,
+  },
+  {
+    name: 'Growth',
+    price: '100',
+    period: '/bln',
+    features: [
+      '250 Imbasan Transaksi / bulan',
+      'Unlimited Rekod Manual',
+      '9× Imbasan Bank Statement',
+      'Monitacc Assistant',
+      '4× Smart Analysis',
+    ],
+    cta: 'Pilih Growth',
+    popular: false,
+  },
+  {
+    name: 'Ultimate',
+    price: '150',
+    period: '/bln',
+    features: [
+      'Unlimited Imbasan Transaksi',
+      'Unlimited Rekod Manual',
+      'Unlimited Bank Statement',
+      'Unlimited Smart Analysis',
+      'P&L Report + Balance Sheet',
+      'Reconciliation Features',
+    ],
+    cta: 'Pilih Ultimate',
+    popular: true,
+  },
+];
+
+const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_PLANS[0]; onConfirm: () => void; onClose: () => void }) => (
+  <AnimatePresence>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.92, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.92, y: 20 }}
+        transition={{ type: 'spring', duration: 0.4, bounce: 0.15 }}
+        className="bg-white rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="bg-slate-900 px-6 py-5 text-center relative">
+          <button onClick={onClose} className="absolute top-4 right-4 text-white/40 hover:text-white transition-colors">
+            <X size={18} />
+          </button>
+          {plan.popular && (
+            <span className="inline-block bg-emerald-500 text-white text-[8px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full mb-3">
+              Paling Popular
+            </span>
+          )}
+          <h3 className="text-lg font-bold text-white tracking-tight font-display">Pakej {plan.name}</h3>
+          <div className="flex items-baseline justify-center gap-0.5 mt-2">
+            <span className="text-[11px] font-bold text-white/50">RM</span>
+            <span className="text-4xl font-extrabold text-white font-display">{plan.price}</span>
+            {plan.period && <span className="text-[11px] font-bold text-white/50">{plan.period}</span>}
+          </div>
+        </div>
+
+        <div className="px-6 py-5">
+          <ul className="space-y-2.5 mb-5">
+            {plan.features.map((f, j) => (
+              <li key={j} className="flex items-start gap-2.5 text-[12px] font-medium text-slate-700 leading-snug">
+                <Check size={13} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
+                {f}
+              </li>
+            ))}
+          </ul>
+
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-5">
+            <div className="flex items-center gap-2.5 mb-2">
+              <CreditCard size={15} className="text-slate-400" />
+              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Maklumat Pembayaran</span>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              Anda akan diminta memasukkan butiran kad kredit/debit melalui Stripe selepas mendaftar akaun. Pembayaran diproses dengan selamat.
+            </p>
+          </div>
+
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-5">
+            <div className="flex items-center gap-2.5 mb-1.5">
+              <ShieldCheck size={15} className="text-emerald-600" />
+              <span className="text-[11px] font-bold text-emerald-700">Langkah Seterusnya</span>
+            </div>
+            <ol className="text-[11px] text-emerald-700/80 leading-relaxed space-y-1 pl-5 list-decimal">
+              <li>Daftar akaun Monitacc</li>
+              <li>Masukkan butiran kad pembayaran</li>
+              <li>Langganan aktif serta-merta</li>
+            </ol>
+          </div>
+
+          <button
+            onClick={onConfirm}
+            className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
+          >
+            Langgan Pakej {plan.name}
+            <ArrowRight size={15} strokeWidth={2.5} />
+          </button>
+
+          <p className="text-center text-[10px] text-slate-400 font-medium mt-3">
+            Batalkan bila-bila masa. Tiada komitmen jangka panjang.
+          </p>
+        </div>
+      </motion.div>
+    </motion.div>
+  </AnimatePresence>
+);
+
+const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) => void, onAffiliateLogin: () => void }) => {
+  const [selectedPlan, setSelectedPlan] = useState<typeof LANDING_PLANS[0] | null>(null);
+
+  const handlePlanClick = (plan: typeof LANDING_PLANS[0]) => {
+    if (plan.name === 'Percuma') {
+      onStart();
+      return;
+    }
+    setSelectedPlan(plan);
+  };
+
+  const handleConfirmSubscribe = () => {
+    if (selectedPlan) {
+      onStart(selectedPlan.name);
+      setSelectedPlan(null);
+    }
+  };
+
+  return (
   <div className="min-h-screen bg-white flex flex-col overflow-x-hidden">
-    {/* Navbar */}
+    {selectedPlan && (
+      <PlanConfirmModal
+        plan={selectedPlan}
+        onConfirm={handleConfirmSubscribe}
+        onClose={() => setSelectedPlan(null)}
+      />
+    )}
+
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 px-5 py-4">
       <div className="max-w-6xl mx-auto flex justify-between items-center">
         <div className="flex items-center gap-2.5">
@@ -683,7 +849,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             Portal Affiliated
           </button>
           <button
-            onClick={onStart}
+            onClick={() => onStart()}
             className="flex items-center gap-1.5 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
           >
             Log Masuk
@@ -693,7 +859,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
     </header>
 
     <main className="flex-1">
-      {/* Hero Section */}
       <section className="px-5 pt-14 pb-16 text-center bg-white">
         <div className="max-w-2xl mx-auto">
           <motion.div
@@ -702,7 +867,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             transition={{ duration: 0.3 }}
             className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold uppercase tracking-wider mb-7 border border-emerald-100"
           >
-            <Zap size={10} fill="currentColor" /> Smart Accounting · Empower by Wekeyra 🇲🇾
+            <Zap size={10} fill="currentColor" /> Smart Accounting · Empower by Wekeyra
           </motion.div>
 
           <motion.h2
@@ -733,7 +898,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             className="flex flex-col gap-3 items-center"
           >
             <button
-              onClick={onStart}
+              onClick={() => onStart()}
               className="w-full max-w-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
             >
               Mula Sekarang — Percuma
@@ -747,7 +912,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             </button>
           </motion.div>
 
-          {/* Trust indicators */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -768,7 +932,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         </div>
       </section>
 
-      {/* Feature Cards */}
       <section className="px-5 py-14 bg-slate-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
@@ -800,7 +963,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         </div>
       </section>
 
-      {/* Testimonials */}
       <section className="px-5 py-14 bg-white">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
@@ -840,7 +1002,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         </div>
       </section>
 
-      {/* Pricing Section */}
       <section className="px-5 py-14 bg-slate-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
@@ -848,63 +1009,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             <p className="text-slate-500 text-sm font-medium">Mula percuma. Upgrade bila bisnes berkembang.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[
-              {
-                name: 'Percuma',
-                price: '0',
-                features: [
-                  '5 Imbasan Transaksi / bulan',
-                  'Unlimited Rekod Manual',
-                  '1× Imbasan Bank Statement',
-                  'Monitacc Assistant',
-                ],
-                cta: 'Mula Percuma',
-                popular: false,
-              },
-              {
-                name: 'Starter',
-                price: '50',
-                period: '/bln',
-                features: [
-                  '100 Imbasan Transaksi / bulan',
-                  'Unlimited Rekod Manual',
-                  '3× Imbasan Bank Statement',
-                  'Monitacc Assistant',
-                  '1× Smart Analysis',
-                ],
-                cta: 'Pilih Starter',
-                popular: false,
-              },
-              {
-                name: 'Growth',
-                price: '100',
-                period: '/bln',
-                features: [
-                  '250 Imbasan Transaksi / bulan',
-                  'Unlimited Rekod Manual',
-                  '9× Imbasan Bank Statement',
-                  'Monitacc Assistant',
-                  '4× Smart Analysis',
-                ],
-                cta: 'Pilih Growth',
-                popular: false,
-              },
-              {
-                name: 'Ultimate',
-                price: '150',
-                period: '/bln',
-                features: [
-                  'Unlimited Imbasan Transaksi',
-                  'Unlimited Rekod Manual',
-                  'Unlimited Bank Statement',
-                  'Unlimited Smart Analysis',
-                  'P&L Report + Balance Sheet',
-                  'Reconciliation Features',
-                ],
-                cta: 'Pilih Ultimate',
-                popular: true,
-              },
-            ].map((p, i) => (
+            {LANDING_PLANS.map((p, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, y: 16 }}
@@ -937,7 +1042,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                   ))}
                 </ul>
                 <button
-                  onClick={() => onStart(p.name)}
+                  onClick={() => handlePlanClick(p)}
                   className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
                     p.popular
                       ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20'
@@ -952,7 +1057,6 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
         </div>
       </section>
 
-      {/* Bottom CTA */}
       <section className="px-5 py-16 bg-slate-900 text-white text-center">
         <div className="max-w-lg mx-auto">
           <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
@@ -961,7 +1065,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
           <h3 className="text-2xl md:text-3xl font-bold font-display mb-3">Mula Guna Monitacc Hari Ini</h3>
           <p className="text-slate-400 text-sm mb-8 leading-relaxed">Daftar percuma. Tiada kredit kad diperlukan. Mula urus akaun bisnes dengan lebih mudah.</p>
           <button
-            onClick={onStart}
+            onClick={() => onStart()}
             className="w-full max-w-xs mx-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
           >
             Daftar Percuma
@@ -989,7 +1093,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
       </div>
     </footer>
   </div>
-);
+  );
+};
 
 const AUTH_PLANS = [
   { name: 'Percuma', price: '0', period: null, desc: '5 Imbasan / bln' },
@@ -1214,6 +1319,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<typeof LANDING_PLANS[0] | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1258,7 +1364,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
     {
       name: 'Percuma',
       price: '0',
-      period: null,
+      period: undefined as string | undefined,
       features: ['5 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '1× Bank Statement', 'Monitacc Assistant'],
       popular: false,
       cta: 'Mula Percuma',
@@ -1289,15 +1395,22 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
     },
   ];
 
-  const handleChoose = async (plan: typeof plans[0]) => {
+  const handlePlanClick = (plan: typeof plans[0]) => {
     setError('');
     if (plan.name === 'Percuma') {
       onComplete();
       return;
     }
-    setLoadingPlan(plan.name);
+    setSelectedPlan(plan);
+  };
+
+  const handleConfirmSubscribe = async () => {
+    if (!selectedPlan) return;
+    const planName = selectedPlan.name;
+    setSelectedPlan(null);
+    setLoadingPlan(planName);
     try {
-      const url = await createCheckoutSession(plan.name as PaidPlan);
+      const url = await createCheckoutSession(planName as PaidPlan);
       window.location.href = url;
     } catch (err: any) {
       setError(err.message || 'Ralat semasa memproses pembayaran. Sila cuba lagi.');
@@ -1309,6 +1422,14 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col overflow-x-hidden">
+      {selectedPlan && (
+        <PlanConfirmModal
+          plan={selectedPlan}
+          onConfirm={handleConfirmSubscribe}
+          onClose={() => setSelectedPlan(null)}
+        />
+      )}
+
       <div className="bg-slate-900 px-5 py-5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/30">
@@ -1414,7 +1535,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
                   ))}
                 </ul>
                 <button
-                  onClick={() => handleChoose(plan)}
+                  onClick={() => handlePlanClick(plan)}
                   disabled={isLoading}
                   className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
                     plan.popular
@@ -9459,6 +9580,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<{ name: string; price: string; period?: string; features: string[]; popular: boolean } | null>(null);
 
   const handleManageSubscription = async () => {
     setError('');
@@ -9513,8 +9635,10 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
     }
   }, []);
 
-  const handleSubscribe = async (planName: string) => {
-    if (planName === 'Percuma') return;
+  const handleConfirmSubscribe = async () => {
+    if (!selectedPlan) return;
+    const planName = selectedPlan.name;
+    setSelectedPlan(null);
     setError('');
     setLoadingPlan(planName);
     try {
@@ -9530,6 +9654,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
     {
       name: 'Percuma',
       price: '0',
+      period: undefined as string | undefined,
       features: [
         '5 Imbasan Transaksi / bulan',
         'Unlimited Rekod Transaksi Manual',
@@ -9541,6 +9666,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
     {
       name: 'Starter',
       price: '50',
+      period: '/bln',
       features: [
         '100 Imbasan Transaksi / bulan',
         'Unlimited Rekod Transaksi Manual',
@@ -9553,6 +9679,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
     {
       name: 'Growth',
       price: '100',
+      period: '/bln',
       features: [
         '250 Imbasan Transaksi / bulan',
         'Unlimited Rekod Transaksi Manual',
@@ -9565,6 +9692,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
     {
       name: 'Ultimate',
       price: '150',
+      period: '/bln',
       features: [
         'Unlimited Imbasan Transaksi',
         'Unlimited Rekod Transaksi Manual',
@@ -9583,6 +9711,14 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
 
   return (
     <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-5xl mx-auto">
+      {selectedPlan && (
+        <PlanConfirmModal
+          plan={selectedPlan}
+          onConfirm={handleConfirmSubscribe}
+          onClose={() => setSelectedPlan(null)}
+        />
+      )}
+
       <header className="mb-10 text-center">
         <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pilih Plan Anda</h2>
         <p className="text-slate-500 text-sm font-medium">Sesuai untuk setiap tahap perniagaan anda.</p>
@@ -9663,7 +9799,9 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
                 ))}
               </ul>
               <button
-                onClick={() => handleSubscribe(plan.name)}
+                onClick={() => {
+                  if (!isActive && !isFree) setSelectedPlan(plan);
+                }}
                 disabled={isActive || isFree || isLoading}
                 className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
                   isActive
