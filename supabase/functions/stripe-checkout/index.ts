@@ -6,31 +6,40 @@ const supabase = createClient(Deno.env.get('SUPABASE_URL') ?? '', Deno.env.get('
 const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY')!;
 const stripe = new Stripe(stripeSecret, {
   appInfo: {
-    name: 'Bolt Integration',
+    name: 'Monitacc',
     version: '1.0.0',
   },
 });
 
-// Helper function to create responses with CORS headers
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+};
+
 function corsResponse(body: string | object | null, status = 200) {
-  const headers = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
-  };
-
-  // For 204 No Content, don't include Content-Type or body
   if (status === 204) {
-    return new Response(null, { status, headers });
+    return new Response(null, { status, headers: corsHeaders });
   }
-
   return new Response(JSON.stringify(body), {
     status,
-    headers: {
-      ...headers,
-      'Content-Type': 'application/json',
-    },
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+async function resolvePriceId(productId: string): Promise<string> {
+  const prices = await stripe.prices.list({
+    product: productId,
+    active: true,
+    limit: 1,
+    type: 'recurring',
+  });
+
+  if (prices.data.length === 0) {
+    throw new Error(`No active recurring price found for product ${productId}`);
+  }
+
+  return prices.data[0].id;
 }
 
 Deno.serve(async (req) => {
@@ -43,20 +52,28 @@ Deno.serve(async (req) => {
       return corsResponse({ error: 'Method not allowed' }, 405);
     }
 
-    const { price_id, success_url, cancel_url, mode } = await req.json();
+    const body = await req.json();
+    const { product_id, price_id, success_url, cancel_url, mode } = body;
 
-    const error = validateParameters(
-      { price_id, success_url, cancel_url, mode },
-      {
-        cancel_url: 'string',
-        price_id: 'string',
-        success_url: 'string',
-        mode: { values: ['payment', 'subscription'] },
-      },
-    );
+    if (!success_url || typeof success_url !== 'string') {
+      return corsResponse({ error: 'Missing required parameter success_url' }, 400);
+    }
+    if (!cancel_url || typeof cancel_url !== 'string') {
+      return corsResponse({ error: 'Missing required parameter cancel_url' }, 400);
+    }
+    if (!['payment', 'subscription'].includes(mode)) {
+      return corsResponse({ error: 'Expected parameter mode to be one of payment, subscription' }, 400);
+    }
+    if (!product_id && !price_id) {
+      return corsResponse({ error: 'Missing required parameter product_id or price_id' }, 400);
+    }
 
-    if (error) {
-      return corsResponse({ error }, 400);
+    let resolvedPriceId: string;
+    if (product_id) {
+      resolvedPriceId = await resolvePriceId(product_id);
+      console.log(`Resolved product ${product_id} to price ${resolvedPriceId}`);
+    } else {
+      resolvedPriceId = price_id;
     }
 
     const authHeader = req.headers.get('Authorization')!;
@@ -83,21 +100,15 @@ Deno.serve(async (req) => {
 
     if (getCustomerError) {
       console.error('Failed to fetch customer information from the database', getCustomerError);
-
       return corsResponse({ error: 'Failed to fetch customer information' }, 500);
     }
 
     let customerId;
 
-    /**
-     * In case we don't have a mapping yet, the customer does not exist and we need to create one.
-     */
     if (!customer || !customer.customer_id) {
       const newCustomer = await stripe.customers.create({
         email: user.email,
-        metadata: {
-          userId: user.id,
-        },
+        metadata: { userId: user.id },
       });
 
       console.log(`Created new Stripe customer ${newCustomer.id} for user ${user.id}`);
@@ -109,15 +120,12 @@ Deno.serve(async (req) => {
 
       if (createCustomerError) {
         console.error('Failed to save customer information in the database', createCustomerError);
-
-        // Try to clean up both the Stripe customer and subscription record
         try {
           await stripe.customers.del(newCustomer.id);
           await supabase.from('stripe_subscriptions').delete().eq('customer_id', newCustomer.id);
         } catch (deleteError) {
           console.error('Failed to clean up after customer mapping error:', deleteError);
         }
-
         return corsResponse({ error: 'Failed to create customer mapping' }, 500);
       }
 
@@ -129,26 +137,21 @@ Deno.serve(async (req) => {
 
         if (createSubscriptionError) {
           console.error('Failed to save subscription in the database', createSubscriptionError);
-
-          // Try to clean up the Stripe customer since we couldn't create the subscription
           try {
             await stripe.customers.del(newCustomer.id);
           } catch (deleteError) {
             console.error('Failed to delete Stripe customer after subscription creation error:', deleteError);
           }
-
           return corsResponse({ error: 'Unable to save the subscription in the database' }, 500);
         }
       }
 
       customerId = newCustomer.id;
-
       console.log(`Successfully set up new customer ${customerId} with subscription record`);
     } else {
       customerId = customer.customer_id;
 
       if (mode === 'subscription') {
-        // Verify subscription exists for existing customer
         const { data: subscription, error: getSubscriptionError } = await supabase
           .from('stripe_subscriptions')
           .select('status')
@@ -157,12 +160,10 @@ Deno.serve(async (req) => {
 
         if (getSubscriptionError) {
           console.error('Failed to fetch subscription information from the database', getSubscriptionError);
-
           return corsResponse({ error: 'Failed to fetch subscription information' }, 500);
         }
 
         if (!subscription) {
-          // Create subscription record for existing customer if missing
           const { error: createSubscriptionError } = await supabase.from('stripe_subscriptions').insert({
             customer_id: customerId,
             status: 'not_started',
@@ -170,20 +171,18 @@ Deno.serve(async (req) => {
 
           if (createSubscriptionError) {
             console.error('Failed to create subscription record for existing customer', createSubscriptionError);
-
             return corsResponse({ error: 'Failed to create subscription record for existing customer' }, 500);
           }
         }
       }
     }
 
-    // create Checkout Session
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
-          price: price_id,
+          price: resolvedPriceId,
           quantity: 1,
         },
       ],
@@ -200,28 +199,3 @@ Deno.serve(async (req) => {
     return corsResponse({ error: error.message }, 500);
   }
 });
-
-type ExpectedType = 'string' | { values: string[] };
-type Expectations<T> = { [K in keyof T]: ExpectedType };
-
-function validateParameters<T extends Record<string, any>>(values: T, expected: Expectations<T>): string | undefined {
-  for (const parameter in values) {
-    const expectation = expected[parameter];
-    const value = values[parameter];
-
-    if (expectation === 'string') {
-      if (value == null) {
-        return `Missing required parameter ${parameter}`;
-      }
-      if (typeof value !== 'string') {
-        return `Expected parameter ${parameter} to be a string got ${JSON.stringify(value)}`;
-      }
-    } else {
-      if (!expectation.values.includes(value)) {
-        return `Expected parameter ${parameter} to be one of ${expectation.values.join(', ')}`;
-      }
-    }
-  }
-
-  return undefined;
-}

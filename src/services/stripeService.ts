@@ -1,12 +1,12 @@
 import { supabase } from '../lib/supabase';
 
-export const STRIPE_PRICE_IDS = {
-  Starter: 'price_1TN9SvAWhTSR0PgOYmTX9xDY',
-  Growth: 'price_1TN9SvAWhTSR0PgO4r2IshXx',
-  Ultimate: 'price_1TN806AWhTSR0PgOSQ9JyXsK',
+export const STRIPE_PRODUCT_IDS = {
+  Starter: 'prod_ULpX4LtYc0l5PO',
+  Growth: 'prod_ULpX2O1F3RgyKE',
+  Ultimate: 'prod_ULpXjF1N7a9rKP',
 } as const;
 
-export type PaidPlan = keyof typeof STRIPE_PRICE_IDS;
+export type PaidPlan = keyof typeof STRIPE_PRODUCT_IDS;
 
 export async function openCustomerPortal(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -52,7 +52,7 @@ export async function createCheckoutSession(plan: PaidPlan, accessToken?: string
         'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
-        price_id: STRIPE_PRICE_IDS[plan],
+        product_id: STRIPE_PRODUCT_IDS[plan],
         success_url: `${baseUrl}/?payment=success&plan=${plan}`,
         cancel_url: `${baseUrl}/?payment=cancelled`,
         mode: 'subscription',

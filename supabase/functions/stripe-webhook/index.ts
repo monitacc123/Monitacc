@@ -6,18 +6,29 @@ const stripeSecret = Deno.env.get('STRIPE_SECRET_KEY')!;
 const stripeWebhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET')!;
 const stripe = new Stripe(stripeSecret, {
   appInfo: {
-    name: 'Bolt Integration',
+    name: 'Monitacc',
     version: '1.0.0',
   },
 });
 
 const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-const PRICE_TO_PLAN: Record<string, string> = {
-  'price_1TN9SvAWhTSR0PgOYmTX9xDY': 'Starter',
-  'price_1TN9SvAWhTSR0PgO4r2IshXx': 'Growth',
-  'price_1TN806AWhTSR0PgOSQ9JyXsK': 'Ultimate',
+const PRODUCT_TO_PLAN: Record<string, string> = {
+  'prod_ULpX4LtYc0l5PO': 'Starter',
+  'prod_ULpX2O1F3RgyKE': 'Growth',
+  'prod_ULpXjF1N7a9rKP': 'Ultimate',
 };
+
+async function resolvePlanFromPriceId(priceId: string): Promise<string> {
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    const productId = typeof price.product === 'string' ? price.product : price.product.id;
+    return PRODUCT_TO_PLAN[productId] || 'free';
+  } catch (err) {
+    console.error(`Failed to resolve plan from price ${priceId}:`, err);
+    return 'free';
+  }
+}
 
 Deno.serve(async (req) => {
   try {
@@ -201,7 +212,7 @@ async function syncUserPlan(customerId: string, priceId: string | null) {
     }
 
     const userId = customerData.user_id;
-    const plan = priceId ? (PRICE_TO_PLAN[priceId] || 'free') : 'free';
+    const plan = priceId ? await resolvePlanFromPriceId(priceId) : 'free';
     const status = priceId ? 'active' : 'cancelled';
     const planStart = priceId ? new Date().toISOString() : null;
 
