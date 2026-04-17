@@ -136,7 +136,7 @@ async function syncCustomerFromStripe(customerId: string) {
       const { error: noSubError } = await supabase.from('stripe_subscriptions').upsert(
         {
           customer_id: customerId,
-          subscription_status: 'not_started',
+          status: 'not_started',
         },
         { onConflict: 'customer_id' },
       );
@@ -202,7 +202,7 @@ async function syncUserPlan(customerId: string, priceId: string | null) {
 
     const userId = customerData.user_id;
     const plan = priceId ? (PRICE_TO_PLAN[priceId] || 'free') : 'free';
-    const status = priceId ? 'active' : 'active';
+    const status = priceId ? 'active' : 'cancelled';
     const planStart = priceId ? new Date().toISOString() : null;
 
     const { error: updateError } = await supabase
@@ -210,7 +210,8 @@ async function syncUserPlan(customerId: string, priceId: string | null) {
       .update({
         plan,
         status,
-        ...(planStart ? { plan_start: planStart } : {}),
+        plan_start: planStart,
+        plan_end: priceId ? null : new Date().toISOString(),
       })
       .eq('id', userId);
 

@@ -9503,6 +9503,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
         } else {
           setConfirmingPayment(false);
           setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda akan diaktifkan tidak lama lagi.`);
+          if (onPlanActivated) setTimeout(() => onPlanActivated(plan), 3000);
         }
       };
       poll();
@@ -9597,7 +9598,15 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
       {successMsg && (
         <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
           <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
-          <p className="text-sm font-bold text-emerald-700">{successMsg}</p>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-emerald-700">{successMsg}</p>
+          </div>
+          <button
+            onClick={() => { if (onPlanActivated) onPlanActivated(''); }}
+            className="shrink-0 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all active:scale-95"
+          >
+            Ke Dashboard
+          </button>
         </div>
       )}
 
@@ -11504,6 +11513,7 @@ export default function App() {
                 const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
                 if (profile) setUser(profile as unknown as UserType);
               }
+              setView('dashboard');
             }} />}
             {view === 'subscription-management' && <SubscriptionManagementView onBack={() => setView('admin-dashboard')} />}
             {view === 'admin-dashboard' && <AdminDashboardView />}
