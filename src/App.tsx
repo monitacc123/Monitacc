@@ -1066,50 +1066,53 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             <p className="text-slate-500 text-sm font-medium">Mula percuma. Upgrade bila bisnes berkembang.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {LANDING_PLANS.map((p, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.07 }}
-                className={`rounded-2xl p-5 flex flex-col transition-all ${
-                  p.popular
-                    ? 'bg-slate-900 border-2 border-emerald-500 shadow-xl'
-                    : 'bg-white border border-slate-200 shadow-sm'
-                }`}
-              >
-                {p.popular && (
-                  <span className="self-start bg-emerald-500 text-white text-[9px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-full mb-3">
-                    Paling Popular
-                  </span>
-                )}
-                <h4 className={`text-sm font-bold font-display mb-1 ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.name}</h4>
-                <div className="flex items-baseline gap-0.5 mb-4">
-                  <span className={`text-[10px] font-bold ${p.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
-                  <span className={`text-3xl font-extrabold font-display ${p.popular ? 'text-white' : 'text-slate-900'}`}>{p.price}</span>
-                  {p.period && <span className={`text-[10px] font-bold ml-0.5 ${p.popular ? 'text-white/60' : 'text-slate-500'}`}>{p.period}</span>}
-                </div>
-                <ul className="space-y-2.5 mb-5 flex-1">
-                  {p.features.map((f, j) => (
-                    <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${p.popular ? 'text-white/90' : 'text-slate-700'}`}>
-                      <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  onClick={() => handlePlanClick(p)}
-                  className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
-                    p.popular
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-900'
-                  }`}
+            {LANDING_PLANS.map((p, i) => {
+              const lt = p.name === 'Ultimate'
+                ? { card: 'bg-slate-900 border-amber-400/60 shadow-xl', headerBg: 'bg-gradient-to-br from-amber-400/20 to-amber-600/10', name: 'text-white', rm: 'text-amber-300/70', price: 'text-white', period: 'text-amber-300/60', check: 'text-amber-400', feature: 'text-white/85', badge: 'bg-amber-400 text-slate-900', btn: 'bg-amber-400 hover:bg-amber-300 text-slate-900' }
+                : p.name === 'Growth'
+                ? { card: 'bg-white border-teal-200 shadow-md', headerBg: 'bg-gradient-to-br from-teal-50 to-cyan-50', name: 'text-teal-900', rm: 'text-teal-400', price: 'text-teal-900', period: 'text-teal-400', check: 'text-teal-500', feature: 'text-slate-700', badge: 'bg-teal-500 text-white', btn: 'bg-teal-600 hover:bg-teal-500 text-white' }
+                : p.name === 'Starter'
+                ? { card: 'bg-white border-emerald-200 shadow-md', headerBg: 'bg-gradient-to-br from-emerald-50 to-green-50', name: 'text-emerald-900', rm: 'text-emerald-400', price: 'text-emerald-900', period: 'text-emerald-400', check: 'text-emerald-500', feature: 'text-slate-700', badge: 'bg-emerald-500 text-white', btn: 'bg-emerald-600 hover:bg-emerald-500 text-white' }
+                : { card: 'bg-white border-slate-200 shadow-sm', headerBg: 'bg-gradient-to-br from-slate-50 to-slate-100', name: 'text-slate-700', rm: 'text-slate-400', price: 'text-slate-800', period: 'text-slate-400', check: 'text-slate-400', feature: 'text-slate-600', badge: '', btn: 'bg-slate-100 hover:bg-slate-200 text-slate-700' };
+              return (
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 16 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.07 }}
+                  className={`rounded-2xl flex flex-col transition-all hover:-translate-y-1 border overflow-hidden ${lt.card}`}
                 >
-                  {p.cta}
-                </button>
-              </motion.div>
-            ))}
+                  {p.popular && (
+                    <div className={`text-center py-1 text-[8px] font-black uppercase tracking-widest ${lt.badge}`}>Paling Popular</div>
+                  )}
+                  <div className={`px-5 pt-4 pb-3 ${lt.headerBg}`}>
+                    <h4 className={`text-sm font-bold font-display mb-1 ${lt.name}`}>{p.name}</h4>
+                    <div className="flex items-baseline gap-0.5">
+                      <span className={`text-[10px] font-bold ${lt.rm}`}>RM</span>
+                      <span className={`text-3xl font-extrabold font-display ${lt.price}`}>{p.price}</span>
+                      {p.period && <span className={`text-[10px] font-bold ml-0.5 ${lt.period}`}>{p.period}</span>}
+                    </div>
+                  </div>
+                  <div className="px-5 pt-3 pb-5 flex-1 flex flex-col">
+                    <ul className="space-y-2.5 mb-5 flex-1">
+                      {p.features.map((f, j) => (
+                        <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${lt.feature}`}>
+                          <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 ${lt.check}`} />
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => handlePlanClick(p)}
+                      className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95 ${lt.btn}`}
+                    >
+                      {p.cta}
+                    </button>
+                  </div>
+                </motion.div>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -10357,63 +10360,75 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
           const isActive = activePlanName === plan.name;
           const isFree = plan.name === 'Percuma';
           const isLoading = loadingPlan === plan.name;
+
+          const theme = plan.name === 'Ultimate'
+            ? { card: 'bg-slate-900 border-amber-400/60 ring-4 ring-amber-50 scale-[1.03] z-10 shadow-2xl shadow-slate-900/20', header: 'bg-gradient-to-br from-amber-400/20 to-amber-600/10', name: 'text-white', rm: 'text-amber-300/70', price: 'text-white', period: 'text-amber-300/60', check: 'text-amber-400', feature: 'text-white/85', badge: 'bg-amber-400 text-slate-900', btn: 'bg-amber-400 hover:bg-amber-300 text-slate-900 shadow-lg shadow-amber-400/20', activeBtn: 'bg-amber-400/20 text-amber-300' }
+            : plan.name === 'Growth'
+            ? { card: 'bg-white border-teal-200 shadow-md shadow-teal-50', header: 'bg-gradient-to-br from-teal-50 to-cyan-50', name: 'text-teal-800', rm: 'text-teal-400', price: 'text-teal-900', period: 'text-teal-400', check: 'text-teal-500', feature: 'text-slate-700', badge: 'bg-teal-500 text-white', btn: 'bg-teal-600 hover:bg-teal-500 text-white shadow-md shadow-teal-500/20', activeBtn: 'bg-teal-100 text-teal-700' }
+            : plan.name === 'Starter'
+            ? { card: 'bg-white border-emerald-200 shadow-md shadow-emerald-50', header: 'bg-gradient-to-br from-emerald-50 to-green-50', name: 'text-emerald-800', rm: 'text-emerald-400', price: 'text-emerald-900', period: 'text-emerald-400', check: 'text-emerald-500', feature: 'text-slate-700', badge: 'bg-emerald-500 text-white', btn: 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-500/20', activeBtn: 'bg-emerald-100 text-emerald-700' }
+            : { card: 'bg-white border-slate-200 shadow-sm', header: 'bg-gradient-to-br from-slate-50 to-slate-100', name: 'text-slate-700', rm: 'text-slate-400', price: 'text-slate-800', period: 'text-slate-400', check: 'text-slate-400', feature: 'text-slate-600', badge: '', btn: 'bg-slate-100 hover:bg-slate-200 text-slate-700', activeBtn: 'bg-slate-100 text-slate-500' };
+
           return (
             <motion.div
               key={i}
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className={`relative rounded-2xl p-6 flex flex-col transition-all duration-300 hover:-translate-y-1 border ${
-                plan.popular
-                  ? 'bg-slate-900 border-emerald-500 ring-4 ring-emerald-50 scale-[1.03] z-10 shadow-xl'
-                  : 'bg-white border-slate-200 shadow-sm'
-              }`}
+              className={`relative rounded-2xl flex flex-col transition-all duration-300 hover:-translate-y-1 border overflow-hidden ${theme.card}`}
             >
               {plan.popular && (
-                <span className="absolute -top-3 left-5 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow-lg">PALING POPULAR</span>
+                <span className={`absolute -top-0 left-0 right-0 text-center py-1 text-[8px] font-black tracking-widest uppercase ${theme.badge}`}>Paling Popular</span>
               )}
-              {isActive && (
-                <span className="absolute -top-3 right-5 bg-blue-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">PLAN SEMASA</span>
+              {isActive && !plan.popular && (
+                <span className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">AKTIF</span>
               )}
-              <h3 className={`text-base font-bold mb-0.5 tracking-tight font-display text-center ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.name}</h3>
-              <div className="flex items-baseline mb-5 justify-center">
-                <span className={`text-[9px] font-bold mr-0.5 ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
-                <span className={`text-3xl font-extrabold tracking-tight font-display ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
-                {!isFree && <span className={`text-[9px] font-medium ml-0.5 ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>/bln</span>}
+              {isActive && plan.popular && (
+                <span className="absolute top-7 right-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">AKTIF</span>
+              )}
+
+              <div className={`px-6 pt-${plan.popular ? '6' : '5'} pb-4 ${theme.header}`} style={{ paddingTop: plan.popular ? '1.75rem' : '1.25rem' }}>
+                <h3 className={`text-base font-bold mb-0.5 tracking-tight font-display text-center ${theme.name}`}>{plan.name}</h3>
+                <div className="flex items-baseline justify-center">
+                  <span className={`text-[9px] font-bold mr-0.5 ${theme.rm}`}>RM</span>
+                  <span className={`text-3xl font-extrabold tracking-tight font-display ${theme.price}`}>{plan.price}</span>
+                  {!isFree && <span className={`text-[9px] font-medium ml-0.5 ${theme.period}`}>/bln</span>}
+                </div>
               </div>
-              <ul className="space-y-2.5 mb-6 flex-1">
-                {plan.features.map((f, j) => (
-                  <li key={j} className={`flex items-start text-[11px] font-medium leading-snug ${plan.popular ? 'text-white/90' : 'text-slate-700'}`}>
-                    <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5 mr-2" />
-                    {f}
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => {
-                  if (!isActive && !isFree) setSelectedPlan(plan);
-                }}
-                disabled={isActive || isFree || isLoading}
-                className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
-                  isActive
-                    ? 'bg-blue-100 text-blue-700 cursor-default'
-                    : isFree
-                    ? 'bg-slate-100 text-slate-500 cursor-default'
-                    : plan.popular
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30'
-                    : 'bg-slate-900 hover:bg-slate-700 text-white'
-                }`}
-              >
-                {isLoading ? (
-                  <><Loader2 size={13} className="animate-spin" /> Memproses...</>
-                ) : isActive ? (
-                  <><CheckCircle2 size={13} /> Plan Aktif</>
-                ) : isFree ? (
-                  'Plan Semasa'
-                ) : (
-                  `Langgan ${plan.name}`
-                )}
-              </button>
+
+              <div className="px-6 py-4 flex-1 flex flex-col">
+                <ul className="space-y-2.5 mb-5 flex-1">
+                  {plan.features.map((f, j) => (
+                    <li key={j} className={`flex items-start text-[11px] font-medium leading-snug ${theme.feature}`}>
+                      <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 mr-2 ${theme.check}`} />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => {
+                    if (!isActive && !isFree) setSelectedPlan(plan);
+                  }}
+                  disabled={isActive || isFree || isLoading}
+                  className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                    isActive
+                      ? theme.activeBtn + ' cursor-default'
+                      : isFree
+                      ? 'bg-slate-100 text-slate-400 cursor-default'
+                      : theme.btn
+                  }`}
+                >
+                  {isLoading ? (
+                    <><Loader2 size={13} className="animate-spin" /> Memproses...</>
+                  ) : isActive ? (
+                    <><CheckCircle2 size={13} /> Plan Aktif</>
+                  ) : isFree ? (
+                    'Plan Semasa'
+                  ) : (
+                    `Langgan ${plan.name}`
+                  )}
+                </button>
+              </div>
             </motion.div>
           );
         })}
