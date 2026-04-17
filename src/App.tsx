@@ -652,7 +652,24 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         })}
       </div>
 
-      <div className="hidden md:block mt-auto w-full px-2 pb-4">
+      <div className="hidden md:block mt-auto w-full px-2 pb-4 space-y-3">
+        {/* User Profile Mini Card */}
+        {user && !isAdmin && (
+          <button
+            onClick={() => setView('profile')}
+            className={`w-full rounded-2xl p-3.5 border flex items-center gap-3 transition-all group ${activeView === 'profile' ? 'bg-emerald-600 border-emerald-600 shadow-md shadow-emerald-600/20' : 'bg-slate-50 border-slate-100 hover:bg-white hover:border-slate-200 hover:shadow-sm'}`}
+          >
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${activeView === 'profile' ? 'bg-white/20' : 'bg-white border border-slate-200 shadow-sm'}`}>
+              <User size={16} strokeWidth={2} className={activeView === 'profile' ? 'text-white' : 'text-slate-600'} />
+            </div>
+            <div className="text-left flex-1 min-w-0">
+              <p className={`text-[11px] font-bold truncate leading-tight ${activeView === 'profile' ? 'text-white' : 'text-slate-800'}`}>{user.name || 'Pengguna'}</p>
+              <p className={`text-[10px] truncate leading-tight mt-0.5 ${activeView === 'profile' ? 'text-white/70' : 'text-slate-400'}`}>{user.email}</p>
+            </div>
+            <ChevronRight size={13} className={`shrink-0 transition-transform group-hover:translate-x-0.5 ${activeView === 'profile' ? 'text-white/60' : 'text-slate-300'}`} />
+          </button>
+        )}
+
         {isAdmin ? (
           <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-4">
             <div className="flex items-center gap-3 mb-3">
@@ -665,19 +682,19 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
               </div>
             </div>
             <div className="flex flex-col gap-2">
-              <button 
+              <button
                 onClick={() => setView('dashboard')}
                 className="w-full py-2 bg-white border border-emerald-200 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm"
               >
                 Lihat Versi User
               </button>
-              <button 
+              <button
                 onClick={() => setView('affiliate-auth')}
                 className="w-full py-2 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
               >
                 Login Affiliate
               </button>
-              <button 
+              <button
                 onClick={onLogoutAdmin}
                 className="w-full py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all"
               >
@@ -686,7 +703,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
             </div>
           </div>
         ) : (
-          <button 
+          <button
             onClick={() => setView('admin-auth')}
             className="w-full bg-slate-900 text-white rounded-xl p-4 border border-slate-800 flex items-center gap-3 hover:bg-slate-800 transition-all group shadow-lg shadow-slate-200"
           >
@@ -9556,6 +9573,27 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
               <ChevronRight size={16} className="text-slate-300 group-hover:translate-x-1 transition-transform" />
             </button>
           ))}
+        </div>
+
+        {/* Admin Login Section */}
+        <div className="rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 shadow-xl">
+          <div className="px-5 py-4 flex items-center gap-4">
+            <div className="w-10 h-10 bg-slate-800 rounded-xl flex items-center justify-center shrink-0 border border-slate-700">
+              <ShieldCheck size={20} className="text-emerald-400" strokeWidth={2} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">Akses Khas</p>
+              <p className="text-sm font-bold text-white leading-tight">Portal Pentadbir</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">Untuk pengurusan sistem sahaja</p>
+            </div>
+            <button
+              onClick={() => setView('admin-auth')}
+              className="shrink-0 flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-[11px] font-bold rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-900/40"
+            >
+              <ShieldCheck size={13} strokeWidth={2.5} />
+              Login
+            </button>
+          </div>
         </div>
 
         <button
