@@ -1,8 +1,8 @@
 import { supabase } from '../lib/supabase';
 
 export const STRIPE_PRICE_IDS = {
-  Starter: 'price_1TN805AWhTSR0PgOln3BX8V5',
-  Growth: 'price_1TN806AWhTSR0PgO52mdKu32',
+  Starter: 'price_1TN9SvAWhTSR0PgOYmTX9xDY',
+  Growth: 'price_1TN9SvAWhTSR0PgO4r2IshXx',
   Ultimate: 'price_1TN806AWhTSR0PgOSQ9JyXsK',
 } as const;
 

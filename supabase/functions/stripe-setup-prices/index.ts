@@ -11,6 +11,8 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   appInfo: { name: 'Monitacc', version: '1.0.0' },
 });
 
+const PRODUCT_ID = 'prod_ULpfJPERV2aEFm';
+
 Deno.serve(async (req) => {
   try {
     if (req.method === 'OPTIONS') {
@@ -18,46 +20,34 @@ Deno.serve(async (req) => {
     }
 
     const plans = [
-      { name: 'Monitacc Starter', planKey: 'Starter', amount: 5000, currency: 'myr' },
-      { name: 'Monitacc Growth', planKey: 'Growth', amount: 10000, currency: 'myr' },
-      { name: 'Monitacc Ultimate', planKey: 'Ultimate', amount: 15000, currency: 'myr' },
+      { planKey: 'Starter', amount: 5000, currency: 'myr', nickname: 'Monitacc Starter' },
+      { planKey: 'Growth', amount: 10000, currency: 'myr', nickname: 'Monitacc Growth' },
+      { planKey: 'Ultimate', amount: 15000, currency: 'myr', nickname: 'Monitacc Ultimate' },
     ];
 
     const result: Record<string, string> = {};
 
     for (const plan of plans) {
-      const existingProducts = await stripe.products.search({
-        query: `name:'${plan.name}' AND active:'true'`,
-        limit: 1,
-      });
-
-      let productId: string;
-      if (existingProducts.data.length > 0) {
-        productId = existingProducts.data[0].id;
-      } else {
-        const product = await stripe.products.create({
-          name: plan.name,
-          metadata: { plan: plan.planKey },
-        });
-        productId = product.id;
-      }
-
       const existingPrices = await stripe.prices.list({
-        product: productId,
+        product: PRODUCT_ID,
         active: true,
-        recurring: { interval: 'month' },
-        limit: 1,
+        limit: 100,
       });
+
+      const found = existingPrices.data.find(
+        (p) => p.metadata?.plan === plan.planKey && p.recurring?.interval === 'month'
+      );
 
       let priceId: string;
-      if (existingPrices.data.length > 0) {
-        priceId = existingPrices.data[0].id;
+      if (found) {
+        priceId = found.id;
       } else {
         const price = await stripe.prices.create({
-          product: productId,
+          product: PRODUCT_ID,
           unit_amount: plan.amount,
           currency: plan.currency,
           recurring: { interval: 'month' },
+          nickname: plan.nickname,
           metadata: { plan: plan.planKey },
         });
         priceId = price.id;
