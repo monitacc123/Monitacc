@@ -63,5 +63,5 @@ export interface Sale {
   payment_method?: 'cash' | 'bank';
 }
 
-export type AppView = 'landing' | 'auth' | 'welcome' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard' | 'subscription-management';
+export type AppView = 'landing' | 'auth' | 'welcome' | 'choose-plan' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard' | 'subscription-management';
 

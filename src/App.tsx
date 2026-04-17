@@ -990,7 +990,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
   </div>
 );
 
-const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType) => void }) => {
+const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -1028,10 +1028,11 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType) => void }
       let userData: UserType;
       if (isLogin) {
         userData = await apiLogin(email, password);
+        onAuthSuccess(userData, false);
       } else {
         userData = await apiRegister(name, email, phone, password, companyName);
+        onAuthSuccess(userData, true);
       }
-      onAuthSuccess(userData);
     } catch (err: any) {
       setError(err?.message || 'Something went wrong');
     } finally {
@@ -1145,6 +1146,206 @@ const AuthView = ({ onAuthSuccess }: { onAuthSuccess: (user: UserType) => void }
           </button>
         </div>
       </motion.div>
+    </div>
+  );
+};
+
+const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplete: () => void }) => {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      const plan = params.get('plan') || '';
+      setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda kini aktif. Klik teruskan untuk mula.`);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('payment') === 'cancelled') {
+      setError('Pembayaran dibatalkan. Pilih pakej untuk cuba semula.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const plans = [
+    {
+      name: 'Percuma',
+      price: '0',
+      period: null,
+      features: ['5 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '1× Bank Statement', 'Monitacc Assistant'],
+      popular: false,
+      cta: 'Mula Percuma',
+    },
+    {
+      name: 'Starter',
+      price: '50',
+      period: '/bln',
+      features: ['100 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '3× Bank Statement', 'Monitacc Assistant', '1× Smart Analysis'],
+      popular: false,
+      cta: 'Langgan Starter',
+    },
+    {
+      name: 'Growth',
+      price: '100',
+      period: '/bln',
+      features: ['250 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '9× Bank Statement', 'Monitacc Assistant', '4× Smart Analysis'],
+      popular: false,
+      cta: 'Langgan Growth',
+    },
+    {
+      name: 'Ultimate',
+      price: '150',
+      period: '/bln',
+      features: ['Unlimited Imbasan Transaksi', 'Unlimited Rekod Manual', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L Report + Balance Sheet', 'Reconciliation Features'],
+      popular: true,
+      cta: 'Langgan Ultimate',
+    },
+  ];
+
+  const handleChoose = async (plan: typeof plans[0]) => {
+    setError('');
+    if (plan.name === 'Percuma') {
+      onComplete();
+      return;
+    }
+    setLoadingPlan(plan.name);
+    try {
+      const url = await createCheckoutSession(plan.name as PaidPlan);
+      window.location.href = url;
+    } catch (err: any) {
+      setError(err.message || 'Ralat semasa memproses pembayaran. Sila cuba lagi.');
+      setLoadingPlan(null);
+    }
+  };
+
+  const firstName = user?.name?.split(' ')[0] || 'Usahawan';
+
+  return (
+    <div className="min-h-screen bg-slate-50 flex flex-col overflow-x-hidden">
+      <div className="bg-slate-900 px-5 py-5 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-emerald-500 rounded-lg flex items-center justify-center shadow-lg shadow-emerald-500/30">
+            <CreditCard size={16} className="text-white" />
+          </div>
+          <span className="text-white font-bold tracking-tight text-sm">Monitacc</span>
+        </div>
+        <button onClick={onComplete} className="text-slate-400 hover:text-white text-[10px] font-bold uppercase tracking-widest transition-colors">
+          Langkau
+        </button>
+      </div>
+
+      <div className="flex-1 px-5 py-10 max-w-5xl mx-auto w-full">
+        <div className="text-center mb-10">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="w-14 h-14 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-emerald-200"
+          >
+            <CheckCircle2 size={28} className="text-white" />
+          </motion.div>
+          <motion.h2
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2"
+          >
+            Akaun berjaya dicipta, {firstName}!
+          </motion.h2>
+          <motion.p
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            className="text-slate-500 text-sm font-medium"
+          >
+            Pilih pakej yang sesuai untuk memulakan perjalanan anda bersama Monitacc.
+          </motion.p>
+        </div>
+
+        {successMsg && (
+          <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-center gap-3 max-w-xl mx-auto">
+            <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+            <p className="text-sm font-bold text-emerald-700 flex-1 text-center sm:text-left">{successMsg}</p>
+            <button
+              onClick={onComplete}
+              className="bg-emerald-500 hover:bg-emerald-400 text-white text-[10px] font-bold uppercase tracking-wider px-4 py-2 rounded-xl transition-all shrink-0"
+            >
+              Teruskan
+            </button>
+          </div>
+        )}
+
+        {error && (
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 max-w-xl mx-auto">
+            <AlertCircle size={16} className="text-rose-600 shrink-0" />
+            <p className="text-sm font-bold text-rose-700">{error}</p>
+            <button onClick={() => setError('')} className="ml-auto text-rose-400 hover:text-rose-600"><X size={14} /></button>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {plans.map((plan, i) => {
+            const isLoading = loadingPlan === plan.name;
+            return (
+              <motion.div
+                key={i}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 + i * 0.08 }}
+                className={`relative rounded-2xl p-6 flex flex-col border transition-all duration-300 hover:-translate-y-1 ${
+                  plan.popular
+                    ? 'bg-slate-900 border-emerald-500 ring-4 ring-emerald-100 shadow-2xl scale-[1.03] z-10'
+                    : 'bg-white border-slate-200 shadow-sm hover:shadow-md'
+                }`}
+              >
+                {plan.popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-widest shadow-lg whitespace-nowrap">
+                    PALING POPULAR
+                  </span>
+                )}
+                <h3 className={`text-base font-bold tracking-tight font-display text-center mb-1 ${plan.popular ? 'text-white' : 'text-slate-900'}`}>
+                  {plan.name}
+                </h3>
+                <div className="flex items-baseline justify-center mb-5">
+                  <span className={`text-[10px] font-bold ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
+                  <span className={`text-3xl font-extrabold font-display mx-0.5 ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
+                  {plan.period && <span className={`text-[10px] font-medium ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>{plan.period}</span>}
+                </div>
+                <ul className="space-y-2.5 mb-6 flex-1">
+                  {plan.features.map((f, j) => (
+                    <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${plan.popular ? 'text-white/90' : 'text-slate-600'}`}>
+                      <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+                <button
+                  onClick={() => handleChoose(plan)}
+                  disabled={isLoading}
+                  className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                    plan.popular
+                      ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30'
+                      : plan.name === 'Percuma'
+                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                      : 'bg-slate-900 hover:bg-slate-700 text-white'
+                  }`}
+                >
+                  {isLoading ? (
+                    <><Loader2 size={13} className="animate-spin" /> Memproses...</>
+                  ) : (
+                    plan.cta
+                  )}
+                </button>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        <p className="text-center text-[10px] text-slate-400 mt-8 font-medium">
+          Pembayaran selamat diproses oleh Stripe. Batalkan langganan bila-bila masa. <br />
+          Anda boleh tukar pakej pada bila-bila masa dari tetapan akaun.
+        </p>
+      </div>
     </div>
   );
 };
@@ -10712,9 +10913,11 @@ export default function App() {
     setView('landing');
   };
 
-  const handleAuthSuccess = (userData: UserType) => {
+  const handleAuthSuccess = (userData: UserType, isNewUser: boolean) => {
     setUser(userData);
-    if (pendingPlan && pendingPlan !== 'Percuma') {
+    if (isNewUser) {
+      setView('choose-plan');
+    } else if (pendingPlan && pendingPlan !== 'Percuma') {
       setPendingPlan(null);
       setView('plans');
     } else {
@@ -10962,6 +11165,7 @@ export default function App() {
           >
             {view === 'landing' && <LandingPage onStart={(plan) => { if (plan) setPendingPlan(plan); setView('auth'); }} onAffiliateLogin={() => setView('affiliate-auth')} />}
             {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} />}
+            {view === 'choose-plan' && <ChoosePlanView user={user} onComplete={() => setView('welcome')} />}
             {view === 'welcome' && <WelcomeView user={user} onComplete={() => setView('dashboard')} />}
             {view === 'dashboard' && <Dashboard stats={stats} records={records} sales={sales} user={user} setView={setView} salesStats={salesStats} onAddSale={() => { setTriggerAddSale(prev => prev + 1); setView('sales'); }} onScan={() => setView('scan')} onFileSelect={(file) => {
               const reader = new FileReader();
