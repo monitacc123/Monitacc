@@ -4335,260 +4335,319 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       return true;
     }).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
 
+  const totalIncome = filtered.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
+  const totalExpense = filtered.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
   const total = filtered.reduce((sum, r) => sum + r.amount, 0);
 
+  const periodLabel = timeFilter === 'monthly'
+    ? `${months[selectedMonth]} ${selectedYear}`
+    : timeFilter === 'yearly'
+    ? `${selectedYear}`
+    : timeFilter === 'custom'
+    ? `${startDate} — ${endDate}`
+    : 'Semua Tempoh';
+
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
-      <header className="mb-10">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+    <div className="pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
+      {/* Mobile Header */}
+      <div className="md:hidden bg-gradient-to-br from-slate-800 to-slate-900 px-4 pt-5 pb-6 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-5">
+          <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
+        </div>
+        <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-widest mb-1">Lejar</p>
+        <h2 className="text-xl font-bold text-white tracking-tight font-display">Perincian Lejar</h2>
+        <p className="text-slate-400 text-xs mt-0.5">{selectedCategory}</p>
+      </div>
+
+      <div className="p-4 md:p-6">
+        {/* Desktop Header */}
+        <header className="hidden md:flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
           <div>
-            <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Perincian Lejar</h2>
-            <p className="text-slate-500 text-sm font-medium">Lihat perincian transaksi mengikut kategori akaun.</p>
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lejar</span>
+              <ChevronRight size={12} className="text-slate-300" />
+              <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest truncate max-w-[200px]">{selectedCategory}</span>
+            </div>
+            <h2 className="text-3xl font-bold text-slate-900 tracking-tight font-display">Perincian Lejar</h2>
+            <p className="text-slate-400 text-sm font-medium mt-0.5">Lihat transaksi mengikut kategori akaun</p>
           </div>
-          
-          <div className="flex flex-wrap gap-3 items-center">
-            <div className="w-64">
-              <SearchableSelect 
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
+              {CHART_OF_ACCOUNTS[selectedCategory] || 'N/A'}
+            </span>
+          </div>
+        </header>
+
+        {/* Filter Bar */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-3 md:p-4 mb-5 md:mb-8">
+          <div className="flex flex-col sm:flex-row gap-3">
+            <div className="flex-1 min-w-0">
+              <SearchableSelect
                 value={selectedCategory}
                 onChange={setSelectedCategory}
                 options={ALL_CATEGORIES.includes(selectedCategory) ? ALL_CATEGORIES : [selectedCategory, ...ALL_CATEGORIES]}
                 placeholder="Pilih Akaun"
               />
             </div>
-            
-            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-              {['all', 'monthly', 'yearly', 'custom'].map((f) => (
-                <button
-                  key={f}
-                  onClick={() => setTimeFilter(f as any)}
-                  className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${
-                    timeFilter === f ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  {f === 'all' ? 'Semua' : f === 'monthly' ? 'Bulan' : f === 'yearly' ? 'Tahun' : 'Khas'}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-        
-        <div className="mt-4 flex flex-wrap gap-3 items-center">
-          {timeFilter === 'monthly' && (
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
-              className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-            >
-              {months.map((m, i) => (
-                <option key={i} value={i}>{m}</option>
-              ))}
-            </select>
-          )}
-          {(timeFilter === 'monthly' || timeFilter === 'yearly') && (
-            <select
-              value={selectedYear}
-              onChange={(e) => setSelectedYear(parseInt(e.target.value))}
-              className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>{y}</option>
-              ))}
-            </select>
-          )}
-          {timeFilter === 'custom' && (
-            <div className="flex items-center gap-2">
-              <input 
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-              <span className="text-slate-400 font-bold text-xs">ke</span>
-              <input 
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
-              />
-            </div>
-          )}
-        </div>
-      </header>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="card-premium p-6 bg-white border-slate-100 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center">
-              <Hash size={24} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Kod Akaun</p>
-              <h3 className="text-xl font-bold text-slate-900 font-mono">{CHART_OF_ACCOUNTS[selectedCategory] || 'N/A'}</h3>
-            </div>
-          </div>
-        </div>
-        
-        <div className="card-premium p-6 bg-white border-slate-100 shadow-sm">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center">
-              <FileText size={24} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Bil. Transaksi</p>
-              <h3 className="text-xl font-bold text-slate-900">{filtered.length}</h3>
-            </div>
-          </div>
-        </div>
-
-        <div className="card-premium p-6 bg-emerald-600 text-white border-none shadow-lg shadow-emerald-200">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-white/20 text-white rounded-xl flex items-center justify-center">
-              <DollarSign size={24} />
-            </div>
-            <div>
-              <p className="text-[10px] font-bold text-white/70 uppercase tracking-widest mb-1">Jumlah Keseluruhan</p>
-              <h3 className="text-2xl font-bold font-display">RM {total.toLocaleString()}</h3>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="card-premium overflow-hidden bg-white">
-        {/* Mobile Card View */}
-        <div className="lg:hidden divide-y divide-slate-100">
-          {filtered.map((record) => (
-            <div key={record.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-slate-700">{record.description || selectedCategory}</span>
-                    {!!record.reconciled && <Check size={12} strokeWidth={3} className="text-emerald-500 shrink-0" />}
-                  </div>
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    <span className="text-[10px] font-bold text-slate-400">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
-                    {record.docNumber && (
-                      <span className="text-[9px] font-mono font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
-                        {record.docNumber}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <p className={`text-base font-bold font-display shrink-0 ${
-                  record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                }`}>
-                  {record.type === 'income' ? '+' : '-'} RM {record.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div className="flex items-center justify-end gap-2 mt-2">
-                {record.source === 'record' && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                {(['all', 'monthly', 'yearly', 'custom'] as const).map((f) => (
                   <button
-                    onClick={() => setEditingRecord(record as TransactionRecord)}
-                    className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                    key={f}
+                    onClick={() => setTimeFilter(f)}
+                    className={`px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                      timeFilter === f ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'
+                    }`}
                   >
-                    <Eye size={16} />
+                    {f === 'all' ? 'Semua' : f === 'monthly' ? 'Bulan' : f === 'yearly' ? 'Tahun' : 'Khas'}
                   </button>
-                )}
-                <button
-                  onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
-                  className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
+                ))}
+              </div>
+              {timeFilter === 'monthly' && (
+                <select
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(parseInt(e.target.value))}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
                 >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-          {filtered.length === 0 && (
-            <div className="p-20 text-center">
-              <div className="flex flex-col items-center gap-3">
-                <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                  <BookOpen size={32} />
+                  {months.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                </select>
+              )}
+              {(timeFilter === 'monthly' || timeFilter === 'yearly') && (
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(parseInt(e.target.value))}
+                  className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20"
+                >
+                  {years.map((y) => <option key={y} value={y}>{y}</option>)}
+                </select>
+              )}
+              {timeFilter === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
+                  <span className="text-slate-400 font-bold text-xs">—</span>
+                  <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)}
+                    className="bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-bold text-slate-700 outline-none focus:ring-2 focus:ring-emerald-500/20" />
                 </div>
-                <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada transaksi untuk kategori ini dalam tempoh yang dipilih.</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5 md:mb-8">
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Masuk</p>
+            <p className="text-lg md:text-2xl font-bold text-emerald-600 font-display leading-tight">RM {totalIncome.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'income').length} transaksi</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Keluar</p>
+            <p className="text-lg md:text-2xl font-bold text-rose-500 font-display leading-tight">RM {totalExpense.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'expense').length} transaksi</p>
+          </div>
+          <div className={`rounded-2xl border shadow-sm p-4 md:p-5 ${total >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Baki</p>
+            <p className={`text-lg md:text-2xl font-bold font-display leading-tight ${total >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
+              {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium">{periodLabel}</p>
+          </div>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bil. Rekod</p>
+            <p className="text-lg md:text-2xl font-bold text-slate-800 font-display leading-tight">{filtered.length}</p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium font-mono">{CHART_OF_ACCOUNTS[selectedCategory] || 'N/A'}</p>
+          </div>
+        </div>
+
+        {/* Transaction Table/List */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {/* Table Header Bar */}
+          <div className="px-4 md:px-6 py-3 md:py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-slate-200 flex items-center justify-center">
+                <BookOpen size={14} className="text-slate-500" />
+              </div>
+              <div>
+                <p className="text-xs font-bold text-slate-700 leading-tight">{selectedCategory}</p>
+                <p className="text-[10px] text-slate-400 font-medium">{periodLabel}</p>
               </div>
             </div>
-          )}
-        </div>
-        {/* Desktop Table View */}
-        <div className="hidden lg:block overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">Tarikh</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">No. Dokumen</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Penerangan</th>
-                <th className="pl-6 pr-16 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32 text-right">Jumlah (RM)</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">Tindakan</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {filtered.map((record) => (
-                <tr key={record.id} className="hover:bg-slate-50 transition-colors group">
-                  <td className="px-6 py-4 text-sm font-medium text-slate-600 whitespace-nowrap">
-                    <div className="flex items-center gap-3">
-                      {format(parseISO(record.date), 'dd MMM yyyy')}
-                      {!!record.reconciled && (
-                        <span className="text-emerald-500 ml-2" title="Telah Dipadankan dengan Bank">
-                          <Check size={14} strokeWidth={3} />
+            <span className="text-[10px] font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+              {filtered.length} rekod
+            </span>
+          </div>
+
+          {/* Mobile Card View */}
+          <div className="lg:hidden divide-y divide-slate-100">
+            {filtered.map((record) => {
+              const Icon = getCategoryIcon(record.category);
+              return (
+                <div key={record.id} className="px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50/60 transition-colors">
+                  <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center ${record.type === 'income' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-500'}`}>
+                    <Icon size={15} strokeWidth={2} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-bold text-slate-800 truncate leading-tight">{record.description || selectedCategory}</p>
+                      {!!record.reconciled && <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[10px] text-slate-400 font-medium">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                      {record.docNumber && (
+                        <span className="text-[9px] font-mono font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
+                          {record.docNumber}
                         </span>
                       )}
                     </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded border border-slate-200">
-                      {record.docNumber || '-'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-slate-600">
-                    {record.description}
-                  </td>
-                  <td className={`pl-6 pr-16 py-4 font-bold text-right whitespace-nowrap ${
-                    record.type === 'income' ? 'text-emerald-600' : 'text-rose-600'
-                  }`}>
-                    {record.type === 'income' ? '+' : '-'} {record.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {record.source === 'record' ? (
-                        <button
-                          onClick={() => setEditingRecord(record as TransactionRecord)}
-                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                          title="Lihat & Edit"
-                        >
-                          <Eye size={16} />
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-bold font-display ${record.type === 'income' ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {record.type === 'income' ? '+' : '-'}RM {record.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <div className="flex items-center justify-end gap-1 mt-1">
+                      {record.source === 'record' && (
+                        <button onClick={() => setEditingRecord(record as TransactionRecord)}
+                          className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all">
+                          <Eye size={14} />
                         </button>
-                      ) : null}
-                      <button
-                        onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
-                        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                        title="Padam"
-                      >
-                        <Trash2 size={16} />
+                      )}
+                      <button onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
+                        className="w-7 h-7 flex items-center justify-center text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all">
+                        <Trash2 size={14} />
                       </button>
                     </div>
-                  </td>
+                  </div>
+                </div>
+              );
+            })}
+            {filtered.length === 0 && (
+              <div className="py-16 text-center">
+                <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-3">
+                  <BookOpen size={22} />
+                </div>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tiada transaksi</p>
+                <p className="text-slate-300 text-[10px] mt-1">Cuba tukar tempoh atau kategori</p>
+              </div>
+            )}
+          </div>
+
+          {/* Desktop Table View */}
+          <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36">Tarikh</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-32">No. Dokumen</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Penerangan</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">Debit (RM)</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">Kredit (RM)</th>
+                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right w-24">Tindakan</th>
                 </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="p-20 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                        <BookOpen size={32} />
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {filtered.map((record, idx) => {
+                  const Icon = getCategoryIcon(record.category);
+                  return (
+                    <tr key={record.id} className={`hover:bg-slate-50/80 transition-colors group ${idx % 2 === 0 ? '' : 'bg-slate-50/30'}`}>
+                      <td className="px-6 py-3.5 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-7 h-7 shrink-0 rounded-lg flex items-center justify-center ${record.type === 'income' ? 'bg-emerald-50 text-emerald-500' : 'bg-rose-50 text-rose-400'}`}>
+                            <Icon size={12} strokeWidth={2} />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-700">{format(parseISO(record.date), 'dd MMM yyyy')}</p>
+                            {!!record.reconciled && (
+                              <span className="text-[9px] font-bold text-emerald-500 flex items-center gap-0.5">
+                                <Check size={9} strokeWidth={3} /> Dipadankan
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        {record.docNumber
+                          ? <span className="text-[10px] font-mono font-bold text-slate-500 bg-slate-100 px-2 py-1 rounded-md border border-slate-200">{record.docNumber}</span>
+                          : <span className="text-[10px] text-slate-300 font-medium">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <p className="text-sm font-medium text-slate-700 leading-tight">{record.description || '—'}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5 font-medium">{record.category}</p>
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        {record.type === 'expense'
+                          ? <span className="text-sm font-bold text-rose-500">{record.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          : <span className="text-xs text-slate-300">—</span>
+                        }
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        {record.type === 'income'
+                          ? <span className="text-sm font-bold text-emerald-600">{record.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                          : <span className="text-xs text-slate-300">—</span>
+                        }
+                      </td>
+                      <td className="px-6 py-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          {record.source === 'record' && (
+                            <button onClick={() => setEditingRecord(record as TransactionRecord)}
+                              className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
+                              title="Edit">
+                              <Eye size={15} />
+                            </button>
+                          )}
+                          <button onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
+                            className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
+                            title="Padam">
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="py-16 text-center">
+                      <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-3">
+                        <BookOpen size={22} />
                       </div>
-                      <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada transaksi untuk kategori ini dalam tempoh yang dipilih.</p>
-                    </div>
-                  </td>
-                </tr>
+                      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tiada transaksi</p>
+                      <p className="text-slate-300 text-[10px] mt-1">Cuba tukar tempoh atau kategori</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {filtered.length > 0 && (
+                <tfoot>
+                  <tr className="border-t-2 border-slate-200 bg-slate-50">
+                    <td colSpan={3} className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Jumlah</td>
+                    <td className="px-4 py-3.5 text-right text-sm font-bold text-rose-500">
+                      {totalExpense > 0 ? totalExpense.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td className="px-4 py-3.5 text-right text-sm font-bold text-emerald-600">
+                      {totalIncome > 0 ? totalIncome.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                    </td>
+                    <td className="px-6 py-3.5" />
+                  </tr>
+                  <tr className="bg-slate-50">
+                    <td colSpan={3} className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Baki Bersih</td>
+                    <td colSpan={2} className={`px-4 py-3 text-right text-sm font-bold ${total >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                      {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </td>
+                    <td className="px-6 py-3" />
+                  </tr>
+                </tfoot>
               )}
-            </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       </div>
 
       {editingRecord && (
-        <EditRecordModal 
-          record={editingRecord} 
-          onClose={() => setEditingRecord(null)} 
+        <EditRecordModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
           onSave={(data) => {
             onUpdate(editingRecord.id, data);
             setEditingRecord(null);
