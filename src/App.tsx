@@ -1139,7 +1139,7 @@ const AUTH_PLANS = [
   { name: 'Ultimate', price: '150', period: '/bln', desc: 'Unlimited Imbasan' },
 ];
 
-const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null }) => {
+const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null; onBack?: () => void }) => {
   const [isLogin, setIsLogin] = useState(!initialPlan);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -1204,6 +1204,16 @@ const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserTy
         transition={{ duration: 0.3 }}
         className="w-full max-w-md bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-lg"
       >
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-slate-400 hover:text-slate-700 text-sm font-medium mb-6 transition-colors group"
+          >
+            <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform duration-200" />
+            Kembali
+          </button>
+        )}
         <div className="text-center mb-8">
           <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-emerald-100">
             <CreditCard size={24} />
@@ -11940,7 +11950,7 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {view === 'landing' && <LandingPage onStart={(plan) => { if (plan) setPendingPlan(plan); setView('auth'); }} onAffiliateLogin={() => setView('affiliate-auth')} />}
-            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} initialPlan={pendingPlan} />}
+            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} initialPlan={pendingPlan} onBack={() => setView('landing')} />}
             {view === 'choose-plan' && <ChoosePlanView user={user} onComplete={() => setView('welcome')} />}
             {view === 'welcome' && <WelcomeView user={user} onComplete={() => setView('dashboard')} />}
             {view === 'dashboard' && <Dashboard stats={stats} records={records} sales={sales} user={user} setView={setView} salesStats={salesStats} onAddSale={() => { setTriggerAddSale(prev => prev + 1); setView('sales'); }} onScan={() => setView('scan')} onFileSelect={(file) => {
