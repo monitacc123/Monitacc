@@ -42,6 +42,7 @@ import {
   apiGetTokenUsageByUser,
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
+import { createCheckoutSession, type PaidPlan } from './services/stripeService';
 
 // --- Helpers ---
 
@@ -662,7 +663,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   );
 };
 
-const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: () => void, onAffiliateLogin: () => void }) => (
+const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) => void, onAffiliateLogin: () => void }) => (
   <div className="min-h-screen bg-white flex flex-col overflow-x-hidden">
     {/* Navbar */}
     <header className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-100 px-5 py-4">
@@ -935,7 +936,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: () => void, onAff
                   ))}
                 </ul>
                 <button
-                  onClick={onStart}
+                  onClick={() => onStart(p.name)}
                   className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all ${
                     p.popular
                       ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/20'
@@ -9157,96 +9158,191 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const PlansView = () => (
-  <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
-    <header className="mb-12 text-center">
-      <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pilih Plan Anda</h2>
-      <p className="text-slate-500 text-sm font-medium">Sesuai untuk setiap tahap perniagaan anda.</p>
-    </header>
+const PlansView = ({ user }: { user: UserType | null }) => {
+  const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {[
-          { 
-            name: 'Percuma', 
-            price: '0', 
-            features: [
-              '5 Imbasan Transaksi / bulan', 
-              'Unlimited Rekod Transaksi Manual', 
-              '1× Imbasan Bank Statement', 
-              'Lifetime Updates Monitacc Assistant'
-            ], 
-            color: 'slate' 
-          },
-          { 
-            name: 'Starter', 
-            price: '50', 
-            features: [
-              '100 Imbasan Transaksi / bulan', 
-              'Unlimited Rekod Transaksi Manual', 
-              '3× Imbasan Bank Statement', 
-              'Lifetime Updates Monitacc Assistant',
-              '1× Smart Analysis'
-            ], 
-            popular: false, 
-            color: 'emerald' 
-          },
-          { 
-            name: 'Growth', 
-            price: '100', 
-            features: [
-              '250 Imbasan Transaksi / bulan', 
-              'Unlimited Rekod Transaksi Manual', 
-              '9× Imbasan Bank Statement', 
-              'Lifetime Updates Monitacc Assistant',
-              '4× Smart Analysis'
-            ], 
-            color: 'emerald' 
-          },
-          { 
-            name: 'Ultimate', 
-            price: '150', 
-            features: [
-              'Unlimited Imbasan Transaksi', 
-              'Unlimited Rekod Transaksi Manual', 
-              'Unlimited Imbasan Bank Statement', 
-              'Unlimited Smart Analysis',
-              'Lifetime Updates Monitacc Assistant',
-              'Lifetime Updates P&L Report',
-              'Lifetime Updates Balance Sheet',
-              'Reconciliation Features'
-            ], 
-            popular: true,
-            color: 'emerald' 
-          },
-        ].map((plan, i) => (
-        <div key={i} className={`relative card-premium p-6 flex flex-col items-start text-left transition-all duration-300 hover:-translate-y-1 ${plan.popular ? 'border-emerald-500 ring-4 ring-emerald-50 bg-slate-900 text-white scale-105 z-10' : 'bg-white border-slate-200'}`}>
-          {plan.popular && (
-            <span className="absolute -top-3 left-6 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow-lg">PALING POPULAR</span>
-          )}
-          <h3 className={`text-lg font-bold mb-0.5 tracking-tight font-display w-full text-center ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.name}</h3>
-          <div className="flex items-baseline mb-4 w-full justify-center">
-            <span className={`text-[9px] font-bold mr-0.5 ${plan.popular ? 'text-white/70' : 'text-slate-600'}`}>RM</span>
-            <span className={`text-3xl font-bold tracking-tight font-display ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
-            <span className={`text-[9px] font-medium ml-0.5 ${plan.popular ? 'text-white/70' : 'text-slate-600'}`}>/bulan</span>
-          </div>
-          <ul className="space-y-3 mb-6 flex-1">
-            {plan.features.map((f, j) => (
-              <li key={j} className={`flex items-start text-[11px] font-bold leading-tight ${plan.popular ? 'text-white' : 'text-slate-900'}`}>
-                <div className="w-3.5 h-3.5 rounded-full bg-emerald-50/10 flex items-center justify-center mr-2 shrink-0 mt-0.5">
-                  <Check size={8} strokeWidth={4} className="text-emerald-500" />
-                </div>
-                {f}
-              </li>
-            ))}
-          </ul>
-          <button className={`w-full py-2.5 rounded-xl font-bold text-[9px] uppercase tracking-wider transition-all active:scale-95 shadow-md ${plan.popular ? 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-emerald-500/20' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 shadow-none'}`}>
-            Pilih Plan {plan.name}
-          </button>
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('payment') === 'success') {
+      const plan = params.get('plan') || '';
+      setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda kini aktif.`);
+      window.history.replaceState({}, '', window.location.pathname);
+    } else if (params.get('payment') === 'cancelled') {
+      setError('Pembayaran dibatalkan. Anda boleh cuba semula bila-bila masa.');
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  const handleSubscribe = async (planName: string) => {
+    if (planName === 'Percuma') return;
+    setError('');
+    setLoadingPlan(planName);
+    try {
+      const url = await createCheckoutSession(planName as PaidPlan);
+      window.location.href = url;
+    } catch (err: any) {
+      setError(err.message || 'Ralat semasa memproses pembayaran. Sila cuba lagi.');
+      setLoadingPlan(null);
+    }
+  };
+
+  const plans = [
+    {
+      name: 'Percuma',
+      price: '0',
+      features: [
+        '5 Imbasan Transaksi / bulan',
+        'Unlimited Rekod Transaksi Manual',
+        '1× Imbasan Bank Statement',
+        'Monitacc Assistant',
+      ],
+      popular: false,
+    },
+    {
+      name: 'Starter',
+      price: '50',
+      features: [
+        '100 Imbasan Transaksi / bulan',
+        'Unlimited Rekod Transaksi Manual',
+        '3× Imbasan Bank Statement',
+        'Monitacc Assistant',
+        '1× Smart Analysis',
+      ],
+      popular: false,
+    },
+    {
+      name: 'Growth',
+      price: '100',
+      features: [
+        '250 Imbasan Transaksi / bulan',
+        'Unlimited Rekod Transaksi Manual',
+        '9× Imbasan Bank Statement',
+        'Monitacc Assistant',
+        '4× Smart Analysis',
+      ],
+      popular: false,
+    },
+    {
+      name: 'Ultimate',
+      price: '150',
+      features: [
+        'Unlimited Imbasan Transaksi',
+        'Unlimited Rekod Transaksi Manual',
+        'Unlimited Imbasan Bank Statement',
+        'Unlimited Smart Analysis',
+        'P&L Report + Balance Sheet',
+        'Reconciliation Features',
+      ],
+      popular: true,
+    },
+  ];
+
+  const currentPlan = user?.plan || 'free';
+  const planKeyMap: Record<string, string> = { free: 'Percuma', Percuma: 'Percuma', Starter: 'Starter', Growth: 'Growth', Ultimate: 'Ultimate' };
+  const activePlanName = planKeyMap[currentPlan] || 'Percuma';
+
+  return (
+    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-5xl mx-auto">
+      <header className="mb-10 text-center">
+        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pilih Plan Anda</h2>
+        <p className="text-slate-500 text-sm font-medium">Sesuai untuk setiap tahap perniagaan anda.</p>
+      </header>
+
+      {successMsg && (
+        <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
+          <CheckCircle2 size={18} className="text-emerald-600 shrink-0" />
+          <p className="text-sm font-bold text-emerald-700">{successMsg}</p>
         </div>
-      ))}
+      )}
+
+      {error && (
+        <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3">
+          <AlertCircle size={18} className="text-rose-600 shrink-0" />
+          <p className="text-sm font-bold text-rose-700">{error}</p>
+          <button onClick={() => setError('')} className="ml-auto text-rose-400 hover:text-rose-600"><X size={16} /></button>
+        </div>
+      )}
+
+      {activePlanName !== 'Percuma' && (
+        <div className="mb-8 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
+          <CreditCard size={18} className="text-emerald-600 shrink-0" />
+          <p className="text-sm font-medium text-emerald-700">Plan semasa anda: <span className="font-bold">{activePlanName}</span></p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        {plans.map((plan, i) => {
+          const isActive = activePlanName === plan.name;
+          const isFree = plan.name === 'Percuma';
+          const isLoading = loadingPlan === plan.name;
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.07 }}
+              className={`relative rounded-2xl p-6 flex flex-col transition-all duration-300 hover:-translate-y-1 border ${
+                plan.popular
+                  ? 'bg-slate-900 border-emerald-500 ring-4 ring-emerald-50 scale-[1.03] z-10 shadow-xl'
+                  : 'bg-white border-slate-200 shadow-sm'
+              }`}
+            >
+              {plan.popular && (
+                <span className="absolute -top-3 left-5 bg-emerald-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow-lg">PALING POPULAR</span>
+              )}
+              {isActive && (
+                <span className="absolute -top-3 right-5 bg-blue-500 text-white px-3 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">PLAN SEMASA</span>
+              )}
+              <h3 className={`text-base font-bold mb-0.5 tracking-tight font-display text-center ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.name}</h3>
+              <div className="flex items-baseline mb-5 justify-center">
+                <span className={`text-[9px] font-bold mr-0.5 ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>RM</span>
+                <span className={`text-3xl font-extrabold tracking-tight font-display ${plan.popular ? 'text-white' : 'text-slate-900'}`}>{plan.price}</span>
+                {!isFree && <span className={`text-[9px] font-medium ml-0.5 ${plan.popular ? 'text-white/60' : 'text-slate-500'}`}>/bln</span>}
+              </div>
+              <ul className="space-y-2.5 mb-6 flex-1">
+                {plan.features.map((f, j) => (
+                  <li key={j} className={`flex items-start text-[11px] font-medium leading-snug ${plan.popular ? 'text-white/90' : 'text-slate-700'}`}>
+                    <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5 mr-2" />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => handleSubscribe(plan.name)}
+                disabled={isActive || isFree || isLoading}
+                className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                  isActive
+                    ? 'bg-blue-100 text-blue-700 cursor-default'
+                    : isFree
+                    ? 'bg-slate-100 text-slate-500 cursor-default'
+                    : plan.popular
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-lg shadow-emerald-500/30'
+                    : 'bg-slate-900 hover:bg-slate-700 text-white'
+                }`}
+              >
+                {isLoading ? (
+                  <><Loader2 size={13} className="animate-spin" /> Memproses...</>
+                ) : isActive ? (
+                  <><CheckCircle2 size={13} /> Plan Aktif</>
+                ) : isFree ? (
+                  'Plan Semasa'
+                ) : (
+                  `Langgan ${plan.name}`
+                )}
+              </button>
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <p className="text-center text-[10px] text-slate-400 mt-8 font-medium">
+        Pembayaran selamat diproses oleh Stripe. Batalkan langganan bila-bila masa.
+      </p>
     </div>
-  </div>
-);
+  );
+};
 
 const AdminLoginView = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void }) => {
   const [password, setPassword] = useState('');
@@ -10458,6 +10554,7 @@ export default function App() {
   const [records, setRecords] = useState<TransactionRecord[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [categoryMappings, setCategoryMappings] = useState<Record<string, 'SALES' | 'COGS' | 'EXPENSE' | 'OTHER_INCOME' | 'TAXATION' | 'ASSET_LIABILITY'>>({});
+  const [pendingPlan, setPendingPlan] = useState<string | null>(null);
 
   useEffect(() => {
     if (user) {
@@ -10617,7 +10714,13 @@ export default function App() {
 
   const handleAuthSuccess = (userData: UserType) => {
     setUser(userData);
-    setView('welcome');
+    if (pendingPlan && pendingPlan !== 'Percuma') {
+      setPendingPlan(null);
+      setView('plans');
+    } else {
+      setPendingPlan(null);
+      setView('welcome');
+    }
   };
 
   const handleSaveRecord = async (data: any | any[], force = false) => {
@@ -10857,7 +10960,7 @@ export default function App() {
             exit={{ opacity: 0, x: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {view === 'landing' && <LandingPage onStart={() => setView('auth')} onAffiliateLogin={() => setView('affiliate-auth')} />}
+            {view === 'landing' && <LandingPage onStart={(plan) => { if (plan) setPendingPlan(plan); setView('auth'); }} onAffiliateLogin={() => setView('affiliate-auth')} />}
             {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} />}
             {view === 'welcome' && <WelcomeView user={user} onComplete={() => setView('dashboard')} />}
             {view === 'dashboard' && <Dashboard stats={stats} records={records} sales={sales} user={user} setView={setView} salesStats={salesStats} onAddSale={() => { setTriggerAddSale(prev => prev + 1); setView('sales'); }} onScan={() => setView('scan')} onFileSelect={(file) => {
@@ -10974,7 +11077,7 @@ export default function App() {
                 onBack={() => setView('profile')} 
               />
             )}
-            {view === 'plans' && <PlansView />}
+            {view === 'plans' && <PlansView user={user} />}
             {view === 'subscription-management' && <SubscriptionManagementView onBack={() => setView('admin-dashboard')} />}
             {view === 'admin-dashboard' && <AdminDashboardView />}
             {view === 'token-usage' && <TokenUsageView />}
