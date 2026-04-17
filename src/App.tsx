@@ -42,7 +42,7 @@ import {
   apiGetTokenUsageByUser,
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
-import { createCheckoutSession, type PaidPlan } from './services/stripeService';
+import { createCheckoutSession, openCustomerPortal, type PaidPlan } from './services/stripeService';
 import { supabase } from './lib/supabase';
 
 // --- Helpers ---
@@ -9455,9 +9455,22 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
 
 const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanActivated?: (plan: string) => void }) => {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
+  const [loadingPortal, setLoadingPortal] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [confirmingPayment, setConfirmingPayment] = useState(false);
+
+  const handleManageSubscription = async () => {
+    setError('');
+    setLoadingPortal(true);
+    try {
+      const url = await openCustomerPortal();
+      window.location.href = url;
+    } catch (err: any) {
+      setError(err.message || 'Ralat semasa membuka portal pengurusan.');
+      setLoadingPortal(false);
+    }
+  };
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -9668,9 +9681,30 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
         })}
       </div>
 
-      <p className="text-center text-[10px] text-slate-400 mt-8 font-medium">
-        Pembayaran selamat diproses oleh Stripe. Batalkan langganan bila-bila masa.
-      </p>
+      {activePlanName !== 'Percuma' && (
+        <div className="mt-8 flex flex-col items-center gap-3">
+          <button
+            onClick={handleManageSubscription}
+            disabled={loadingPortal}
+            className="flex items-center gap-2 px-6 py-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all shadow-sm active:scale-95 disabled:opacity-60"
+          >
+            {loadingPortal ? (
+              <><Loader2 size={13} className="animate-spin" /> Membuka Portal...</>
+            ) : (
+              <><CreditCard size={13} /> Urus Langganan Stripe</>
+            )}
+          </button>
+          <p className="text-center text-[10px] text-slate-400 font-medium">
+            Kemaskini kad, lihat invois, atau batalkan langganan melalui portal Stripe.
+          </p>
+        </div>
+      )}
+
+      {activePlanName === 'Percuma' && (
+        <p className="text-center text-[10px] text-slate-400 mt-8 font-medium">
+          Pembayaran selamat diproses oleh Stripe. Batalkan langganan bila-bila masa.
+        </p>
+      )}
     </div>
   );
 };

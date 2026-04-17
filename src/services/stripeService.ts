@@ -8,6 +8,31 @@ export const STRIPE_PRICE_IDS = {
 
 export type PaidPlan = keyof typeof STRIPE_PRICE_IDS;
 
+export async function openCustomerPortal(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Sila log masuk terlebih dahulu');
+
+  const returnUrl = `${window.location.origin}/?view=plans`;
+
+  const response = await fetch(
+    `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/stripe-customer-portal`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ return_url: returnUrl }),
+    }
+  );
+
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || 'Gagal membuka portal pengurusan');
+  if (!data.url) throw new Error('Tiada URL portal diterima');
+
+  return data.url;
+}
+
 export async function createCheckoutSession(plan: PaidPlan, accessToken?: string | null): Promise<string> {
   let token = accessToken;
   if (!token) {
