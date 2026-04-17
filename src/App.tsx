@@ -43,6 +43,7 @@ import {
 } from './services/api';
 import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
 import { createCheckoutSession, type PaidPlan } from './services/stripeService';
+import { supabase } from './lib/supabase';
 
 // --- Helpers ---
 
@@ -10756,6 +10757,37 @@ export default function App() {
   const [sales, setSales] = useState<any[]>([]);
   const [categoryMappings, setCategoryMappings] = useState<Record<string, 'SALES' | 'COGS' | 'EXPENSE' | 'OTHER_INCOME' | 'TAXATION' | 'ASSET_LIABILITY'>>({});
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
+  const [sessionLoading, setSessionLoading] = useState(true);
+
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+
+          if (profile) {
+            setUser(profile as unknown as UserType);
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('payment') === 'success' || params.get('payment') === 'cancelled') {
+              setView('plans');
+            } else {
+              setView('dashboard');
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Session restore error:', err);
+      } finally {
+        setSessionLoading(false);
+      }
+    };
+    restoreSession();
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -11116,6 +11148,19 @@ export default function App() {
       reader.readAsDataURL(file);
     }
   };
+
+  if (sessionLoading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center shadow-lg">
+            <CreditCard size={24} className="text-white" />
+          </div>
+          <Loader2 size={20} className="text-emerald-500 animate-spin" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
