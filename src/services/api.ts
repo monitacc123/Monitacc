@@ -596,3 +596,39 @@ export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf
     .insert([{ user_id: userId, scan_type: scanType, year_month: yearMonth }]);
   if (error) console.error('Failed to log scan usage:', error.message);
 }
+
+export async function apiUploadReceiptFile(userId: string, dataUrl: string, fileType: 'receipt' | 'pdf'): Promise<string> {
+  const isDataUrl = dataUrl.startsWith('data:');
+  let blob: Blob;
+  let ext: string;
+
+  if (isDataUrl) {
+    const [meta, base64] = dataUrl.split(',');
+    const mimeMatch = meta.match(/data:([^;]+)/);
+    const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+    ext = mime === 'application/pdf' ? 'pdf' : mime.split('/')[1] || 'jpg';
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    blob = new Blob([bytes], { type: mime });
+  } else {
+    ext = fileType === 'pdf' ? 'pdf' : 'jpg';
+    const res = await fetch(dataUrl);
+    blob = await res.blob();
+  }
+
+  const timestamp = Date.now();
+  const path = `${userId}/${fileType}_${timestamp}.${ext}`;
+
+  const { error } = await supabase.storage.from('receipts').upload(path, blob, { upsert: false });
+  if (error) throw new Error(`Gagal muat naik fail: ${error.message}`);
+
+  const { data } = supabase.storage.from('receipts').getPublicUrl(path);
+  if (data?.publicUrl) return data.publicUrl;
+
+  const { data: signedData, error: signedError } = await supabase.storage
+    .from('receipts')
+    .createSignedUrl(path, 60 * 60 * 24 * 365);
+  if (signedError) throw new Error(`Gagal jana URL fail: ${signedError.message}`);
+  return signedData.signedUrl;
+}

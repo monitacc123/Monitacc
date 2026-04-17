@@ -42,6 +42,7 @@ import {
   apiGetTokenUsageByUser,
   apiGetScanUsageThisMonth,
   apiLogScanUsage,
+  apiUploadReceiptFile,
   PLAN_SCAN_LIMITS,
   PLAN_PDF_LIMITS,
 } from './services/api';
@@ -2725,12 +2726,22 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 >
                   Batal
                 </button>
-                <button 
+                <button
                   disabled={saving}
                   onClick={async () => {
                     setSaving(true);
                     try {
-                      const recordsToSave = results.map(r => ({ ...r, image_url: image }));
+                      let storedImageUrl = image || '';
+                      if (image && user?.id) {
+                        const isPdf = mimeType === 'application/pdf';
+                        try {
+                          storedImageUrl = await apiUploadReceiptFile(user.id, image, isPdf ? 'pdf' : 'receipt');
+                        } catch (uploadErr) {
+                          console.error('Upload failed, using base64 fallback:', uploadErr);
+                          storedImageUrl = image;
+                        }
+                      }
+                      const recordsToSave = results.map(r => ({ ...r, image_url: storedImageUrl }));
                       await onSave(recordsToSave);
                     } catch (error) {
                       console.error("Error saving records:", error);
