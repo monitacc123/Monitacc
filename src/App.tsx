@@ -1155,13 +1155,41 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'success') {
       const plan = params.get('plan') || '';
-      setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda kini aktif. Klik teruskan untuk mula.`);
       window.history.replaceState({}, '', window.location.pathname);
+      setConfirmingPayment(true);
+
+      let attempts = 0;
+      const maxAttempts = 20;
+      const poll = async () => {
+        attempts++;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) { setConfirmingPayment(false); return; }
+          const { data: profile } = await supabase
+            .from('users')
+            .select('plan')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          if (profile && profile.plan && profile.plan !== 'free' && profile.plan !== 'Percuma') {
+            setConfirmingPayment(false);
+            setSuccessMsg(`Pembayaran berjaya! Plan ${profile.plan} anda kini aktif. Klik teruskan untuk mula.`);
+            return;
+          }
+        } catch (_) {}
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 3000);
+        } else {
+          setConfirmingPayment(false);
+          setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda akan diaktifkan tidak lama lagi. Klik teruskan untuk mula.`);
+        }
+      };
+      poll();
     } else if (params.get('payment') === 'cancelled') {
       setError('Pembayaran dibatalkan. Pilih pakej untuk cuba semula.');
       window.history.replaceState({}, '', window.location.pathname);
@@ -1262,6 +1290,13 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
             Pilih pakej yang sesuai untuk memulakan perjalanan anda bersama Monitacc.
           </motion.p>
         </div>
+
+        {confirmingPayment && (
+          <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3 max-w-xl mx-auto">
+            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <p className="text-sm font-bold text-blue-700">Mengesahkan pembayaran... Sila tunggu sebentar.</p>
+          </div>
+        )}
 
         {successMsg && (
           <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row items-center gap-3 max-w-xl mx-auto">
@@ -9360,17 +9395,46 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   );
 };
 
-const PlansView = ({ user }: { user: UserType | null }) => {
+const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanActivated?: (plan: string) => void }) => {
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [confirmingPayment, setConfirmingPayment] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment') === 'success') {
       const plan = params.get('plan') || '';
-      setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda kini aktif.`);
       window.history.replaceState({}, '', window.location.pathname);
+      setConfirmingPayment(true);
+
+      let attempts = 0;
+      const maxAttempts = 20;
+      const poll = async () => {
+        attempts++;
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (!session) { setConfirmingPayment(false); return; }
+          const { data: profile } = await supabase
+            .from('users')
+            .select('plan')
+            .eq('id', session.user.id)
+            .maybeSingle();
+          if (profile && profile.plan && profile.plan !== 'free' && profile.plan !== 'Percuma') {
+            setConfirmingPayment(false);
+            setSuccessMsg(`Pembayaran berjaya! Plan ${profile.plan} anda kini aktif.`);
+            if (onPlanActivated) onPlanActivated(profile.plan);
+            return;
+          }
+        } catch (_) {}
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 3000);
+        } else {
+          setConfirmingPayment(false);
+          setSuccessMsg(`Pembayaran berjaya! Plan ${plan} anda akan diaktifkan tidak lama lagi.`);
+        }
+      };
+      poll();
     } else if (params.get('payment') === 'cancelled') {
       setError('Pembayaran dibatalkan. Anda boleh cuba semula bila-bila masa.');
       window.history.replaceState({}, '', window.location.pathname);
@@ -9451,6 +9515,13 @@ const PlansView = ({ user }: { user: UserType | null }) => {
         <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pilih Plan Anda</h2>
         <p className="text-slate-500 text-sm font-medium">Sesuai untuk setiap tahap perniagaan anda.</p>
       </header>
+
+      {confirmingPayment && (
+        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin shrink-0" />
+          <p className="text-sm font-bold text-blue-700">Mengesahkan pembayaran... Sila tunggu sebentar.</p>
+        </div>
+      )}
 
       {successMsg && (
         <div className="mb-6 p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center gap-3">
@@ -11335,7 +11406,13 @@ export default function App() {
                 onBack={() => setView('profile')} 
               />
             )}
-            {view === 'plans' && <PlansView user={user} />}
+            {view === 'plans' && <PlansView user={user} onPlanActivated={async () => {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session?.user) {
+                const { data: profile } = await supabase.from('users').select('*').eq('id', session.user.id).maybeSingle();
+                if (profile) setUser(profile as unknown as UserType);
+              }
+            }} />}
             {view === 'subscription-management' && <SubscriptionManagementView onBack={() => setView('admin-dashboard')} />}
             {view === 'admin-dashboard' && <AdminDashboardView />}
             {view === 'token-usage' && <TokenUsageView />}
