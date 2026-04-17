@@ -9538,7 +9538,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
         <div className="card-premium overflow-hidden bg-white">
           {[
             { label: 'Tetapan Perniagaan', icon: LayoutDashboard, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: onBusinessSettings },
-            { label: 'Pengurusan Kategori', icon: Tag, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('categories') },
+
             { label: 'Eksport Data (PDF)', icon: FileDown, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('reports') },
             { label: 'Pusat Bantuan (FAQ)', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('faq') },
             { label: 'Hubungi Akauntan (WhatsApp)', icon: MessageCircle, color: 'text-blue-600', bg: 'bg-blue-50', onClick: () => window.open('https://wa.me/60126254849', '_blank') },
