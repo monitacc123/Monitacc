@@ -11893,7 +11893,10 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-slate-50 bg-dot-pattern relative">
+      <div className="app-bg-orb-1" />
+      <div className="app-bg-orb-2" />
+      <div className="app-bg-orb-3" />
       {connectionError && (
         <div className="fixed top-0 left-0 right-0 z-[9999] bg-rose-600 text-white p-3 flex items-center justify-between shadow-lg">
           <div className="flex items-center gap-3">
@@ -11929,7 +11932,7 @@ export default function App() {
         </div>
       )}
       
-      <main className="pb-20 md:pb-0">
+      <main className="pb-20 md:pb-0 relative z-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={view}
