@@ -11,52 +11,14 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY')!, {
   appInfo: { name: 'Monitacc', version: '1.0.0' },
 });
 
-const PRODUCT_ID = 'prod_ULpfJPERV2aEFm';
-
 Deno.serve(async (req) => {
   try {
     if (req.method === 'OPTIONS') {
       return new Response(null, { status: 200, headers: corsHeaders });
     }
 
-    const plans = [
-      { planKey: 'Starter', amount: 5000, currency: 'myr', nickname: 'Monitacc Starter' },
-      { planKey: 'Growth', amount: 10000, currency: 'myr', nickname: 'Monitacc Growth' },
-      { planKey: 'Ultimate', amount: 15000, currency: 'myr', nickname: 'Monitacc Ultimate' },
-    ];
-
-    const result: Record<string, string> = {};
-
-    for (const plan of plans) {
-      const existingPrices = await stripe.prices.list({
-        product: PRODUCT_ID,
-        active: true,
-        limit: 100,
-      });
-
-      const found = existingPrices.data.find(
-        (p) => p.metadata?.plan === plan.planKey && p.recurring?.interval === 'month'
-      );
-
-      let priceId: string;
-      if (found) {
-        priceId = found.id;
-      } else {
-        const price = await stripe.prices.create({
-          product: PRODUCT_ID,
-          unit_amount: plan.amount,
-          currency: plan.currency,
-          recurring: { interval: 'month' },
-          nickname: plan.nickname,
-          metadata: { plan: plan.planKey },
-        });
-        priceId = price.id;
-      }
-
-      result[plan.planKey] = priceId;
-    }
-
-    return new Response(JSON.stringify(result), {
+    return new Response(JSON.stringify({ error: 'Not configured' }), {
+      status: 404,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
