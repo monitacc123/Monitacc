@@ -801,7 +801,8 @@ const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_P
             <X size={18} />
           </button>
           {plan.popular && (
-            <span className="inline-block bg-emerald-500 text-white text-[8px] font-bold uppercase tracking-widest px-2.5 py-0.5 rounded-full mb-3">
+            <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3 shadow-lg shadow-amber-400/40">
+              <span className="w-1 h-1 bg-slate-900/50 rounded-full" />
               Paling Popular
             </span>
           )}
@@ -1067,7 +1068,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Pilih Pakej Anda</h3>
             <p className="text-slate-500 text-sm font-medium">Mula percuma. Upgrade bila bisnes berkembang.</p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
             {LANDING_PLANS.map((p, i) => {
               const lt = p.name === 'Ultimate'
                 ? { card: 'bg-slate-900 border-amber-400/60 shadow-xl', headerBg: 'bg-gradient-to-br from-amber-400/20 to-amber-600/10', name: 'text-white', rm: 'text-amber-300/70', price: 'text-white', period: 'text-amber-300/60', check: 'text-amber-400', feature: 'text-white/85', badge: 'bg-amber-400 text-slate-900', btn: 'bg-amber-400 hover:bg-amber-300 text-slate-900' }
@@ -1083,12 +1084,17 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.07 }}
-                  className={`rounded-2xl flex flex-col transition-all hover:-translate-y-1 border overflow-hidden ${lt.card}`}
+                  className={`relative rounded-2xl flex flex-col transition-all hover:-translate-y-1 border ${p.popular ? 'overflow-visible' : 'overflow-hidden'} ${lt.card}`}
                 >
                   {p.popular && (
-                    <div className={`text-center py-1 text-[8px] font-black uppercase tracking-widest ${lt.badge}`}>Paling Popular</div>
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex">
+                      <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg shadow-amber-400/40 whitespace-nowrap">
+                        <span className="w-1 h-1 bg-slate-900/40 rounded-full" />
+                        Paling Popular
+                      </span>
+                    </div>
                   )}
-                  <div className={`px-5 pt-4 pb-3 ${lt.headerBg}`}>
+                  <div className={`px-5 ${p.popular ? 'pt-6' : 'pt-4'} pb-3 ${lt.headerBg} rounded-t-2xl`}>
                     <h4 className={`text-sm font-bold font-display mb-1 ${lt.name}`}>{p.name}</h4>
                     <div className="flex items-baseline gap-0.5">
                       <span className={`text-[10px] font-bold ${lt.rm}`}>RM</span>
@@ -1581,7 +1587,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
           </div>
         )}
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 pt-4">
           {plans.map((plan, i) => {
             const isLoading = loadingPlan === plan.name;
             const ct = plan.name === 'Ultimate'
@@ -1597,12 +1603,17 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 + i * 0.08 }}
-                className={`relative rounded-2xl flex flex-col border overflow-hidden transition-all duration-300 hover:-translate-y-1 ${ct.card}`}
+                className={`relative rounded-2xl flex flex-col border transition-all duration-300 hover:-translate-y-1 ${plan.popular ? 'overflow-visible' : 'overflow-hidden'} ${ct.card}`}
               >
                 {plan.popular && (
-                  <div className={`text-center py-1 text-[8px] font-black uppercase tracking-widest ${ct.badge}`}>Paling Popular</div>
+                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex">
+                    <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg shadow-amber-400/40 whitespace-nowrap">
+                      <span className="w-1 h-1 bg-slate-900/40 rounded-full" />
+                      Paling Popular
+                    </span>
+                  </div>
                 )}
-                <div className={`px-5 pt-4 pb-3 ${ct.headerBg}`}>
+                <div className={`px-5 ${plan.popular ? 'pt-6' : 'pt-4'} pb-3 ${ct.headerBg} rounded-t-2xl`}>
                   <h3 className={`text-base font-bold tracking-tight font-display text-center mb-1 ${ct.name}`}>{plan.name}</h3>
                   <div className="flex items-baseline justify-center">
                     <span className={`text-[10px] font-bold ${ct.rm}`}>RM</span>
@@ -10355,7 +10366,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 pt-4">
         {plans.map((plan, i) => {
           const isActive = activePlanName === plan.name;
           const isFree = plan.name === 'Percuma';
@@ -10375,19 +10386,21 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.07 }}
-              className={`relative rounded-2xl flex flex-col transition-all duration-300 hover:-translate-y-1 border overflow-hidden ${theme.card}`}
+              className={`relative rounded-2xl flex flex-col transition-all duration-300 hover:-translate-y-1 border ${plan.popular ? 'overflow-visible' : 'overflow-hidden'} ${theme.card}`}
             >
               {plan.popular && (
-                <span className={`absolute -top-0 left-0 right-0 text-center py-1 text-[8px] font-black tracking-widest uppercase ${theme.badge}`}>Paling Popular</span>
+                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex">
+                  <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg shadow-amber-400/40 whitespace-nowrap">
+                    <span className="w-1 h-1 bg-slate-900/40 rounded-full" />
+                    Paling Popular
+                  </span>
+                </div>
               )}
-              {isActive && !plan.popular && (
-                <span className="absolute top-2 right-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">AKTIF</span>
-              )}
-              {isActive && plan.popular && (
-                <span className="absolute top-7 right-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow">AKTIF</span>
+              {isActive && (
+                <span className={`absolute ${plan.popular ? 'top-3' : 'top-2'} right-2 bg-blue-500 text-white px-2 py-0.5 rounded-full text-[8px] font-bold tracking-wider shadow`}>AKTIF</span>
               )}
 
-              <div className={`px-6 pt-${plan.popular ? '6' : '5'} pb-4 ${theme.header}`} style={{ paddingTop: plan.popular ? '1.75rem' : '1.25rem' }}>
+              <div className={`px-6 pb-4 ${theme.header} rounded-t-2xl`} style={{ paddingTop: plan.popular ? '1.75rem' : '1.25rem' }}>
                 <h3 className={`text-base font-bold mb-0.5 tracking-tight font-display text-center ${theme.name}`}>{plan.name}</h3>
                 <div className="flex items-baseline justify-center">
                   <span className={`text-[9px] font-bold mr-0.5 ${theme.rm}`}>RM</span>
