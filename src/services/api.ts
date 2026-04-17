@@ -38,7 +38,7 @@ export async function apiLogin(email: string, password: string): Promise<UserTyp
   return profile as unknown as UserType;
 }
 
-export async function apiRegister(name: string, email: string, phone: string, password: string, company_name: string): Promise<UserType> {
+export async function apiRegister(name: string, email: string, phone: string, password: string, company_name: string): Promise<{ user: UserType; accessToken: string | null }> {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Pendaftaran gagal');
@@ -50,7 +50,7 @@ export async function apiRegister(name: string, email: string, phone: string, pa
     .single();
 
   if (profileError) throw new Error(profileError.message);
-  return profile as unknown as UserType;
+  return { user: profile as unknown as UserType, accessToken: data.session?.access_token ?? null };
 }
 
 export async function apiLogout() {

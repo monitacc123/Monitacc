@@ -1039,9 +1039,10 @@ const AuthView = ({ onAuthSuccess, initialPlan }: { onAuthSuccess: (user: UserTy
         userData = await apiLogin(email, password);
         onAuthSuccess(userData, false);
       } else {
-        userData = await apiRegister(name, email, phone, password, companyName);
+        const { user: registeredUser, accessToken } = await apiRegister(name, email, phone, password, companyName);
+        userData = registeredUser;
         if (selectedPlan && selectedPlan !== 'Percuma') {
-          const url = await createCheckoutSession(selectedPlan as PaidPlan);
+          const url = await createCheckoutSession(selectedPlan as PaidPlan, accessToken);
           window.location.href = url;
           return;
         }

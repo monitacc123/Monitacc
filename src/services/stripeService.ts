@@ -8,9 +8,13 @@ export const STRIPE_PRICE_IDS = {
 
 export type PaidPlan = keyof typeof STRIPE_PRICE_IDS;
 
-export async function createCheckoutSession(plan: PaidPlan): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) throw new Error('Sila log masuk terlebih dahulu');
+export async function createCheckoutSession(plan: PaidPlan, accessToken?: string | null): Promise<string> {
+  let token = accessToken;
+  if (!token) {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Sila log masuk terlebih dahulu');
+    token = session.access_token;
+  }
 
   const baseUrl = window.location.origin;
 
@@ -20,7 +24,7 @@ export async function createCheckoutSession(plan: PaidPlan): Promise<string> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({
         price_id: STRIPE_PRICE_IDS[plan],
