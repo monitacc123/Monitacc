@@ -3633,60 +3633,57 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                   const isPdf = formData.image_url.includes('.pdf') || formData.image_url.startsWith('data:application/pdf');
                   const docFilename = `lampiran-${record.id || 'rekod'}.${isPdf ? 'pdf' : 'jpg'}`;
                   return (
-                    <div className="rounded-2xl border border-slate-200 overflow-hidden bg-slate-50">
-                      <div className="relative w-full" style={{ minHeight: '160px' }}>
-                        {isPdf ? (
-                          <div className="w-full h-40 flex flex-col items-center justify-center gap-2 bg-rose-50">
-                            <FileText size={40} className="text-rose-400" />
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Dokumen PDF</span>
-                          </div>
-                        ) : imgError ? (
-                          <div className="w-full h-40 flex flex-col items-center justify-center gap-2 bg-slate-100">
-                            <AlertCircle size={32} className="text-slate-300" />
-                            <span className="text-[10px] font-medium text-slate-400">Imej tidak dapat dipaparkan</span>
-                            <a href={formData.image_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-emerald-600 font-bold underline">Buka pautan</a>
-                          </div>
-                        ) : (
-                          <img
-                            src={formData.image_url}
-                            alt="Lampiran"
-                            className="w-full object-contain max-h-48 bg-white"
-                            onError={() => setImgError(true)}
-                          />
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 px-3 py-2.5 border-t border-slate-200 bg-white">
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 group">
+                      {isPdf ? (
+                        <div className="w-full h-32 flex flex-col items-center justify-center gap-1.5">
+                          <FileText size={32} className="text-slate-400" />
+                          <span className="text-[10px] text-slate-400 font-medium">PDF</span>
+                        </div>
+                      ) : imgError ? (
+                        <div className="w-full h-32 flex flex-col items-center justify-center gap-1">
+                          <AlertCircle size={24} className="text-slate-300" />
+                          <span className="text-[10px] text-slate-400">Imej tidak dapat dipaparkan</span>
+                        </div>
+                      ) : (
+                        <img
+                          src={formData.image_url}
+                          alt="Lampiran"
+                          className="w-full object-cover h-32"
+                          onError={() => setImgError(true)}
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => setViewingDoc(true)}
-                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all"
+                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
+                          title="Tengok"
                         >
-                          <Eye size={14} />
-                          Tengok
+                          <Eye size={16} />
                         </button>
                         <button
                           type="button"
                           onClick={() => downloadDocument(formData.image_url!, docFilename)}
-                          className="flex-1 flex items-center justify-center gap-2 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold hover:bg-blue-100 transition-all"
+                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
+                          title="Muat Turun"
                         >
-                          <Download size={14} />
-                          Muat Turun
+                          <Download size={16} />
                         </button>
                         <button
                           type="button"
                           onClick={() => fileInputRef.current?.click()}
-                          className="p-2 bg-slate-100 text-slate-500 rounded-xl hover:bg-slate-200 transition-all"
+                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
                           title="Tukar"
                         >
-                          <RefreshCw size={14} />
+                          <RefreshCw size={16} />
                         </button>
                         <button
                           type="button"
                           onClick={() => { setFormData({ ...formData, image_url: '' }); setImgError(false); }}
-                          className="p-2 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all"
+                          className="p-2 bg-white/90 text-rose-500 rounded-lg hover:bg-white transition-all"
                           title="Padam"
                         >
-                          <Trash2 size={14} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </div>
