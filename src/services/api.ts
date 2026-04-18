@@ -57,6 +57,24 @@ export async function apiLogout() {
   await supabase.auth.signOut();
 }
 
+export async function apiAdminLogin(email: string, password: string): Promise<UserType> {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw new Error(error.message);
+  if (!data.user) throw new Error('Login gagal');
+
+  const { data: profile, error: profileError } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', data.user.id)
+    .maybeSingle();
+
+  if (profileError) throw new Error(profileError.message);
+  if (!profile) throw new Error('Profil pentadbir tidak dijumpai');
+  if (profile.role !== 'admin') throw new Error('Akaun ini tidak mempunyai akses pentadbir');
+
+  return profile as unknown as UserType;
+}
+
 export async function apiFetchDashboard(userId: string, role: string) {
   const [recordsRes, salesRes] = await Promise.all([
     supabase.from('records').select('*').eq('user_id', userId).order('date', { ascending: false }),

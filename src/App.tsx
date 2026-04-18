@@ -25,6 +25,7 @@ import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboa
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
 import {
   apiLogin,
+  apiAdminLogin,
   apiRegister,
   apiLogout,
   apiFetchDashboard,
@@ -10601,70 +10602,114 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
   );
 };
 
-const AdminLoginView = ({ onLogin, onBack }: { onLogin: () => void, onBack: () => void }) => {
+const AdminLoginView = ({ onLogin, onBack }: { onLogin: (adminUser: UserType) => void, onBack: () => void }) => {
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (password === 'admin123') {
-      onLogin();
-    } else {
-      setError('Kata laluan salah. Sila cuba lagi.');
+    setError('');
+    setLoading(true);
+    try {
+      const adminUser = await apiAdminLogin(email.trim(), password);
+      onLogin(adminUser);
+    } catch (err: any) {
+      setError(err.message || 'Log masuk gagal. Sila cuba lagi.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-slate-800 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="w-full max-w-md"
       >
-        <div className="p-8 bg-slate-900 text-white text-center relative">
-          <div className="absolute top-4 left-4 flex items-center gap-2 opacity-50">
-            <div className="w-6 h-6 bg-emerald-500 rounded flex items-center justify-center text-white">
-              <CreditCard size={12} />
-            </div>
-            <span className="text-[10px] font-bold tracking-tighter">Monitacc</span>
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/30">
+            <ShieldCheck size={30} className="text-white" />
           </div>
-          <div className="w-16 h-16 bg-emerald-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-emerald-500/20">
-            <ShieldCheck size={32} />
-          </div>
-          <h2 className="text-2xl font-bold tracking-tight font-display">Akses Pentadbir</h2>
-          <p className="text-slate-400 text-sm mt-2">Sila masukkan kata laluan keselamatan untuk masuk ke Panel Kawalan.</p>
+          <h2 className="text-2xl font-black text-white tracking-tight font-display">Panel Pentadbir</h2>
+          <p className="text-slate-400 text-sm mt-1">Log masuk dengan akaun admin untuk akses penuh</p>
         </div>
-        
-        <form onSubmit={handleLogin} className="p-8 space-y-6">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Kata Laluan Admin</label>
-            <input 
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-mono"
-              autoFocus
-            />
-            {error && <p className="text-rose-600 text-[10px] font-bold mt-2 uppercase tracking-wider">{error}</p>}
-          </div>
 
-          <div className="flex flex-col gap-3">
-            <button 
-              type="submit"
-              className="w-full py-4 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95"
-            >
-              Masuk Panel Admin
-            </button>
-            <button 
-              type="button"
-              onClick={onBack}
-              className="w-full py-4 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
-            >
-              Kembali
-            </button>
-          </div>
-        </form>
+        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="h-1 bg-gradient-to-r from-emerald-400 to-teal-500" />
+          <form onSubmit={handleLogin} className="p-8 space-y-5">
+            <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Emel Admin</label>
+              <div className="relative">
+                <Mail size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@domain.com"
+                  required
+                  autoFocus
+                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all text-sm"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Kata Laluan</label>
+              <div className="relative">
+                <Lock size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-mono text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass(v => !v)}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  tabIndex={-1}
+                >
+                  {showPass ? <Eye size={14} /> : <Eye size={14} className="opacity-50" />}
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <div className="flex items-center gap-2 bg-rose-50 border border-rose-100 rounded-xl px-4 py-3">
+                <AlertCircle size={14} className="text-rose-500 shrink-0" />
+                <p className="text-rose-600 text-xs font-bold">{error}</p>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 pt-1">
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-bold text-sm hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-100 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
+                {loading ? 'Mengesahkan...' : 'Masuk Panel Admin'}
+              </button>
+              <button
+                type="button"
+                onClick={onBack}
+                className="w-full py-3.5 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm hover:bg-slate-200 transition-all active:scale-95"
+              >
+                Kembali
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <p className="text-center text-slate-500 text-xs mt-6">
+          Hanya pentadbir yang dibenarkan sahaja boleh log masuk ke panel ini.
+        </p>
       </motion.div>
     </div>
   );
@@ -12475,12 +12520,13 @@ export default function App() {
             {view === 'token-usage' && <TokenUsageView />}
             {view === 'affiliated-management' && <AffiliatedManagementView />}
             {view === 'admin-auth' && (
-              <AdminLoginView 
-                onLogin={() => {
+              <AdminLoginView
+                onLogin={(adminUser) => {
+                  setUser(adminUser);
                   setIsAdminAuthenticated(true);
                   setView('admin-dashboard');
-                }} 
-                onBack={() => setView('dashboard')} 
+                }}
+                onBack={() => setView('dashboard')}
               />
             )}
             {view === 'faq' && <FAQView onBack={() => setView('profile')} />}
