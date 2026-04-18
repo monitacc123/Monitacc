@@ -11946,6 +11946,13 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(true);
 
   useEffect(() => {
+    if (window.location.hash === '#admin') {
+      window.history.replaceState({}, '', window.location.pathname + window.location.search);
+      setView('admin-auth');
+      setSessionLoading(false);
+      return;
+    }
+
     const restoreSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -11961,6 +11968,9 @@ export default function App() {
             const params = new URLSearchParams(window.location.search);
             if (params.get('payment') === 'success' || params.get('payment') === 'cancelled') {
               setView('plans');
+            } else if ((profile as any).role === 'admin') {
+              setIsAdminAuthenticated(true);
+              setView('admin-dashboard');
             } else {
               setView('dashboard');
             }
