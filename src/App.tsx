@@ -9006,6 +9006,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   const [showAddModal, setShowAddModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'cancelled'>('all');
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -9032,26 +9033,42 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
+  const filteredUsers = users.filter(u => {
+    const matchesTab = activeTab === 'all' || u.status === activeTab;
+    const q = searchQuery.toLowerCase();
+    const matchesSearch = !q ||
+      (u.name || '').toLowerCase().includes(q) ||
+      (u.email || '').toLowerCase().includes(q) ||
+      (u.company_name || '').toLowerCase().includes(q) ||
+      (u.phone || '').toLowerCase().includes(q);
+    return matchesTab && matchesSearch;
+  });
+
+  const planColor = (plan: string) => {
+    if (plan === 'Ultimate') return 'bg-slate-900 text-white';
+    if (plan === 'Growth') return 'bg-emerald-600 text-white';
+    if (plan === 'Starter') return 'bg-emerald-100 text-emerald-700';
+    return 'bg-slate-100 text-slate-500';
+  };
+
   return (
-    <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex items-center gap-4">
-          <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500">
-            <ArrowLeft size={20} />
-          </button>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Pengurusan Pengguna</h2>
+    <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-6xl mx-auto">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Pengurusan Pengguna</h2>
+          <p className="text-slate-500 text-sm font-medium mt-0.5">Semua pengguna yang berdaftar dalam sistem</p>
         </div>
-        <button 
+        <button
           onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-95"
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-95"
         >
-          <Plus size={18} />
+          <Plus size={16} />
           Tambah Pengguna
         </button>
       </div>
 
       {showAddModal && (
-        <AddUserModal 
+        <AddUserModal
           onClose={() => setShowAddModal(false)}
           onSave={() => {
             setShowAddModal(false);
@@ -9060,103 +9077,159 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
         />
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Jumlah Pengguna</p>
-          <p className="text-2xl font-bold text-slate-900">{users.length}</p>
-        </div>
-        <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm">
-          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Pengguna Aktif</p>
-          <p className="text-2xl font-bold text-emerald-900">{users.filter(u => u.status === 'active').length}</p>
-        </div>
-        <div className="bg-rose-50 p-6 rounded-2xl border border-rose-100 shadow-sm">
-          <p className="text-[10px] font-bold text-rose-600 uppercase tracking-wider mb-1">Pengguna Batal</p>
-          <p className="text-2xl font-bold text-rose-900">{users.filter(u => u.status === 'cancelled').length}</p>
-        </div>
-      </div>
-
-      <div className="flex gap-2 mb-6">
-        {['all', 'active', 'cancelled'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${
-              activeTab === tab 
-                ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' 
-                : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'
-            }`}
-          >
-            {tab === 'all' ? 'Semua' : tab === 'active' ? 'Aktif' : 'Batal'}
-          </button>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Jumlah Berdaftar', value: users.length, color: 'bg-white border-slate-200', textColor: 'text-slate-900', labelColor: 'text-slate-500', icon: Users },
+          { label: 'Pengguna Aktif', value: users.filter(u => u.status === 'active').length, color: 'bg-emerald-50 border-emerald-100', textColor: 'text-emerald-900', labelColor: 'text-emerald-600', icon: CheckCircle2 },
+          { label: 'Pengguna Batal', value: users.filter(u => u.status === 'cancelled').length, color: 'bg-rose-50 border-rose-100', textColor: 'text-rose-900', labelColor: 'text-rose-500', icon: X },
+          { label: 'Berbayar', value: users.filter(u => u.plan && u.plan !== 'free' && u.plan !== 'Free').length, color: 'bg-amber-50 border-amber-100', textColor: 'text-amber-900', labelColor: 'text-amber-600', icon: Crown },
+        ].map((s, i) => (
+          <div key={i} className={`${s.color} border rounded-2xl p-4`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className={`text-[10px] font-bold uppercase tracking-wider ${s.labelColor}`}>{s.label}</p>
+              <s.icon size={14} className={s.labelColor} />
+            </div>
+            <p className={`text-2xl font-black ${s.textColor}`}>{s.value}</p>
+          </div>
         ))}
       </div>
 
-      <div className="card-premium overflow-hidden bg-white">
+      <div className="flex flex-col sm:flex-row gap-3 mb-5">
+        <div className="relative flex-1">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Cari nama, emel, syarikat, telefon..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all placeholder:text-slate-400"
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <X size={13} />
+            </button>
+          )}
+        </div>
+        <div className="flex gap-1.5 bg-slate-100 rounded-xl p-1">
+          {(['all', 'active', 'cancelled'] as const).map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                activeTab === tab
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-700'
+              }`}
+            >
+              {tab === 'all' ? `Semua (${users.length})` : tab === 'active' ? `Aktif (${users.filter(u => u.status === 'active').length})` : `Batal (${users.filter(u => u.status === 'cancelled').length})`}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{filteredUsers.length} pengguna dijumpai</p>
+          <button onClick={fetchUsers} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
         <div className="overflow-x-auto">
-          <table className="w-full text-left">
+          <table className="w-full text-left min-w-[700px]">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-100">
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Nama & Syarikat</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Pakej</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider">Affiliate</th>
-                <th className="px-6 py-4 text-xs font-bold text-slate-500 uppercase tracking-wider text-right">Tindakan</th>
+              <tr className="bg-slate-50/80 border-b border-slate-100">
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">#</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pengguna</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Telefon</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pakej</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Daftar</th>
+                <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {users
-                .filter(u => activeTab === 'all' || u.status === activeTab)
-                .map((u) => (
-                <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="text-sm font-bold text-slate-900">{u.name}</div>
-                    <div className="text-[10px] text-slate-400 font-medium">{u.email}</div>
-                    <div className="text-[10px] text-emerald-600 font-bold mt-0.5 uppercase tracking-tighter">{u.company_name}</div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                      u.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                    }`}>
-                      {u.status === 'active' ? 'Aktif' : 'Batal'}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider ${
-                      u.plan === 'Ultimate' ? 'bg-slate-900 text-white' : 
-                      u.plan === 'Growth' ? 'bg-emerald-600 text-white' : 
-                      u.plan === 'Starter' ? 'bg-emerald-100 text-emerald-700' : 
-                      'bg-slate-100 text-slate-600'
-                    }`}>
-                      {u.plan}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-2 h-2 rounded-full ${u.referred_by === 'Direct' ? 'bg-slate-300' : 'bg-blue-500'}`} />
-                      <span className="text-xs font-medium text-slate-600">{u.referred_by || 'Direct'}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-end gap-2">
-                      <select 
-                        value={u.role || 'full_access'} 
-                        onChange={(e) => handleUpdateRole(u.id, e.target.value)}
-                        className="text-[10px] font-bold bg-slate-100 border-none rounded-lg px-2 py-1 outline-none focus:ring-2 focus:ring-emerald-500/20"
-                      >
-                        <option value="admin">Admin</option>
-                        <option value="full_access">Full Access</option>
-                        <option value="upload_only">Upload Only</option>
-                      </select>
-                      <button 
-                        onClick={() => setSelectedUser(u)}
-                        className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"
-                      >
-                        <Eye size={16} />
-                      </button>
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <Loader2 size={20} className="animate-spin text-emerald-500" />
+                      <p className="text-xs text-slate-400 font-medium">Memuatkan data pengguna...</p>
                     </div>
                   </td>
                 </tr>
-              ))}
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="px-5 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <SearchX size={20} className="text-slate-300" />
+                      <p className="text-xs text-slate-400 font-medium">Tiada pengguna dijumpai</p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u, idx) => (
+                  <tr key={u.id} className="hover:bg-slate-50/60 transition-colors group">
+                    <td className="px-5 py-3.5">
+                      <span className="text-[11px] font-bold text-slate-300">{idx + 1}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0">
+                          <span className="text-[11px] font-black text-emerald-600">{(u.name || '?')[0].toUpperCase()}</span>
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-slate-900 leading-tight">{u.name || '-'}</div>
+                          <div className="text-[11px] text-slate-400 font-medium">{u.email}</div>
+                          {u.company_name && (
+                            <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-tight">{u.company_name}</div>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs text-slate-500 font-medium">{u.phone || <span className="text-slate-300">—</span>}</span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                        u.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-emerald-500' : 'bg-rose-400'}`} />
+                        {u.status === 'active' ? 'Aktif' : 'Batal'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${planColor(u.plan || 'free')}`}>
+                        {u.plan || 'Free'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <span className="text-xs text-slate-500 font-medium">
+                        {u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-3.5">
+                      <div className="flex items-center justify-end gap-2">
+                        <select
+                          value={u.role || 'full_access'}
+                          onChange={(e) => handleUpdateRole(u.id, e.target.value)}
+                          className="text-[10px] font-bold bg-slate-100 border-none rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+                        >
+                          <option value="admin">Admin</option>
+                          <option value="full_access">Full Access</option>
+                          <option value="upload_only">Upload Only</option>
+                        </select>
+                        <button
+                          onClick={() => setSelectedUser(u)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                          title="Lihat butiran"
+                        >
+                          <Eye size={14} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
@@ -9165,88 +9238,75 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       <AnimatePresence>
         {selectedUser && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               onClick={() => setSelectedUser(null)}
-              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
             />
-            <motion.div 
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+              exit={{ opacity: 0, scale: 0.96, y: 16 }}
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
             >
-              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 bg-emerald-500 rounded-2xl flex items-center justify-center text-white shadow-lg shadow-emerald-500/20">
-                    <User size={24} />
+              <div className="h-16 bg-gradient-to-r from-emerald-500 to-teal-600" />
+              <div className="px-6 pb-6">
+                <div className="flex items-end justify-between -mt-8 mb-4">
+                  <div className="w-16 h-16 bg-white rounded-2xl border-4 border-white shadow-lg flex items-center justify-center">
+                    <span className="text-2xl font-black text-emerald-600">{(selectedUser.name || '?')[0].toUpperCase()}</span>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-bold tracking-tight font-display">Butiran Pengguna</h3>
-                    <p className="text-xs text-slate-400 font-medium">{selectedUser.name}</p>
-                  </div>
-                </div>
-                <button 
-                  onClick={() => setSelectedUser(null)}
-                  className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              
-              <div className="p-8 space-y-8">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nama Penuh</p>
-                    <p className="text-sm font-bold text-slate-900">{selectedUser.name}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Emel</p>
-                    <p className="text-sm font-bold text-slate-900">{selectedUser.email}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Syarikat</p>
-                    <p className="text-sm font-bold text-emerald-600 uppercase tracking-tight">{selectedUser.company_name || '-'}</p>
-                  </div>
-                  <div className="space-y-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pakej Langganan</p>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                      selectedUser.plan === 'Ultimate' ? 'bg-slate-900 text-white' : 'bg-emerald-100 text-emerald-700'
-                    }`}>
-                      {selectedUser.plan}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <ShieldCheck size={14} className="text-emerald-500" />
-                    Status & Rujukan
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Status Akaun</p>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                        selectedUser.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'
-                      }`}>
-                        {selectedUser.status === 'active' ? 'Aktif' : 'Batal'}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Dirujuk Oleh</p>
-                      <p className="text-sm font-bold text-slate-900">{selectedUser.referred_by || 'Direct'}</p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex gap-3 pt-4">
-                  <button 
+                  <button
                     onClick={() => setSelectedUser(null)}
-                    className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-lg shadow-slate-200 active:scale-95"
+                    className="mb-1 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center hover:bg-slate-200 transition-all"
                   >
-                    Tutup Butiran
+                    <X size={15} />
+                  </button>
+                </div>
+
+                <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">{selectedUser.name}</h3>
+                <p className="text-sm text-slate-500 font-medium">{selectedUser.email}</p>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Syarikat', value: selectedUser.company_name || '—' },
+                    { label: 'Telefon', value: selectedUser.phone || '—' },
+                    { label: 'Pakej', value: selectedUser.plan || 'Free' },
+                    { label: 'Peranan', value: selectedUser.role || 'full_access' },
+                    { label: 'Dirujuk Oleh', value: selectedUser.referred_by || 'Direct' },
+                    { label: 'Tarikh Daftar', value: selectedUser.created_at ? new Date(selectedUser.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'long', year: 'numeric' }) : '—' },
+                  ].map((item) => (
+                    <div key={item.label} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{item.label}</p>
+                      <p className="text-xs font-bold text-slate-900 truncate">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {(selectedUser.plan_start || selectedUser.plan_end) && (
+                  <div className="mt-3 bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                    <p className="text-[9px] font-black text-emerald-600 uppercase tracking-widest mb-2">Tempoh Langganan</p>
+                    <div className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>{selectedUser.plan_start ? new Date(selectedUser.plan_start).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}</span>
+                      <span className="text-slate-300 mx-2">→</span>
+                      <span>{selectedUser.plan_end ? new Date(selectedUser.plan_end).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Tiada tamat'}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-between">
+                  <span className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest ${
+                    selectedUser.status === 'active' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-600'
+                  }`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${selectedUser.status === 'active' ? 'bg-emerald-500' : 'bg-rose-400'}`} />
+                    {selectedUser.status === 'active' ? 'Akaun Aktif' : 'Akaun Dibatal'}
+                  </span>
+                  <button
+                    onClick={() => setSelectedUser(null)}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95"
+                  >
+                    Tutup
                   </button>
                 </div>
               </div>
