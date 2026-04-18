@@ -11946,8 +11946,10 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(true);
 
   useEffect(() => {
-    if (window.location.hash === '#admin') {
-      window.history.replaceState({}, '', window.location.pathname + window.location.search);
+    const pathname = window.location.pathname;
+    const isAdminLoginPath = window.location.hash === '#admin' || pathname === '/admin/login' || pathname === '/admin';
+    if (isAdminLoginPath) {
+      window.history.replaceState({}, '', '/admin/login');
       setView('admin-auth');
       setSessionLoading(false);
       return;
@@ -11970,11 +11972,23 @@ export default function App() {
               setView('plans');
             } else if ((profile as any).role === 'admin') {
               setIsAdminAuthenticated(true);
+              window.history.replaceState({}, '', '/admin/dashboard');
               setView('admin-dashboard');
             } else {
-              setView('dashboard');
+              if (pathname === '/admin/dashboard') {
+                window.history.replaceState({}, '', '/admin/login');
+                setView('admin-auth');
+              } else {
+                setView('dashboard');
+              }
             }
+          } else if (pathname === '/admin/dashboard') {
+            window.history.replaceState({}, '', '/admin/login');
+            setView('admin-auth');
           }
+        } else if (pathname === '/admin/dashboard') {
+          window.history.replaceState({}, '', '/admin/login');
+          setView('admin-auth');
         }
       } catch (err) {
         console.error('Session restore error:', err);
@@ -12595,9 +12609,13 @@ export default function App() {
                 onLogin={(adminUser) => {
                   setUser(adminUser);
                   setIsAdminAuthenticated(true);
+                  window.history.replaceState({}, '', '/admin/dashboard');
                   setView('admin-dashboard');
                 }}
-                onBack={() => setView('dashboard')}
+                onBack={() => {
+                  window.history.replaceState({}, '', '/');
+                  setView('dashboard');
+                }}
               />
             )}
             {view === 'faq' && <FAQView onBack={() => setView('profile')} />}
