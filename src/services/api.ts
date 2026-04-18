@@ -537,6 +537,13 @@ export async function apiGetAdminDashboardStats() {
   return { totalUsers, activeSubscribers, cancelledUsers, totalTokensUsed, monthlyRevenue, totalAffiliated, tokenUsageData, packageDistribution };
 }
 
+export const PLAN_TOKEN_LIMITS: Record<string, number> = {
+  free: 10000, Percuma: 10000,
+  Starter: 100000,
+  Growth: 250000,
+  Ultimate: 10000000,
+};
+
 export async function apiGetTokenUsageByUser() {
   const { data: users, error: usersError } = await supabase
     .from('users')
@@ -550,18 +557,13 @@ export async function apiGetTokenUsageByUser() {
     .order('created_at', { ascending: false });
   if (usageError) throw new Error(usageError.message);
 
-  const planLimits: Record<string, number> = {
-    free: 500, Percuma: 500,
-    Starter: 10000,
-    Growth: 25000,
-    Ultimate: 100000,
-  };
+  const planLimits = PLAN_TOKEN_LIMITS;
 
   const result = (users || []).map(u => {
     const userUsage = (usageRows || []).filter(r => r.user_id === u.id);
     const tokensUsed = userUsage.reduce((sum, r) => sum + (r.tokens_used || 0), 0);
     const lastUsed = userUsage.length > 0 ? userUsage[0].created_at : null;
-    const limit = planLimits[u.plan || 'free'] || 500;
+    const limit = planLimits[u.plan || 'free'] || 10000;
     return { ...u, tokensUsed, limit, lastUsed };
   });
 
@@ -575,13 +577,6 @@ export async function apiLogAiUsage(userId: string, tokensUsed: number, operatio
   if (error) console.error('Failed to log AI usage:', error.message);
 }
 
-export const PLAN_TOKEN_LIMITS: Record<string, number> = {
-  free: 500, Percuma: 500,
-  Starter: 10000,
-  Growth: 25000,
-  Ultimate: 100000,
-};
-
 export async function apiGetUserTokenUsage(userId: string, plan: string): Promise<{ tokensUsed: number; limit: number; remaining: number }> {
   const { data, error } = await supabase
     .from('ai_usage')
@@ -591,7 +586,7 @@ export async function apiGetUserTokenUsage(userId: string, plan: string): Promis
   if (error) throw new Error(error.message);
 
   const tokensUsed = (data || []).reduce((sum, r) => sum + (r.tokens_used || 0), 0);
-  const limit = PLAN_TOKEN_LIMITS[plan || 'free'] || 500;
+  const limit = PLAN_TOKEN_LIMITS[plan || 'free'] || 10000;
   return { tokensUsed, limit, remaining: Math.max(0, limit - tokensUsed) };
 }
 
