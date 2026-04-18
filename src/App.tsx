@@ -51,6 +51,8 @@ import {
   apiAddAffiliate,
   apiUpdateAffiliate,
   apiDeleteAffiliate,
+  apiTopUpUserTokens,
+  PLAN_TOKEN_LIMITS,
   type Affiliate,
   PLAN_SCAN_LIMITS,
   PLAN_PDF_LIMITS,
@@ -1854,7 +1856,7 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
   );
 };
 
-const AIInsights = ({ records, sales, userId }: { records: TransactionRecord[], sales: any[], userId?: string }) => {
+const AIInsights = ({ records, sales, userId, userPlan }: { records: TransactionRecord[], sales: any[], userId?: string, userPlan?: string }) => {
   const [insights, setInsights] = useState<DashboardInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
@@ -1863,7 +1865,7 @@ const AIInsights = ({ records, sales, userId }: { records: TransactionRecord[], 
   const fetchInsights = async () => {
     setLoading(true);
     try {
-      const res = await getDashboardInsights(records, sales, userId);
+      const res = await getDashboardInsights(records, sales, userId, userPlan);
       setInsights(res);
       setLastUpdated(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -2124,7 +2126,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
         {user?.role !== 'upload_only' && (
           <div className="mb-5 md:mb-10">
-            <AIInsights records={records} sales={sales} userId={user?.id} />
+            <AIInsights records={records} sales={sales} userId={user?.id} userPlan={user?.plan} />
           </div>
         )}
 
@@ -2597,7 +2599,19 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       const match = base64.match(/^data:([^;]+);/);
       if (match) finalMimeType = match[1];
     }
-    const data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id);
+    let data: any = null;
+    try {
+      data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id, user?.plan);
+    } catch (err: any) {
+      setAnalyzing(false);
+      if (err?.message?.startsWith("KUOTA_HABIS:")) {
+        alert(err.message.replace("KUOTA_HABIS:", ""));
+        onUpgrade();
+      } else {
+        alert("Ralat menganalisis dokumen. Sila cuba lagi.");
+      }
+      return;
+    }
     if (data && Array.isArray(data)) {
       // Deduplicate within the extracted data - only if EXACTLY the same
       const uniqueData = data.filter((item, index, self) =>
@@ -5069,7 +5083,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
 
           setUploadStatus({ type: 'info', message: 'AI sedang menganalisis penyata bank anda...' });
 
-          const extracted = await extractBankTransactions(base64Data, mimeType, user?.id);
+          const extracted = await extractBankTransactions(base64Data, mimeType, user?.id, user?.plan);
 
           if (extracted && extracted.length > 0) {
             const data = extracted.map((item, i) => ({
@@ -5099,9 +5113,13 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           } else {
             setUploadStatus({ type: 'error', message: 'AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.' });
           }
-        } catch (err) {
+        } catch (err: any) {
           console.error('Error processing with AI:', err);
-          setUploadStatus({ type: 'error', message: 'Ralat semasa memproses dokumen dengan AI. Sila cuba lagi.' });
+          if (err?.message?.startsWith("KUOTA_HABIS:")) {
+            setUploadStatus({ type: 'error', message: err.message.replace("KUOTA_HABIS:", "") });
+          } else {
+            setUploadStatus({ type: 'error', message: 'Ralat semasa memproses dokumen dengan AI. Sila cuba lagi.' });
+          }
         } finally {
           setIsUploading(false);
         }
@@ -8591,7 +8609,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
 
   const generateAnalysis = async (conciseMode: boolean = isConcise) => {
     setLoading(true);
-    const result = await analyzeFinancials(records, sales, conciseMode, user?.id);
+    const result = await analyzeFinancials(records, sales, conciseMode, user?.id, user?.plan);
     setAnalysis(result);
     setLoading(false);
   };
@@ -11438,6 +11456,8 @@ const TokenUsageView = () => {
   const [loading, setLoading] = useState(true);
   const [showTopUp, setShowTopUp] = useState<{ show: boolean, user: any | null }>({ show: false, user: null });
   const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpLoading, setTopUpLoading] = useState(false);
+  const [topUpError, setTopUpError] = useState('');
 
   const fetchData = async () => {
     setLoading(true);
@@ -11453,12 +11473,22 @@ const TokenUsageView = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  const handleTopUp = () => {
+  const handleTopUp = async () => {
     if (!showTopUp.user || !topUpAmount) return;
     const amount = parseInt(topUpAmount);
     if (isNaN(amount) || amount <= 0) return;
-    setShowTopUp({ show: false, user: null });
-    setTopUpAmount('');
+    setTopUpLoading(true);
+    setTopUpError('');
+    try {
+      await apiTopUpUserTokens(showTopUp.user.id, amount);
+      setShowTopUp({ show: false, user: null });
+      setTopUpAmount('');
+      await fetchData();
+    } catch (err: any) {
+      setTopUpError(err.message || 'Gagal menambah token. Sila cuba lagi.');
+    } finally {
+      setTopUpLoading(false);
+    }
   };
 
   return (
@@ -11619,18 +11649,24 @@ const TokenUsageView = () => {
                   <p className="text-[10px] text-slate-400 mt-2 font-medium italic">* Token ini akan ditambah ke dalam had kuota sedia ada pengguna.</p>
                 </div>
 
+                {topUpError && (
+                  <p className="text-xs text-rose-600 font-medium bg-rose-50 px-4 py-3 rounded-xl">{topUpError}</p>
+                )}
+
                 <div className="flex gap-3 pt-2">
-                  <button 
-                    onClick={() => setShowTopUp({ show: false, user: null })}
+                  <button
+                    onClick={() => { setShowTopUp({ show: false, user: null }); setTopUpError(''); setTopUpAmount(''); }}
                     className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                    disabled={topUpLoading}
                   >
                     Batal
                   </button>
-                  <button 
+                  <button
                     onClick={handleTopUp}
-                    className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95"
+                    disabled={topUpLoading}
+                    className="flex-1 py-4 bg-emerald-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    Sahkan Top Up
+                    {topUpLoading ? <><Loader2 size={14} className="animate-spin" /> Memproses...</> : 'Sahkan Top Up'}
                   </button>
                 </div>
               </div>

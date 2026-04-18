@@ -1,6 +1,6 @@
 import { ALL_CATEGORIES } from "../constants/categories";
 import { extractTextFromPdf } from "./pdfExtractor";
-import { apiLogAiUsage } from "./api";
+import { apiLogAiUsage, apiGetUserTokenUsage } from "./api";
 
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
@@ -83,6 +83,13 @@ function extractJson(text: string): string {
   return text.trim();
 }
 
+async function checkTokenLimit(userId: string, plan: string): Promise<void> {
+  const usage = await apiGetUserTokenUsage(userId, plan);
+  if (usage.remaining <= 0) {
+    throw new Error(`KUOTA_HABIS:Had token AI anda (${usage.limit.toLocaleString()} token) telah habis untuk pelan ${plan}. Sila naik taraf pelan atau hubungi admin untuk top up.`);
+  }
+}
+
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
@@ -113,8 +120,11 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string): Promise<ExtractedData[] | null> {
+export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string, plan?: string): Promise<ExtractedData[] | null> {
   try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
     const prompt = `You are an OCR and accounting data extraction assistant. Extract ALL accounting transactions from this document.
@@ -200,8 +210,11 @@ export interface BankTransaction {
   type: "credit" | "debit";
 }
 
-export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string): Promise<BankTransaction[] | null> {
+export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string, plan?: string): Promise<BankTransaction[] | null> {
   try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
     const prompt = `You are a bank statement parser. Extract ALL transactions from this bank statement document.
@@ -285,7 +298,7 @@ Extract ALL transactions from the document:`;
   }
 }
 
-export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string): Promise<string> {
+export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string, plan?: string): Promise<string> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
   const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${isConcise}`;
@@ -296,6 +309,9 @@ export async function analyzeFinancials(records: any[], sales: any[], isConcise:
   }
 
   try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
     const prompt = `Analisa data kewangan berikut untuk perniagaan kecil.
 ${isConcise
   ? "Berikan ringkasan yang sangat padat dan ringkas (bullet points sahaja) tentang prestasi dan 1 cadangan utama."
@@ -320,6 +336,9 @@ ${JSON.stringify(sales.map(s => ({ product: s.product_name, quantity: s.quantity
     return result || "Tiada analisis tersedia.";
   } catch (error: any) {
     console.error("Error analyzing financials:", error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) {
+      return `## Had Token Habis\n\nKuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up token tambahan.`;
+    }
     if (error?.message?.includes("429")) {
       return "Had kuota dicapai. Sila cuba lagi dalam beberapa minit.";
     }
@@ -333,7 +352,7 @@ export interface DashboardInsight {
   description: string;
 }
 
-export async function getDashboardInsights(records: any[], sales: any[], userId?: string): Promise<DashboardInsight[]> {
+export async function getDashboardInsights(records: any[], sales: any[], userId?: string, plan?: string): Promise<DashboardInsight[]> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
   const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}`;
@@ -344,6 +363,9 @@ export async function getDashboardInsights(records: any[], sales: any[], userId?
   }
 
   try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
     const prompt = `Analisa data kewangan berikut dan berikan 3-4 cadangan ringkas (insights) untuk papan pemuka (dashboard).
 Setiap cadangan mesti mempunyai jenis: 'improvement', 'attention', atau 'positive'.
 Berikan jawapan dalam Bahasa Melayu.
@@ -370,6 +392,13 @@ Return a JSON array. Each item must have: type (improvement/attention/positive),
     return Array.isArray(result) ? result : [];
   } catch (error: any) {
     console.error("Error getting dashboard insights:", error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) {
+      return [{
+        type: "attention",
+        title: "Had Token Habis",
+        description: "Kuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up.",
+      }];
+    }
     if (error?.message?.includes("429")) {
       return [{
         type: "attention",

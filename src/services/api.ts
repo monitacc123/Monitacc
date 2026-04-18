@@ -575,6 +575,33 @@ export async function apiLogAiUsage(userId: string, tokensUsed: number, operatio
   if (error) console.error('Failed to log AI usage:', error.message);
 }
 
+export const PLAN_TOKEN_LIMITS: Record<string, number> = {
+  free: 500, Percuma: 500,
+  Starter: 10000,
+  Growth: 25000,
+  Ultimate: 100000,
+};
+
+export async function apiGetUserTokenUsage(userId: string, plan: string): Promise<{ tokensUsed: number; limit: number; remaining: number }> {
+  const { data, error } = await supabase
+    .from('ai_usage')
+    .select('tokens_used')
+    .eq('user_id', userId);
+
+  if (error) throw new Error(error.message);
+
+  const tokensUsed = (data || []).reduce((sum, r) => sum + (r.tokens_used || 0), 0);
+  const limit = PLAN_TOKEN_LIMITS[plan || 'free'] || 500;
+  return { tokensUsed, limit, remaining: Math.max(0, limit - tokensUsed) };
+}
+
+export async function apiTopUpUserTokens(userId: string, tokens: number): Promise<void> {
+  const { error } = await supabase
+    .from('ai_usage')
+    .insert([{ user_id: userId, tokens_used: -tokens, operation: 'topup' }]);
+  if (error) throw new Error(error.message);
+}
+
 export const PLAN_SCAN_LIMITS: Record<string, number> = {
   free: 5,
   Percuma: 5,
