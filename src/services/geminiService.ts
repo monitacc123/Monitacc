@@ -1,5 +1,6 @@
 import { ALL_CATEGORIES } from "../constants/categories";
 import { extractTextFromPdf } from "./pdfExtractor";
+import { apiLogAiUsage } from "./api";
 
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
@@ -12,7 +13,12 @@ function getConfig() {
   return { apiKey, baseUrl };
 }
 
-async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<string> {
+interface ChatResult {
+  content: string;
+  tokensUsed: number;
+}
+
+async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<ChatResult> {
   const { apiKey, baseUrl } = getConfig();
 
   const hasImage = messages.some(m =>
@@ -44,7 +50,27 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
   }
 
   const data = await res.json();
-  return data.choices?.[0]?.message?.content || "";
+  const content = data.choices?.[0]?.message?.content || "";
+  const tokensUsed = data.usage?.total_tokens || data.usage?.prompt_tokens
+    ? (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0)
+    : estimateTokens(messages, content);
+
+  return { content, tokensUsed };
+}
+
+function estimateTokens(messages: { role: string; content: any }[], output: string): number {
+  let inputText = "";
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      inputText += m.content;
+    } else if (Array.isArray(m.content)) {
+      for (const c of m.content) {
+        if (c.type === "text") inputText += c.text || "";
+        if (c.type === "image_url") inputText += "[IMAGE]";
+      }
+    }
+  }
+  return Math.ceil((inputText.length + output.length) / 4);
 }
 
 function extractJson(text: string): string {
@@ -87,7 +113,7 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg"): Promise<ExtractedData[] | null> {
+export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string): Promise<ExtractedData[] | null> {
   try {
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
@@ -140,7 +166,11 @@ Now extract from the document:`;
       }];
     }
 
-    const text = await withRetry(() => chatCompletion(messages, false));
+    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "scan").catch(() => {});
+    }
 
     if (!text || text.trim() === "") {
       console.error("Empty response from AI");
@@ -170,7 +200,7 @@ export interface BankTransaction {
   type: "credit" | "debit";
 }
 
-export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf"): Promise<BankTransaction[] | null> {
+export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string): Promise<BankTransaction[] | null> {
   try {
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
@@ -226,7 +256,11 @@ Extract ALL transactions from the document:`;
       }];
     }
 
-    const text = await withRetry(() => chatCompletion(messages, false));
+    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+    }
 
     if (!text || text.trim() === "") return null;
 
@@ -251,7 +285,7 @@ Extract ALL transactions from the document:`;
   }
 }
 
-export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false): Promise<string> {
+export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string): Promise<string> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
   const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${isConcise}`;
@@ -274,7 +308,11 @@ ${JSON.stringify(records.map(r => ({ type: r.type, category: r.category, amount:
 Data Jualan:
 ${JSON.stringify(sales.map(s => ({ product: s.product_name, quantity: s.quantity, total: s.total, date: s.date })))}`;
 
-    const result = await withRetry(() => chatCompletion([{ role: "user", content: prompt }]));
+    const { content: result, tokensUsed } = await withRetry(() => chatCompletion([{ role: "user", content: prompt }]));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "analysis").catch(() => {});
+    }
 
     if (result) {
       analysisCache.set(cacheKey, { data: result, timestamp: Date.now() });
@@ -295,7 +333,7 @@ export interface DashboardInsight {
   description: string;
 }
 
-export async function getDashboardInsights(records: any[], sales: any[]): Promise<DashboardInsight[]> {
+export async function getDashboardInsights(records: any[], sales: any[], userId?: string): Promise<DashboardInsight[]> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
   const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}`;
@@ -318,7 +356,11 @@ ${JSON.stringify(sales.slice(0, 20).map(s => ({ product: s.product_name, quantit
 
 Return a JSON array. Each item must have: type (improvement/attention/positive), title, description.`;
 
-    const text = await withRetry(() => chatCompletion([{ role: "user", content: prompt }], true));
+    const { content: text, tokensUsed } = await withRetry(() => chatCompletion([{ role: "user", content: prompt }], true));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "insights").catch(() => {});
+    }
 
     const result = JSON.parse(extractJson(text));
 

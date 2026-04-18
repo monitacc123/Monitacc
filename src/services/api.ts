@@ -550,7 +550,12 @@ export async function apiGetTokenUsageByUser() {
     .order('created_at', { ascending: false });
   if (usageError) throw new Error(usageError.message);
 
-  const planLimits: Record<string, number> = { free: 500, Starter: 10000, Growth: 25000, Ultimate: 100000 };
+  const planLimits: Record<string, number> = {
+    free: 500, Percuma: 500,
+    Starter: 10000,
+    Growth: 25000,
+    Ultimate: 100000,
+  };
 
   const result = (users || []).map(u => {
     const userUsage = (usageRows || []).filter(r => r.user_id === u.id);

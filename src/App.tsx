@@ -1854,7 +1854,7 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
   );
 };
 
-const AIInsights = ({ records, sales }: { records: TransactionRecord[], sales: any[] }) => {
+const AIInsights = ({ records, sales, userId }: { records: TransactionRecord[], sales: any[], userId?: string }) => {
   const [insights, setInsights] = useState<DashboardInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
@@ -1863,7 +1863,7 @@ const AIInsights = ({ records, sales }: { records: TransactionRecord[], sales: a
   const fetchInsights = async () => {
     setLoading(true);
     try {
-      const res = await getDashboardInsights(records, sales);
+      const res = await getDashboardInsights(records, sales, userId);
       setInsights(res);
       setLastUpdated(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -2124,7 +2124,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
         {user?.role !== 'upload_only' && (
           <div className="mb-5 md:mb-10">
-            <AIInsights records={records} sales={sales} />
+            <AIInsights records={records} sales={sales} userId={user?.id} />
           </div>
         )}
 
@@ -2597,7 +2597,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       const match = base64.match(/^data:([^;]+);/);
       if (match) finalMimeType = match[1];
     }
-    const data = await analyzeDocument(base64, finalMimeType || "image/jpeg");
+    const data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id);
     if (data && Array.isArray(data)) {
       // Deduplicate within the extracted data - only if EXACTLY the same
       const uniqueData = data.filter((item, index, self) =>
@@ -5069,7 +5069,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
 
           setUploadStatus({ type: 'info', message: 'AI sedang menganalisis penyata bank anda...' });
 
-          const extracted = await extractBankTransactions(base64Data, mimeType);
+          const extracted = await extractBankTransactions(base64Data, mimeType, user?.id);
 
           if (extracted && extracted.length > 0) {
             const data = extracted.map((item, i) => ({
@@ -8591,7 +8591,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
 
   const generateAnalysis = async (conciseMode: boolean = isConcise) => {
     setLoading(true);
-    const result = await analyzeFinancials(records, sales, conciseMode);
+    const result = await analyzeFinancials(records, sales, conciseMode, user?.id);
     setAnalysis(result);
     setLoading(false);
   };
