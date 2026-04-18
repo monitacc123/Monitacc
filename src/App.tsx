@@ -3258,13 +3258,8 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                         <button
                           type="button"
                           onClick={() => {
-                            const isPdf = formData.image_url?.startsWith('data:application/pdf');
-                            const link = document.createElement('a');
-                            link.href = formData.image_url!;
-                            link.download = `lampiran-baru.${isPdf ? 'pdf' : 'png'}`;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
+                            const isPdf = formData.image_url?.includes('.pdf') || formData.image_url?.startsWith('data:application/pdf');
+                            downloadDocument(formData.image_url!, `lampiran-baru.${isPdf ? 'pdf' : 'jpg'}`);
                           }}
                           className="p-2.5 bg-white text-blue-600 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all border border-slate-100"
                           title="Muat Turun"
@@ -3310,6 +3305,134 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               </button>
             </div>
           </form>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const downloadDocument = async (url: string, filename: string) => {
+  if (url.startsWith('data:')) {
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  } else {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(objectUrl);
+    } catch {
+      window.open(url, '_blank');
+    }
+  }
+};
+
+const DocumentViewerModal = ({ url, filename, onClose }: { url: string; filename: string; onClose: () => void }) => {
+  const [downloading, setDownloading] = useState(false);
+  const isPdf = url.includes('.pdf') || url.startsWith('data:application/pdf');
+  const isDataUrl = url.startsWith('data:');
+
+  const handleDownload = async () => {
+    setDownloading(true);
+    await downloadDocument(url, filename);
+    setDownloading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm"
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 16 }}
+        className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200 flex flex-col max-h-[90vh]"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isPdf ? 'bg-rose-50 text-rose-500' : 'bg-emerald-50 text-emerald-600'}`}>
+              {isPdf ? <FileText size={18} /> : <Camera size={18} />}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-slate-900 truncate max-w-[240px]">{filename}</p>
+              <p className="text-[10px] text-slate-400 font-medium">{isPdf ? 'Dokumen PDF' : 'Imej'}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownload}
+              disabled={downloading}
+              className="flex items-center gap-2 px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition-all active:scale-95 disabled:opacity-60"
+            >
+              {downloading ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+              Muat Turun
+            </button>
+            {!isDataUrl && (
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all"
+              >
+                <ExternalLink size={13} />
+                Buka
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              className="w-9 h-9 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 transition-all"
+            >
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto bg-slate-50 flex items-center justify-center p-4 min-h-[300px]">
+          {isPdf ? (
+            isDataUrl ? (
+              <div className="flex flex-col items-center gap-4 py-8">
+                <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center">
+                  <FileText size={40} className="text-rose-400" />
+                </div>
+                <p className="text-sm font-bold text-slate-700">Dokumen PDF</p>
+                <p className="text-xs text-slate-400 text-center max-w-xs">Klik "Muat Turun" untuk membuka PDF ini pada peranti anda.</p>
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all"
+                >
+                  <Download size={15} />
+                  Muat Turun PDF
+                </button>
+              </div>
+            ) : (
+              <iframe
+                src={url}
+                className="w-full rounded-xl border border-slate-200"
+                style={{ height: '60vh' }}
+                title={filename}
+              />
+            )
+          ) : (
+            <img
+              src={url}
+              alt={filename}
+              className="max-w-full max-h-[65vh] object-contain rounded-xl shadow-sm"
+            />
+          )}
         </div>
       </motion.div>
     </div>
@@ -3529,13 +3652,8 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                         <button
                           type="button"
                           onClick={() => {
-                            const isPdf = formData.image_url?.startsWith('data:application/pdf');
-                            const link = document.createElement('a');
-                            link.href = formData.image_url!;
-                            link.download = `lampiran-${record.id || 'rekod'}.${isPdf ? 'pdf' : 'png'}`;
-                            document.body.appendChild(link);
-                            link.click();
-                            document.body.removeChild(link);
+                            const isPdf = formData.image_url?.includes('.pdf') || formData.image_url?.startsWith('data:application/pdf');
+                            downloadDocument(formData.image_url!, `lampiran-${record.id || 'rekod'}.${isPdf ? 'pdf' : 'jpg'}`);
                           }}
                           className="p-2.5 bg-white text-blue-600 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all border border-slate-100"
                           title="Muat Turun"
@@ -5587,6 +5705,7 @@ const RecordsView = ({
   const [startDate, setStartDate] = useState(format(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [editingRecord, setEditingRecord] = useState<TransactionRecord | null>(null);
+  const [viewingDocument, setViewingDocument] = useState<{ url: string; filename: string } | null>(null);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -5875,7 +5994,15 @@ const RecordsView = ({
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[13px] font-bold text-slate-800 truncate">{record.category}</span>
-                            {record.image_url && <Paperclip size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
+                            {record.image_url && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setViewingDocument({ url: record.image_url!, filename: `lampiran-${record.id}.${record.image_url!.includes('.pdf') || record.image_url!.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
+                                title="Lihat Lampiran"
+                              >
+                                <Paperclip size={10} strokeWidth={3} />
+                              </button>
+                            )}
                             {!!record.reconciled && <Check size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
@@ -6002,9 +6129,13 @@ const RecordsView = ({
                               {record.category}
                             </span>
                             {record.image_url && (
-                              <div className="shrink-0 text-emerald-500" title="Mempunyai Lampiran">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setViewingDocument({ url: record.image_url!, filename: `lampiran-${record.id}.${record.image_url!.includes('.pdf') || record.image_url!.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
+                                title="Lihat Lampiran"
+                              >
                                 <Paperclip size={10} strokeWidth={3} />
-                              </div>
+                              </button>
                             )}
                           </div>
                           {record.docNumber && (
@@ -6076,9 +6207,9 @@ const RecordsView = ({
       </div>
 
       {editingRecord && (
-        <EditRecordModal 
-          record={editingRecord} 
-          onClose={() => setEditingRecord(null)} 
+        <EditRecordModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
           onSave={(data) => {
             onUpdate(editingRecord.id, data);
             setEditingRecord(null);
@@ -6087,6 +6218,16 @@ const RecordsView = ({
           categoryMappings={categoryMappings}
         />
       )}
+
+      <AnimatePresence>
+        {viewingDocument && (
+          <DocumentViewerModal
+            url={viewingDocument.url}
+            filename={viewingDocument.filename}
+            onClose={() => setViewingDocument(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 };
