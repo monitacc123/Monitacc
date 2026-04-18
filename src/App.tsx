@@ -10225,6 +10225,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   const [filterPlan, setFilterPlan] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [visibleCount, setVisibleCount] = useState(10);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [editPlan, setEditPlan] = useState('');
   const [editPlanEnd, setEditPlanEnd] = useState('');
@@ -10274,6 +10275,11 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
     }
     return true;
   });
+
+  useEffect(() => { setVisibleCount(10); }, [filterPlan, filterStatus, searchQuery]);
+
+  const visibleUsers = filtered.slice(0, visibleCount);
+  const hasMore = filtered.length > visibleCount;
 
   const planCounts = PLAN_CONFIG.map(p => ({
     ...p,
@@ -10390,7 +10396,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
               <tbody className="divide-y divide-slate-50">
                 {filtered.length === 0 ? (
                   <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400 font-medium">Tiada pengguna dijumpai</td></tr>
-                ) : filtered.map(u => (
+                ) : visibleUsers.map(u => (
                   <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-5 py-4">
                       <div className="text-sm font-bold text-slate-900">{u.name || '-'}</div>
@@ -10437,10 +10443,20 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
             </table>
           </div>
 
+          {hasMore && (
+            <div className="px-5 py-3 border-t border-slate-100 flex justify-center">
+              <button
+                onClick={() => setVisibleCount(c => c + 10)}
+                className="px-4 py-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all"
+              >
+                Lihat Lebih ({filtered.length - visibleCount} lagi)
+              </button>
+            </div>
+          )}
           <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400">{filtered.length} daripada {users.length} pengguna</span>
+            <span className="text-[10px] font-bold text-slate-400">{visibleUsers.length} daripada {filtered.length} pengguna ditunjuk ({users.length} jumlah)</span>
             {filterPlan !== 'all' && (
-              <button onClick={() => setFilterPlan('all')} className="text-[10px] font-bold text-emerald-600 hover:underline">Reset Penapis</button>
+              <button onClick={() => { setFilterPlan('all'); setVisibleCount(10); }} className="text-[10px] font-bold text-emerald-600 hover:underline">Reset Penapis</button>
             )}
           </div>
         </div>
