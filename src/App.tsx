@@ -2548,7 +2548,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const checkLimitAndAnalyze = async (base64: string, type: string) => {
     const isPdf = type === 'application/pdf';
     const scanType = isPdf ? 'pdf' : 'receipt';
-    if (user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
+    const isAdminUser = user?.role === 'admin';
+    if (!isAdminUser && user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
       const usage = await apiGetScanUsageThisMonth(user.id);
       const used = isPdf ? usage.pdf : usage.receipt;
       const limit = isPdf ? pdfLimit : receiptLimit;
@@ -12518,7 +12519,7 @@ export default function App() {
               (() => {
                 const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
                 const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
-                if (userLevel < planOrderMain['Ultimate']) {
+                if (!isAdmin && userLevel < planOrderMain['Ultimate']) {
                   return <PremiumGateView featureId="reconcile" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
                 }
                 return (
@@ -12552,7 +12553,7 @@ export default function App() {
               (() => {
                 const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
                 const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
-                if (userLevel < planOrderMain['Starter']) {
+                if (!isAdmin && userLevel < planOrderMain['Starter']) {
                   return <PremiumGateView featureId="ai-analysis" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
                 }
                 return <AIAnalysisView records={records} sales={sales} user={user} />;
