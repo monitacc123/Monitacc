@@ -734,15 +734,9 @@ export async function apiUploadReceiptFile(userId: string, dataUrl: string, file
   const timestamp = Date.now();
   const path = `${userId}/${fileType}_${timestamp}.${ext}`;
 
-  const { error } = await supabase.storage.from('receipts').upload(path, blob, { upsert: false });
+  const { error } = await supabase.storage.from('receipts').upload(path, blob, { upsert: true });
   if (error) throw new Error(`Gagal muat naik fail: ${error.message}`);
 
   const { data } = supabase.storage.from('receipts').getPublicUrl(path);
-  if (data?.publicUrl) return data.publicUrl;
-
-  const { data: signedData, error: signedError } = await supabase.storage
-    .from('receipts')
-    .createSignedUrl(path, 60 * 60 * 24 * 365);
-  if (signedError) throw new Error(`Gagal jana URL fail: ${signedError.message}`);
-  return signedData.signedUrl;
+  return data.publicUrl;
 }
