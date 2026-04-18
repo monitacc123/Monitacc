@@ -47,6 +47,11 @@ import {
   apiGetScanUsageThisMonth,
   apiLogScanUsage,
   apiUploadReceiptFile,
+  apiGetAffiliates,
+  apiAddAffiliate,
+  apiUpdateAffiliate,
+  apiDeleteAffiliate,
+  type Affiliate,
   PLAN_SCAN_LIMITS,
   PLAN_PDF_LIMITS,
 } from './services/api';
@@ -11098,19 +11103,44 @@ const AdminDashboardView = () => {
 };
 
 const AffiliatedManagementView = () => {
-  const [affiliates, setAffiliates] = useState([
-    { id: 1, name: 'Ejen Ali', email: 'ali@affiliated.com', referrals: 45, commission: 1250.50, status: 'Aktif', joinedDate: '12/01/2026', isPaid: false, phone: '012-3456789', bank: 'Maybank', accountNo: '164012345678' },
-    { id: 2, name: 'Ejen Bakar', email: 'bakar@affiliated.com', referrals: 28, commission: 840.00, status: 'Aktif', joinedDate: '15/01/2026', isPaid: true, phone: '013-9876543', bank: 'CIMB', accountNo: '7012345678' },
-    { id: 3, name: 'Ejen Comot', email: 'comot@affiliated.com', referrals: 12, commission: 360.20, status: 'Tidak Aktif', joinedDate: '20/02/2026', isPaid: false, phone: '011-22334455', bank: 'RHB', accountNo: '2123456789' },
-    { id: 4, name: 'Ejen Dayang', email: 'dayang@affiliated.com', referrals: 67, commission: 2010.00, status: 'Aktif', joinedDate: '05/01/2026', isPaid: false, phone: '017-5566778', bank: 'Public Bank', accountNo: '3123456789' },
-  ]);
+  const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedAgent, setSelectedAgent] = useState<Affiliate | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', email: '', phone: '', bank: '', account_no: '', referrals: 0, commission: 0, status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
+  const [addLoading, setAddLoading] = useState(false);
 
-  const [selectedAgent, setSelectedAgent] = useState<any | null>(null);
+  useEffect(() => {
+    apiGetAffiliates()
+      .then(data => { setAffiliates(data); setLoading(false); })
+      .catch(err => { setError(err.message); setLoading(false); });
+  }, []);
 
-  const togglePaidStatus = (id: number) => {
-    setAffiliates(prev => prev.map(agent => 
-      agent.id === id ? { ...agent, isPaid: !agent.isPaid } : agent
-    ));
+  const togglePaidStatus = async (id: string) => {
+    const agent = affiliates.find(a => a.id === id);
+    if (!agent) return;
+    const newIsPaid = !agent.is_paid;
+    setAffiliates(prev => prev.map(a => a.id === id ? { ...a, is_paid: newIsPaid } : a));
+    try {
+      await apiUpdateAffiliate(id, { is_paid: newIsPaid });
+    } catch {
+      setAffiliates(prev => prev.map(a => a.id === id ? { ...a, is_paid: agent.is_paid } : a));
+    }
+  };
+
+  const handleAddAffiliate = async () => {
+    setAddLoading(true);
+    try {
+      const newAffiliate = await apiAddAffiliate({ ...addForm, is_paid: false });
+      setAffiliates(prev => [newAffiliate, ...prev]);
+      setShowAddModal(false);
+      setAddForm({ name: '', email: '', phone: '', bank: '', account_no: '', referrals: 0, commission: 0, status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setAddLoading(false);
+    }
   };
 
   return (
@@ -11120,7 +11150,7 @@ const AffiliatedManagementView = () => {
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Pengurusan Affiliated</h2>
           <p className="text-slate-500 font-medium tracking-tight">Pantau prestasi ejen dan komisen affiliated (10% Lifetime).</p>
         </div>
-        <button className="btn-primary flex items-center gap-2">
+        <button onClick={() => setShowAddModal(true)} className="btn-primary flex items-center gap-2">
           <Plus size={18} />
           <span>Tambah Ejen</span>
         </button>
@@ -11133,8 +11163,8 @@ const AffiliatedManagementView = () => {
         <div>
           <h4 className="text-sm font-bold text-emerald-900 mb-1">Polisi Komisen Affiliated</h4>
           <p className="text-xs text-emerald-700 font-medium leading-relaxed">
-            Setiap ejen akan menerima komisen sebanyak <span className="font-bold">10%</span> bagi setiap langganan berbayar (Starter, Growth, Ultimate). 
-            Komisen adalah bersifat <span className="font-bold">Lifetime</span> — ejen akan terus menerima komisen selagi pengguna yang dirujuk kekal melanggan. 
+            Setiap ejen akan menerima komisen sebanyak <span className="font-bold">10%</span> bagi setiap langganan berbayar (Starter, Growth, Ultimate).
+            Komisen adalah bersifat <span className="font-bold">Lifetime</span> — ejen akan terus menerima komisen selagi pengguna yang dirujuk kekal melanggan.
             <span className="italic opacity-75 ml-1">*Pakej Percuma tidak layak untuk komisen.</span>
           </p>
         </div>
@@ -11144,7 +11174,7 @@ const AffiliatedManagementView = () => {
         {[
           { label: 'Jumlah Ejen', value: affiliates.length, icon: Users, color: 'blue' },
           { label: 'Jumlah Rujukan', value: affiliates.reduce((sum, a) => sum + a.referrals, 0), icon: TrendingUp, color: 'emerald' },
-          { label: 'Jumlah Komisen (RM)', value: affiliates.reduce((sum, a) => sum + a.commission, 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), icon: DollarSign, color: 'amber' },
+          { label: 'Jumlah Komisen (RM)', value: affiliates.reduce((sum, a) => sum + Number(a.commission), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), icon: DollarSign, color: 'amber' },
         ].map((item, i) => (
           <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className={`w-10 h-10 rounded-xl bg-${item.color}-50 text-${item.color}-600 flex items-center justify-center mb-4`}>
@@ -11157,6 +11187,20 @@ const AffiliatedManagementView = () => {
       </div>
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16 text-slate-400">
+            <Loader2 size={24} className="animate-spin mr-2" /> Memuatkan...
+          </div>
+        ) : error ? (
+          <div className="flex items-center justify-center py-16 text-rose-500 gap-2">
+            <AlertCircle size={18} /> {error}
+          </div>
+        ) : affiliates.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+            <Users size={32} className="mb-2 opacity-40" />
+            <p className="text-sm font-medium">Tiada ejen berdaftar</p>
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
@@ -11179,33 +11223,33 @@ const AffiliatedManagementView = () => {
                     </div>
                   </td>
                   <td className="px-4 py-5 text-sm font-bold text-slate-700">{agent.referrals}</td>
-                  <td className="px-4 py-5 text-sm font-mono text-emerald-600 font-bold">{agent.commission.toFixed(2)}</td>
+                  <td className="px-4 py-5 text-sm font-mono text-emerald-600 font-bold">{Number(agent.commission).toFixed(2)}</td>
                   <td className="px-4 py-5">
                     <div className="flex flex-col gap-1">
                       <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider w-fit ${
                         agent.status === 'Aktif' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'
                       }`}>{agent.status}</span>
-                      {agent.isPaid && (
+                      {agent.is_paid && (
                         <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded text-[8px] font-bold uppercase tracking-tighter w-fit">
                           Sudah Dibayar
                         </span>
                       )}
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-xs font-medium text-slate-400">{agent.joinedDate}</td>
+                  <td className="px-4 py-5 text-xs font-medium text-slate-400">{agent.joined_date}</td>
                   <td className="px-4 py-5 text-right flex items-center justify-end gap-2">
-                    <button 
+                    <button
                       onClick={() => togglePaidStatus(agent.id)}
                       className={`p-2 rounded-lg transition-all ${
-                        agent.isPaid 
-                          ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' 
+                        agent.is_paid
+                          ? 'bg-blue-50 text-blue-600 hover:bg-blue-100'
                           : 'bg-slate-50 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
                       }`}
-                      title={agent.isPaid ? "Tanda sebagai Belum Bayar" : "Tanda sebagai Sudah Bayar"}
+                      title={agent.is_paid ? "Tanda sebagai Belum Bayar" : "Tanda sebagai Sudah Bayar"}
                     >
                       <Check size={16} strokeWidth={3} />
                     </button>
-                    <button 
+                    <button
                       onClick={() => setSelectedAgent(agent)}
                       className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"
                     >
@@ -11217,7 +11261,60 @@ const AffiliatedManagementView = () => {
             </tbody>
           </table>
         </div>
+        )}
       </div>
+
+      <AnimatePresence>
+        {showAddModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setShowAddModal(false)} className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                <h3 className="text-lg font-bold tracking-tight font-display">Tambah Ejen Affiliated</h3>
+                <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"><X size={18} /></button>
+              </div>
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                {[
+                  { label: 'Nama Penuh', key: 'name', type: 'text' },
+                  { label: 'Emel', key: 'email', type: 'email' },
+                  { label: 'No. Telefon', key: 'phone', type: 'text' },
+                  { label: 'Bank', key: 'bank', type: 'text' },
+                  { label: 'No. Akaun Bank', key: 'account_no', type: 'text' },
+                  { label: 'Jumlah Rujukan', key: 'referrals', type: 'number' },
+                  { label: 'Komisen (RM)', key: 'commission', type: 'number' },
+                ].map(({ label, key, type }) => (
+                  <div key={key}>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
+                    <input
+                      type={type}
+                      value={(addForm as any)[key]}
+                      onChange={e => setAddForm(prev => ({ ...prev, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status</label>
+                  <select value={addForm.status} onChange={e => setAddForm(prev => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                    <option>Aktif</option>
+                    <option>Tidak Aktif</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tarikh Sertai</label>
+                  <input type="date" value={addForm.joined_date} onChange={e => setAddForm(prev => ({ ...prev, joined_date: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Batal</button>
+                  <button onClick={handleAddAffiliate} disabled={addLoading} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60">
+                    {addLoading ? 'Menyimpan...' : 'Simpan Ejen'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selectedAgent && (
@@ -11269,11 +11366,11 @@ const AffiliatedManagementView = () => {
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">ID Ejen (Tracking)</p>
-                    <p className="text-sm font-bold text-emerald-600 font-mono">AFF-{selectedAgent.id.toString().padStart(4, '0')}</p>
+                    <p className="text-sm font-bold text-emerald-600 font-mono">AFF-{selectedAgent.id.slice(-6).toUpperCase()}</p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarikh Sertai</p>
-                    <p className="text-sm font-bold text-slate-900">{selectedAgent.joinedDate}</p>
+                    <p className="text-sm font-bold text-slate-900">{selectedAgent.joined_date}</p>
                   </div>
                 </div>
 
@@ -11289,7 +11386,7 @@ const AffiliatedManagementView = () => {
                     </div>
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">No. Akaun</p>
-                      <p className="text-sm font-bold text-slate-900 font-mono">{selectedAgent.accountNo}</p>
+                      <p className="text-sm font-bold text-slate-900 font-mono">{selectedAgent.account_no}</p>
                     </div>
                   </div>
                 </div>
@@ -11301,66 +11398,29 @@ const AffiliatedManagementView = () => {
                   </div>
                   <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
                     <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Komisen Terkumpul</p>
-                    <p className="text-xl font-bold text-blue-900">RM {selectedAgent.commission.toFixed(2)}</p>
-                  </div>
-                </div>
-
-                <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
-                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                    <Users size={14} className="text-blue-500" />
-                    Senarai Pengguna Dirujuk
-                  </h4>
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                    {[
-                      { id: 'USR-8821', name: 'Ahmad Fauzi', plan: 'Ultimate', status: 'active' },
-                      { id: 'USR-9902', name: 'Siti Aminah', plan: 'Starter', status: 'active' },
-                      { id: 'USR-7712', name: 'Robert Fox', plan: 'Growth', status: 'cancelled' },
-                      { id: 'USR-6654', name: 'Lim Guan Eng', plan: 'Ultimate', status: 'active' },
-                    ].map((u, i) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-white rounded-xl border border-slate-100 hover:border-emerald-200 transition-colors">
-                        <div className="flex flex-col">
-                          <div className="flex items-center gap-2">
-                            <p className="text-xs font-bold text-slate-900">{u.name}</p>
-                            <span className="text-[8px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">{u.id}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-[9px] text-emerald-600 font-bold uppercase tracking-tighter">{u.plan}</span>
-                            <span className="text-[9px] text-slate-300">•</span>
-                            <span className={`text-[9px] font-bold uppercase ${
-                              u.status === 'active' ? 'text-emerald-500' : 'text-rose-500'
-                            }`}>
-                              {u.status === 'active' ? 'Aktif' : 'Batal'}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end">
-                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">Komisen</p>
-                          <p className="text-[10px] font-bold text-emerald-600">RM {(u.plan === 'Ultimate' ? 15.00 : u.plan === 'Growth' ? 10.00 : 5.00).toFixed(2)}</p>
-                        </div>
-                      </div>
-                    ))}
+                    <p className="text-xl font-bold text-blue-900">RM {Number(selectedAgent.commission).toFixed(2)}</p>
                   </div>
                 </div>
 
                 <div className="flex gap-3 pt-4">
-                  <button 
+                  <button
                     onClick={() => setSelectedAgent(null)}
                     className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
                   >
                     Tutup
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       togglePaidStatus(selectedAgent.id);
-                      setSelectedAgent((prev: any) => ({ ...prev, isPaid: !prev.isPaid }));
+                      setSelectedAgent((prev: Affiliate | null) => prev ? { ...prev, is_paid: !prev.is_paid } : null);
                     }}
                     className={`flex-1 py-4 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all shadow-lg active:scale-95 ${
-                      selectedAgent.isPaid 
-                        ? 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700' 
+                      selectedAgent.is_paid
+                        ? 'bg-blue-600 text-white shadow-blue-200 hover:bg-blue-700'
                         : 'bg-emerald-600 text-white shadow-emerald-200 hover:bg-emerald-700'
                     }`}
                   >
-                    {selectedAgent.isPaid ? 'Tanda Belum Bayar' : 'Tanda Sudah Bayar'}
+                    {selectedAgent.is_paid ? 'Tanda Belum Bayar' : 'Tanda Sudah Bayar'}
                   </button>
                 </div>
               </div>

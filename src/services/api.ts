@@ -615,6 +615,56 @@ export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf
   if (error) console.error('Failed to log scan usage:', error.message);
 }
 
+export interface Affiliate {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  bank: string;
+  account_no: string;
+  referrals: number;
+  commission: number;
+  status: string;
+  is_paid: boolean;
+  joined_date: string;
+  created_at: string;
+}
+
+export async function apiGetAffiliates(): Promise<Affiliate[]> {
+  const { data, error } = await supabase
+    .from('affiliates')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []) as Affiliate[];
+}
+
+export async function apiAddAffiliate(affiliate: Omit<Affiliate, 'id' | 'created_at'>): Promise<Affiliate> {
+  const { data, error } = await supabase
+    .from('affiliates')
+    .insert([affiliate])
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data as Affiliate;
+}
+
+export async function apiUpdateAffiliate(id: string, updates: Partial<Affiliate>): Promise<void> {
+  const { error } = await supabase
+    .from('affiliates')
+    .update(updates)
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
+export async function apiDeleteAffiliate(id: string): Promise<void> {
+  const { error } = await supabase
+    .from('affiliates')
+    .delete()
+    .eq('id', id);
+  if (error) throw new Error(error.message);
+}
+
 export async function apiUploadReceiptFile(userId: string, dataUrl: string, fileType: 'receipt' | 'pdf'): Promise<string> {
   const isDataUrl = dataUrl.startsWith('data:');
   let blob: Blob;
