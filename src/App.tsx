@@ -42,6 +42,7 @@ import {
   apiUpdateUserRole,
   apiUpdateUserPlan,
   apiUpdateUserStatus,
+  apiDeleteUser,
   apiGetAdminDashboardStats,
   apiGetTokenUsageByUser,
   apiGetScanUsageThisMonth,
@@ -9032,6 +9033,12 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'cancelled'>('all');
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState<UserType | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [showTopUp, setShowTopUp] = useState<UserType | null>(null);
+  const [topUpAmount, setTopUpAmount] = useState('');
+  const [topUpLoading, setTopUpLoading] = useState(false);
+  const [topUpError, setTopUpError] = useState('');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -9055,6 +9062,38 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       fetchUsers();
     } catch (err) {
       console.error('Error updating role:', err);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!confirmDelete) return;
+    setDeleteLoading(true);
+    try {
+      await apiDeleteUser(confirmDelete.id);
+      setConfirmDelete(null);
+      fetchUsers();
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      alert(err.message || 'Gagal memadam pengguna. Sila cuba lagi.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  const handleTopUp = async () => {
+    if (!showTopUp || !topUpAmount) return;
+    const amount = parseInt(topUpAmount);
+    if (isNaN(amount) || amount <= 0) return;
+    setTopUpLoading(true);
+    setTopUpError('');
+    try {
+      await apiTopUpUserTokens(showTopUp.id, amount);
+      setShowTopUp(null);
+      setTopUpAmount('');
+    } catch (err: any) {
+      setTopUpError(err.message || 'Gagal menambah token. Sila cuba lagi.');
+    } finally {
+      setTopUpLoading(false);
     }
   };
 
@@ -9243,6 +9282,15 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                           <option value="full_access">Full Access</option>
                           <option value="upload_only">Upload Only</option>
                         </select>
+                        {(!u.plan || u.plan === 'free' || u.plan === 'Percuma') && (
+                          <button
+                            onClick={() => setShowTopUp(u)}
+                            className="p-1.5 rounded-lg text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
+                            title="Top Up Token"
+                          >
+                            <Zap size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setSelectedUser(u)}
                           className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
@@ -9250,6 +9298,15 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                         >
                           <Eye size={14} />
                         </button>
+                        {(!u.plan || u.plan === 'free' || u.plan === 'Percuma') && u.role !== 'admin' && (
+                          <button
+                            onClick={() => setConfirmDelete(u)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                            title="Padam pengguna"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -9332,6 +9389,125 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                     className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95"
                   >
                     Tutup
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {confirmDelete && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setConfirmDelete(null)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 bg-rose-600 text-white flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center">
+                  <Trash2 size={18} />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold tracking-tight">Padam Pengguna</h3>
+                  <p className="text-xs text-rose-200">Tindakan ini tidak boleh dibatalkan</p>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <p className="text-sm text-slate-600">
+                  Anda akan memadam akaun <span className="font-bold text-slate-900">{confirmDelete.name}</span> ({confirmDelete.email}) secara kekal. Semua data berkaitan akan turut dipadam.
+                </p>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setConfirmDelete(null)}
+                    disabled={deleteLoading}
+                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleDeleteUser}
+                    disabled={deleteLoading}
+                    className="flex-1 py-3 bg-rose-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {deleteLoading ? <><Loader2 size={13} className="animate-spin" /> Memadam...</> : 'Ya, Padam'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showTopUp && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setShowTopUp(null); setTopUpError(''); setTopUpAmount(''); }}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-base font-bold tracking-tight">Top Up Token</h3>
+                  <p className="text-xs text-slate-400">Tambah kuota AI untuk {showTopUp.name}</p>
+                </div>
+                <button
+                  onClick={() => { setShowTopUp(null); setTopUpError(''); setTopUpAmount(''); }}
+                  className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Jumlah Token</label>
+                  <div className="relative">
+                    <Zap size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500" />
+                    <input
+                      type="number"
+                      value={topUpAmount}
+                      onChange={(e) => setTopUpAmount(e.target.value)}
+                      placeholder="cth: 5000"
+                      className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none font-bold text-slate-900 text-sm"
+                      autoFocus
+                    />
+                  </div>
+                </div>
+                {topUpError && (
+                  <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg font-medium">{topUpError}</p>
+                )}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { setShowTopUp(null); setTopUpError(''); setTopUpAmount(''); }}
+                    disabled={topUpLoading}
+                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleTopUp}
+                    disabled={topUpLoading}
+                    className="flex-1 py-3 bg-emerald-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                  >
+                    {topUpLoading ? <><Loader2 size={13} className="animate-spin" /> Memproses...</> : 'Sahkan'}
                   </button>
                 </div>
               </div>

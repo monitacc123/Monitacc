@@ -480,6 +480,11 @@ export async function apiUpdateUserRole(userId: string, role: string): Promise<v
   if (error) throw new Error(error.message);
 }
 
+export async function apiDeleteUser(userId: string): Promise<void> {
+  const { error: deleteError } = await supabase.auth.admin.deleteUser(userId);
+  if (deleteError) throw new Error(deleteError.message);
+}
+
 export async function apiGetAdminDashboardStats() {
   const { data: users, error: usersError } = await supabase
     .from('users')
