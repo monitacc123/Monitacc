@@ -601,7 +601,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
         </div>
         <div>
           <h1 className="text-lg font-bold tracking-tight text-slate-900 font-display leading-none">Monitacc</h1>
-          <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">empower by wekeyra</p>
+          <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-widest mt-0.5">empowered by wekeyra</p>
         </div>
       </div>
 
