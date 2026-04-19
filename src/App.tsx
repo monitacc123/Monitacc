@@ -935,7 +935,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             transition={{ duration: 0.3 }}
             className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold uppercase tracking-wider mb-7 border border-emerald-100"
           >
-            <Zap size={10} fill="currentColor" /> Smart Accounting · Empower by Wekeyra
+            <Zap size={10} fill="currentColor" /> Smart Accounting · Empowered by Wekeyra
           </motion.div>
 
           <motion.h2
