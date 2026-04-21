@@ -1355,7 +1355,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
                   value={referredBy}
                   onChange={(e) => setReferredBy(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Nama orang yang perkenalkan anda"
+                  placeholder="Nama Individu yang perkenalkan"
                 />
               </div>
               <div className="space-y-2">
