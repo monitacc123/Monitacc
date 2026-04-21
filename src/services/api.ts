@@ -38,14 +38,14 @@ export async function apiLogin(email: string, password: string): Promise<UserTyp
   return profile as unknown as UserType;
 }
 
-export async function apiRegister(name: string, email: string, phone: string, password: string, company_name: string): Promise<{ user: UserType; accessToken: string | null }> {
+export async function apiRegister(name: string, email: string, phone: string, password: string, company_name: string, referred_by?: string): Promise<{ user: UserType; accessToken: string | null }> {
   const { data, error } = await supabase.auth.signUp({ email, password });
   if (error) throw new Error(error.message);
   if (!data.user) throw new Error('Pendaftaran gagal');
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .insert([{ id: data.user.id, name, email, phone, company_name }])
+    .insert([{ id: data.user.id, name, email, phone, company_name, ...(referred_by?.trim() ? { referred_by: referred_by.trim() } : {}) }])
     .select('*')
     .single();
 

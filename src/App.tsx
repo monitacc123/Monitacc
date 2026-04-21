@@ -1233,6 +1233,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
+  const [referredBy, setReferredBy] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
@@ -1269,7 +1270,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
         userData = await apiLogin(email, password);
         onAuthSuccess(userData, false);
       } else {
-        const { user: registeredUser, accessToken } = await apiRegister(name, email, phone, password, companyName);
+        const { user: registeredUser, accessToken } = await apiRegister(name, email, phone, password, companyName, referredBy);
         userData = registeredUser;
         if (selectedPlan && selectedPlan !== 'Percuma') {
           const url = await createCheckoutSession(selectedPlan as PaidPlan, accessToken);
@@ -1345,6 +1346,16 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   placeholder="Contoh: 0123456789"
                   required
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Rujukan <span className="text-slate-400 normal-case font-normal">(pilihan)</span></label>
+                <input
+                  type="text"
+                  value={referredBy}
+                  onChange={(e) => setReferredBy(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                  placeholder="Nama orang yang perkenalkan anda"
                 />
               </div>
               <div className="space-y-2">
