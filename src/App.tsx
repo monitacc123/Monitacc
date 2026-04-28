@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2 } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, EyeOff, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -1237,6 +1237,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
   const [referredBy, setReferredBy] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showLoginPass, setShowLoginPass] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<string>(initialPlan || 'Percuma');
   const [error, setError] = useState('');
@@ -1409,13 +1410,22 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
           </div>
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kata Laluan</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-              placeholder="••••••••"
-            />
+            <div className="relative">
+              <input
+                type={showLoginPass ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-3 pr-11 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                placeholder="••••••••"
+              />
+              <button
+                type="button"
+                onClick={() => setShowLoginPass(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                {showLoginPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {isLogin && (
