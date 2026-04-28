@@ -1351,14 +1351,18 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Rujukan <span className="text-slate-400 normal-case font-normal">(pilihan)</span></label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Rujukan <span className="text-red-500">*</span></label>
                 <input
                   type="text"
                   value={referredBy}
                   onChange={(e) => setReferredBy(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                   placeholder="Nama Individu yang perkenalkan"
+                  required
                 />
+                {!referredBy.trim() && (
+                  <p className="text-[11px] text-slate-400 font-medium ml-1">Tiada Rujukan — sila masukkan nama individu yang memperkenalkan anda, atau taip <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika tiada.</p>
+                )}
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Pilih Pakej</label>

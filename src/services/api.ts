@@ -45,7 +45,7 @@ export async function apiRegister(name: string, email: string, phone: string, pa
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    .insert([{ id: data.user.id, name, email, phone, company_name, ...(referred_by?.trim() ? { referred_by: referred_by.trim() } : {}) }])
+    .insert([{ id: data.user.id, name, email, phone, company_name, referred_by: referred_by?.trim() || 'Tiada Rujukan' }])
     .select('*')
     .single();
 
