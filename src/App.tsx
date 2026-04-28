@@ -43,6 +43,7 @@ import {
   apiUpdateUserPlan,
   apiUpdateUserStatus,
   apiDeleteUser,
+  apiResetUserPassword,
   apiGetAdminDashboardStats,
   apiGetTokenUsageByUser,
   apiGetScanUsageThisMonth,
@@ -9215,6 +9216,12 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpLoading, setTopUpLoading] = useState(false);
   const [topUpError, setTopUpError] = useState('');
+  const [resetPwUser, setResetPwUser] = useState<UserType | null>(null);
+  const [resetPwValue, setResetPwValue] = useState('');
+  const [resetPwShow, setResetPwShow] = useState(false);
+  const [resetPwLoading, setResetPwLoading] = useState(false);
+  const [resetPwError, setResetPwError] = useState('');
+  const [resetPwSuccess, setResetPwSuccess] = useState(false);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -9253,6 +9260,22 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       alert(err.message || 'Gagal memadam pengguna. Sila cuba lagi.');
     } finally {
       setDeleteLoading(false);
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPwUser || !resetPwValue) return;
+    setResetPwLoading(true);
+    setResetPwError('');
+    setResetPwSuccess(false);
+    try {
+      await apiResetUserPassword(resetPwUser.id, resetPwValue);
+      setResetPwSuccess(true);
+      setResetPwValue('');
+    } catch (err: any) {
+      setResetPwError(err.message || 'Gagal reset kata laluan');
+    } finally {
+      setResetPwLoading(false);
     }
   };
 
@@ -9642,12 +9665,21 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                     <span className={`w-1.5 h-1.5 rounded-full ${selectedUser.status === 'active' ? 'bg-emerald-500' : 'bg-rose-400'}`} />
                     {selectedUser.status === 'active' ? 'Akaun Aktif' : 'Akaun Dibatal'}
                   </span>
-                  <button
-                    onClick={() => setSelectedUser(null)}
-                    className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95"
-                  >
-                    Tutup
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setResetPwUser(selectedUser); setResetPwValue(''); setResetPwError(''); setResetPwSuccess(false); setResetPwShow(false); }}
+                      className="px-3 py-2 bg-amber-50 text-amber-700 rounded-xl font-bold text-xs hover:bg-amber-100 transition-all active:scale-95 flex items-center gap-1.5"
+                    >
+                      <Lock size={12} />
+                      Reset Kata Laluan
+                    </button>
+                    <button
+                      onClick={() => setSelectedUser(null)}
+                      className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all active:scale-95"
+                    >
+                      Tutup
+                    </button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -9768,6 +9800,95 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                     {topUpLoading ? <><Loader2 size={13} className="animate-spin" /> Memproses...</> : 'Sahkan'}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {resetPwUser && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setResetPwUser(null); setResetPwValue(''); setResetPwError(''); setResetPwSuccess(false); }}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              className="relative w-full max-w-sm bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 bg-amber-600 text-white flex justify-between items-center">
+                <div>
+                  <h3 className="text-base font-bold tracking-tight">Reset Kata Laluan</h3>
+                  <p className="text-xs text-amber-100">{resetPwUser.name}</p>
+                </div>
+                <button
+                  onClick={() => { setResetPwUser(null); setResetPwValue(''); setResetPwError(''); setResetPwSuccess(false); }}
+                  className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                {resetPwSuccess ? (
+                  <div className="flex flex-col items-center gap-3 py-4">
+                    <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center">
+                      <CheckCircle2 size={24} className="text-emerald-600" />
+                    </div>
+                    <p className="text-sm font-bold text-slate-900">Kata laluan berjaya ditukar</p>
+                    <button
+                      onClick={() => { setResetPwUser(null); setResetPwValue(''); setResetPwSuccess(false); }}
+                      className="px-6 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs hover:bg-slate-800 transition-all"
+                    >
+                      Tutup
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Kata Laluan Baru</label>
+                      <div className="relative">
+                        <Lock size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type={resetPwShow ? 'text' : 'password'}
+                          value={resetPwValue}
+                          onChange={(e) => setResetPwValue(e.target.value)}
+                          placeholder="Min. 6 aksara"
+                          className="w-full pl-10 pr-10 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 outline-none font-medium text-slate-900 text-sm"
+                          autoFocus
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setResetPwShow(!resetPwShow)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          <Eye size={15} />
+                        </button>
+                      </div>
+                    </div>
+                    {resetPwError && (
+                      <p className="text-xs text-rose-600 bg-rose-50 px-3 py-2 rounded-lg font-medium">{resetPwError}</p>
+                    )}
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setResetPwUser(null); setResetPwValue(''); setResetPwError(''); }}
+                        disabled={resetPwLoading}
+                        className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                      >
+                        Batal
+                      </button>
+                      <button
+                        onClick={handleResetPassword}
+                        disabled={resetPwLoading || resetPwValue.length < 6}
+                        className="flex-1 py-3 bg-amber-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-amber-700 transition-all disabled:opacity-60 flex items-center justify-center gap-2"
+                      >
+                        {resetPwLoading ? <><Loader2 size={13} className="animate-spin" /> Memproses...</> : 'Tukar'}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
           </div>

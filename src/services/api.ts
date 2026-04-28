@@ -499,6 +499,27 @@ export async function apiDeleteUser(userId: string): Promise<void> {
   if (!res.ok) throw new Error(json.error || 'Gagal memadam pengguna');
 }
 
+export async function apiResetUserPassword(userId: string, newPassword: string): Promise<void> {
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+  if (!token) throw new Error('Tidak log masuk');
+
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-user-password`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+      'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
+    },
+    body: JSON.stringify({ userId, newPassword }),
+  });
+  const text = await res.text();
+  let json: any = {};
+  try { json = JSON.parse(text); } catch {}
+  if (!res.ok) throw new Error(json.error || text || 'Gagal reset kata laluan');
+}
+
 export async function apiGetAdminDashboardStats() {
   const { data: users, error: usersError } = await supabase
     .from('users')
