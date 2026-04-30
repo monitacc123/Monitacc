@@ -146,7 +146,7 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-async function compressImage(base64Data: string, maxWidth = 1600, quality = 0.85): Promise<string> {
+async function compressImage(base64Data: string, maxWidth = 2400, quality = 0.92): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -161,7 +161,9 @@ async function compressImage(base64Data: string, maxWidth = 1600, quality = 0.85
       const ctx = canvas.getContext("2d");
       if (!ctx) { resolve(base64Data); return; }
       ctx.drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL("image/jpeg", quality));
+      const compressed = canvas.toDataURL("image/jpeg", quality);
+      // If compression made it larger than original, return original
+      resolve(compressed.length < base64Data.length * 1.1 ? compressed : base64Data);
     };
     img.onerror = () => resolve(base64Data);
     img.src = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
@@ -175,25 +177,32 @@ export async function analyzeDocument(base64Data: string, mimeType: string = "im
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const prompt = `You are an OCR and accounting data extraction assistant. Extract ALL accounting transactions from this document.
+    const currentYear = new Date().getFullYear();
+    const prompt = `You are an expert OCR and accounting data extraction assistant. Your job is to extract transaction data from receipts, invoices, and financial documents.
 
-IMPORTANT: You MUST respond with ONLY a valid JSON array. No explanation, no markdown, just the raw JSON array.
+CRITICAL RULES:
+1. You MUST respond with ONLY a valid JSON array — no explanation, no markdown, no preamble
+2. Even if the image is blurry or partial, extract whatever data you can see
+3. If you can see ANY amount, date, or store name — create an entry for it
+4. NEVER refuse to extract — always attempt extraction
+5. If truly nothing can be read, return exactly: []
 
-Rules:
-- Receipts/Resit from shops or restaurants = expense (type: "expense")
-- Payment received, sales = income (type: "income")
-- payment_method: "cash" if paid by cash/tunai, otherwise "bank"
-- date format: YYYY-MM-DD (if year missing, use current year)
-- category must be one of: ${ALL_CATEGORIES.join(", ")}
-- docType examples: "Resit", "Invoice", "Bil", "Penyata Bank", "Lain-lain"
+Transaction rules:
+- Receipt/Resit from shop, restaurant, petrol = expense (type: "expense")
+- Payment received, sales, top-up received = income (type: "income")
+- payment_method: "cash" if paid by cash/tunai/wang; "bank" if card/online/transfer
+- date format: YYYY-MM-DD; if year missing use ${currentYear}; if date unclear use ${currentYear}-01-01
+- amount: use the TOTAL amount (Jumlah/Total/Grand Total), as a positive number
+- category must be exactly one of: ${ALL_CATEGORIES.join(", ")}
+- docType: "Resit" for receipt, "Invoice" for invoice, "Bil" for bill, "Lain-lain" for others
 
-Each item in the JSON array must have exactly these fields:
+Required JSON fields per item:
 { "type": "income"|"expense", "docType": string, "docNumber": string, "category": string, "amount": number, "date": "YYYY-MM-DD", "description": string, "payment_method": "cash"|"bank" }
 
-Example response format:
-[{"type":"expense","docType":"Resit","docNumber":"001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"2024-01-15","description":"Shell Petrol","payment_method":"cash"}]
+Example output:
+[{"type":"expense","docType":"Resit","docNumber":"INV-001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"${currentYear}-01-15","description":"Shell Petrol Station","payment_method":"cash"}]
 
-Now extract from the document:`;
+Extract from the document now:`;
 
     let messages: { role: string; content: any }[];
 
@@ -232,7 +241,7 @@ Now extract from the document:`;
       }];
     }
 
-    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
+    let { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
 
     if (userId && tokensUsed > 0) {
       apiLogAiUsage(userId, tokensUsed, "scan").catch(() => {});
@@ -244,15 +253,55 @@ Now extract from the document:`;
     }
 
     const jsonStr = extractJson(text);
-    let parsed = JSON.parse(jsonStr);
-
-    if (!Array.isArray(parsed)) {
-      parsed = parsed.transactions || parsed.data || [parsed];
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      // JSON parse failed — retry with simpler fallback prompt
+      const fallbackMessages = isPdf ? messages : [{
+        role: "user" as const,
+        content: [
+          ...(Array.isArray(messages[0].content) ? messages[0].content.filter((c: any) => c.type === "image_url") : []),
+          {
+            type: "text",
+            text: `Look at this document image. Tell me: what is the total amount, the date, and the store/vendor name? Reply ONLY as JSON: [{"type":"expense","docType":"Resit","docNumber":"","category":"Lain-lain","amount":0,"date":"${new Date().getFullYear()}-01-01","description":"","payment_method":"cash"}] — fill in the values you can read.`,
+          },
+        ],
+      }];
+      try {
+        const retry = await chatCompletion(fallbackMessages, false);
+        parsed = JSON.parse(extractJson(retry.content));
+        if (userId && retry.tokensUsed > 0) {
+          apiLogAiUsage(userId, retry.tokensUsed, "scan").catch(() => {});
+        }
+      } catch {
+        return null;
+      }
     }
 
-    return parsed.filter((item: any) =>
+    if (!Array.isArray(parsed)) {
+      parsed = (parsed as any).transactions || (parsed as any).data || [parsed];
+    }
+
+    const filtered = parsed.filter((item: any) =>
       item && item.type && item.amount && item.date && item.category
     );
+
+    // If filtered is empty but we got items with partial data, relax the filter
+    if (filtered.length === 0 && parsed.length > 0) {
+      return parsed.filter((item: any) => item && item.amount > 0).map((item: any) => ({
+        type: item.type || "expense",
+        docType: item.docType || "Lain-lain",
+        docNumber: item.docNumber || "",
+        category: item.category || "Lain-lain",
+        amount: Number(item.amount) || 0,
+        date: item.date || `${new Date().getFullYear()}-01-01`,
+        description: item.description || "Transaksi",
+        payment_method: item.payment_method || "cash",
+      }));
+    }
+
+    return filtered;
   } catch (error: any) {
     console.error("Error analyzing document:", error?.message || error);
     return null;
