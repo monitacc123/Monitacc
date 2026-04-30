@@ -6,11 +6,19 @@ const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: num
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
 const CACHE_DURATION = 1000 * 60 * 15;
 
+const KIE_BASE = "https://api.kie.ai";
+const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
+
+// Models tried in order — first success wins
+const FALLBACK_MODELS = [
+  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
+  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
+  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+];
+
 function getConfig() {
-  const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
-  const baseUrl = (import.meta as any).env?.VITE_GEMINI_BASE_URL || "https://api.kie.ai/gemini-2.5-pro/v1/chat/completions";
-  if (!apiKey) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
-  return { apiKey, baseUrl };
+  if (!KIE_API_KEY) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
+  return { apiKey: KIE_API_KEY };
 }
 
 interface ChatResult {
@@ -18,15 +26,18 @@ interface ChatResult {
   tokensUsed: number;
 }
 
-async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<ChatResult> {
-  const { apiKey, baseUrl } = getConfig();
-
+async function trySingleModel(
+  modelEntry: { model: string; url: string },
+  messages: { role: string; content: any }[],
+  jsonMode: boolean,
+): Promise<ChatResult> {
+  const { apiKey } = getConfig();
   const hasImage = messages.some(m =>
     Array.isArray(m.content) && m.content.some((c: any) => c.type === "image_url")
   );
 
   const body: any = {
-    model: "gemini-2.5-pro",
+    model: modelEntry.model,
     messages,
     max_tokens: 8192,
   };
@@ -35,12 +46,9 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
     body.response_format = { type: "json_object" };
   }
 
-  const res = await fetch(baseUrl, {
+  const res = await fetch(modelEntry.url, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify(body),
   });
 
@@ -50,12 +58,30 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
   }
 
   const data = await res.json();
+  if (data.code && data.code >= 400) {
+    throw new Error(`Model error ${data.code}: ${data.msg}`);
+  }
+
   const content = data.choices?.[0]?.message?.content || "";
-  const tokensUsed = data.usage?.total_tokens || data.usage?.prompt_tokens
+  const tokensUsed = data.usage
     ? (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0)
     : estimateTokens(messages, content);
 
   return { content, tokensUsed };
+}
+
+async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<ChatResult> {
+  let lastError: any;
+  for (const modelEntry of FALLBACK_MODELS) {
+    try {
+      const result = await trySingleModel(modelEntry, messages, jsonMode);
+      if (result.content) return result;
+    } catch (err: any) {
+      console.warn(`Model ${modelEntry.model} failed:`, err?.message);
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Semua model AI tidak tersedia.");
 }
 
 function estimateTokens(messages: { role: string; content: any }[], output: string): number {
