@@ -28,7 +28,7 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
   const body: any = {
     model: "gemini-2.5-flash",
     messages,
-    max_tokens: 4096,
+    max_tokens: 8192,
   };
 
   if (jsonMode && !hasImage) {
@@ -120,6 +120,28 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
+async function compressImage(base64Data: string, maxWidth = 1600, quality = 0.85): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(base64Data); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(base64Data);
+    img.src = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+  });
+}
+
 export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string, plan?: string): Promise<ExtractedData[] | null> {
   try {
     if (userId && plan) {
@@ -163,9 +185,17 @@ Now extract from the document:`;
         content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
       }];
     } else {
-      const imageData = base64Data.split(",")[1] || base64Data;
       const isUrl = base64Data.startsWith("http");
-      const imageUrl = isUrl ? base64Data : `data:${mimeType};base64,${imageData}`;
+      let imageUrl: string;
+      if (isUrl) {
+        imageUrl = base64Data;
+      } else {
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:${mimeType};base64,${base64Data}`;
+        const compressed = await compressImage(dataWithPrefix);
+        imageUrl = compressed;
+      }
 
       messages = [{
         role: "user",
@@ -197,8 +227,8 @@ Now extract from the document:`;
     return parsed.filter((item: any) =>
       item && item.type && item.amount && item.date && item.category
     );
-  } catch (error) {
-    console.error("Error analyzing document:", error);
+  } catch (error: any) {
+    console.error("Error analyzing document:", error?.message || error);
     return null;
   }
 }
@@ -256,9 +286,17 @@ Extract ALL transactions from the document:`;
         content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${pdfText}`,
       }];
     } else {
-      const imageData = base64Data.split(",")[1] || base64Data;
       const isUrl = base64Data.startsWith("http");
-      const imageUrl = isUrl ? base64Data : `data:${mimeType};base64,${imageData}`;
+      let imageUrl: string;
+      if (isUrl) {
+        imageUrl = base64Data;
+      } else {
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:${mimeType};base64,${base64Data}`;
+        const compressed = await compressImage(dataWithPrefix);
+        imageUrl = compressed;
+      }
 
       messages = [{
         role: "user",
