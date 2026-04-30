@@ -8,7 +8,7 @@ const CACHE_DURATION = 1000 * 60 * 15;
 
 function getConfig() {
   const apiKey = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
-  const baseUrl = (import.meta as any).env?.VITE_GEMINI_BASE_URL || "https://api.kie.ai/gemini-3.1-pro/v1/chat/completions";
+  const baseUrl = (import.meta as any).env?.VITE_GEMINI_BASE_URL || "https://api.kie.ai/gemini-2.5-pro/v1/chat/completions";
   if (!apiKey) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
   return { apiKey, baseUrl };
 }
@@ -26,7 +26,7 @@ async function chatCompletion(messages: { role: string; content: any }[], jsonMo
   );
 
   const body: any = {
-    model: "gemini-3.1-pro",
+    model: "gemini-2.5-pro",
     messages,
     max_tokens: 8192,
   };
