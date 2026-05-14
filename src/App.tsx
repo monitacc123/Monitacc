@@ -9056,7 +9056,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
             Perlukan bantuan profesional? Hubungi akauntan bertauliah kami untuk khidmat nasihat percukaian dan audit yang lebih mendalam.
           </p>
           <a 
-            href="https://wa.me/60126254849" 
+            href="https://wa.me/60173754979" 
             target="_blank" 
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-3 px-6 py-3.5 bg-white text-blue-900 rounded-xl text-xs font-bold uppercase tracking-wider hover:bg-blue-50 transition-all shadow-xl shadow-black/10 mt-auto"
@@ -10292,7 +10292,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
 
             { label: 'Eksport Data (PDF)', icon: FileDown, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('reports') },
             { label: 'Pusat Bantuan (FAQ)', icon: CheckCircle2, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('faq') },
-            { label: 'Hubungi Akauntan (WhatsApp)', icon: MessageCircle, color: 'text-blue-600', bg: 'bg-blue-50', onClick: () => window.open('https://wa.me/60126254849', '_blank') },
+            { label: 'Hubungi Akauntan (WhatsApp)', icon: MessageCircle, color: 'text-blue-600', bg: 'bg-blue-50', onClick: () => window.open('https://wa.me/60173754979', '_blank') },
             { label: 'Terma & Syarat', icon: FileText, color: 'text-emerald-600', bg: 'bg-emerald-50', onClick: () => setView('terms') },
           ].map((item, i) => (
             <button key={i} onClick={item.onClick} className="w-full p-5 flex items-center justify-between border-b border-slate-50 last:border-0 hover:bg-slate-50 transition-all group">
