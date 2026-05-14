@@ -9407,9 +9407,40 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{filteredUsers.length} pengguna dijumpai</p>
-          <button onClick={fetchUsers} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
-            <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => {
+                const headers = ['#', 'Nama', 'Emel', 'Telefon', 'Syarikat', 'Pakej', 'Status', 'Rujukan', 'Tarikh Daftar'];
+                const rows = filteredUsers.map((u, i) => [
+                  i + 1,
+                  u.name || '',
+                  u.email || '',
+                  u.phone || '',
+                  u.company_name || '',
+                  u.plan || 'free',
+                  u.status || '',
+                  u.referred_by || 'Terus',
+                  u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY') : '',
+                ]);
+                const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `pengguna-${new Date().toISOString().slice(0,10)}.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              title="Muat turun CSV"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition-colors"
+            >
+              <Download size={13} />
+              CSV
+            </button>
+            <button onClick={fetchUsers} className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-400 hover:text-slate-600 transition-colors">
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         {loading ? (
