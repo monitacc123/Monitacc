@@ -3261,8 +3261,8 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                     <span className="text-[10px] font-bold uppercase tracking-widest">Muat Naik Resit / Invois (Imej/PDF)</span>
                   </button>
                 ) : (
-                  <div className="relative group">
-                    <div className="w-full h-40 rounded-2xl overflow-hidden border-2 border-slate-100 shadow-inner bg-slate-50 flex items-center justify-center">
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                    <div className="w-full h-40 flex items-center justify-center">
                       {formData.image_url.startsWith('data:application/pdf') ? (
                         <div className="flex flex-col items-center gap-2 text-rose-500">
                           <FileText size={48} />
@@ -3272,35 +3272,33 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                         <img src={formData.image_url} alt="Attachment" className="w-full h-full object-cover" />
                       )}
                     </div>
-                    <div className="absolute inset-0 bg-slate-900/10 flex items-center justify-center gap-3 rounded-2xl">
+                    <div className="flex items-center gap-2 p-3 border-t border-slate-200 bg-white">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const isPdf = formData.image_url?.includes('.pdf') || formData.image_url?.startsWith('data:application/pdf');
+                          downloadDocument(formData.image_url!, `lampiran-baru.${isPdf ? 'pdf' : 'jpg'}`);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold hover:bg-sky-100 transition-all active:scale-95"
+                      >
+                        <Download size={14} />
+                        Muat Turun
+                      </button>
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
-                        className="p-2.5 bg-white text-emerald-600 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all border border-slate-100"
-                        title="Tukar Gambar"
+                        className="py-2.5 px-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95"
+                        title="Tukar"
                       >
-                        <RefreshCw size={20} />
+                        <RefreshCw size={14} />
                       </button>
-                      {formData.image_url && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const isPdf = formData.image_url?.includes('.pdf') || formData.image_url?.startsWith('data:application/pdf');
-                            downloadDocument(formData.image_url!, `lampiran-baru.${isPdf ? 'pdf' : 'jpg'}`);
-                          }}
-                          className="p-2.5 bg-white text-blue-600 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all border border-slate-100"
-                          title="Muat Turun"
-                        >
-                          <Download size={20} />
-                        </button>
-                      )}
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, image_url: '' })}
-                        className="p-2.5 bg-white text-rose-600 rounded-xl shadow-xl hover:scale-110 active:scale-95 transition-all border border-slate-100"
-                        title="Padam Gambar"
+                        className="py-2.5 px-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all active:scale-95"
+                        title="Padam"
                       >
-                        <Trash2 size={20} />
+                        <Trash2 size={14} />
                       </button>
                     </div>
                   </div>
@@ -3669,14 +3667,20 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                     <span className="text-[10px] font-bold uppercase tracking-widest">Muat Naik Resit / Invois (Imej/PDF)</span>
                   </button>
                 ) : (() => {
-                  const isPdf = formData.image_url.includes('.pdf') || formData.image_url.startsWith('data:application/pdf');
+                  const isPlaceholder = formData.image_url === '__has_image__';
+                  const isPdf = !isPlaceholder && (formData.image_url.includes('.pdf') || formData.image_url.startsWith('data:application/pdf') || formData.image_url.endsWith('.pdf'));
                   const docFilename = `lampiran-${record.id || 'rekod'}.${isPdf ? 'pdf' : 'jpg'}`;
                   return (
-                    <div className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 group">
-                      {isPdf ? (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                      {loadingImage || isPlaceholder ? (
+                        <div className="w-full h-32 flex flex-col items-center justify-center gap-2">
+                          <Loader2 size={24} className="text-emerald-500 animate-spin" />
+                          <span className="text-[10px] text-slate-400 font-medium">Memuat lampiran...</span>
+                        </div>
+                      ) : isPdf ? (
                         <div className="w-full h-32 flex flex-col items-center justify-center gap-1.5">
                           <FileText size={32} className="text-slate-400" />
-                          <span className="text-[10px] text-slate-400 font-medium">PDF</span>
+                          <span className="text-[10px] text-slate-400 font-medium">Dokumen PDF</span>
                         </div>
                       ) : imgError ? (
                         <div className="w-full h-32 flex flex-col items-center justify-center gap-1">
@@ -3687,51 +3691,53 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                         <img
                           src={formData.image_url}
                           alt="Lampiran"
-                          className="w-full object-cover h-32"
+                          className="w-full object-cover h-40"
                           onError={() => setImgError(true)}
                         />
                       )}
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setViewingDoc(true)}
-                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
-                          title="Tengok"
-                        >
-                          <Eye size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => downloadDocument(formData.image_url!, docFilename)}
-                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
-                          title="Muat Turun"
-                        >
-                          <Download size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="p-2 bg-white/90 text-slate-700 rounded-lg hover:bg-white transition-all"
-                          title="Tukar"
-                        >
-                          <RefreshCw size={16} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setFormData({ ...formData, image_url: '' }); setImgError(false); }}
-                          className="p-2 bg-white/90 text-rose-500 rounded-lg hover:bg-white transition-all"
-                          title="Padam"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      {!loadingImage && !isPlaceholder && (
+                        <div className="flex items-center gap-2 p-3 border-t border-slate-200 bg-white">
+                          <button
+                            type="button"
+                            onClick={() => setViewingDoc(true)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-all active:scale-95"
+                          >
+                            <Eye size={14} />
+                            Preview
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadDocument(formData.image_url!, docFilename)}
+                            className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-sky-50 text-sky-700 rounded-xl text-xs font-bold hover:bg-sky-100 transition-all active:scale-95"
+                          >
+                            <Download size={14} />
+                            Muat Turun
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => fileInputRef.current?.click()}
+                            className="py-2.5 px-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95"
+                            title="Tukar"
+                          >
+                            <RefreshCw size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setFormData({ ...formData, image_url: '' }); setImgError(false); }}
+                            className="py-2.5 px-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all active:scale-95"
+                            title="Padam"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })()}
-                {viewingDoc && formData.image_url && (
+                {viewingDoc && formData.image_url && formData.image_url !== '__has_image__' && (
                   <DocumentViewerModal
                     url={formData.image_url}
-                    filename={`lampiran-${record.id || 'rekod'}.${formData.image_url.includes('.pdf') || formData.image_url.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}`}
+                    filename={`lampiran-${record.id || 'rekod'}.${formData.image_url.includes('.pdf') || formData.image_url.startsWith('data:application/pdf') || formData.image_url.endsWith('.pdf') ? 'pdf' : 'jpg'}`}
                     onClose={() => setViewingDoc(false)}
                   />
                 )}
