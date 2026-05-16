@@ -12070,6 +12070,7 @@ const AffiliatedManagementView = () => {
 const TokenUsageView = () => {
   const [usageData, setUsageData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
   const [showTopUp, setShowTopUp] = useState<{ show: boolean, user: any | null }>({ show: false, user: null });
   const [topUpAmount, setTopUpAmount] = useState('');
   const [topUpLoading, setTopUpLoading] = useState(false);
@@ -12109,10 +12110,21 @@ const TokenUsageView = () => {
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
-      <header className="mb-10">
+      <header className="mb-6">
         <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Token Usage by User</h2>
         <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan kuota AI bagi setiap pengguna.</p>
       </header>
+
+      <div className="mb-6 relative">
+        <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="Cari nama atau emel pengguna..."
+          className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent shadow-sm"
+        />
+      </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-20">
@@ -12133,9 +12145,17 @@ const TokenUsageView = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {usageData.length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">Tiada data penggunaan token lagi</td></tr>
-              ) : usageData.map((user) => {
+              {usageData.filter(u => {
+                if (!searchQuery.trim()) return true;
+                const q = searchQuery.toLowerCase();
+                return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+              }).length === 0 ? (
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">{searchQuery ? 'Tiada pengguna dijumpai' : 'Tiada data penggunaan token lagi'}</td></tr>
+              ) : usageData.filter(u => {
+                if (!searchQuery.trim()) return true;
+                const q = searchQuery.toLowerCase();
+                return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
+              }).map((user) => {
                 const percentage = user.limit > 0 ? (user.tokensUsed / user.limit) * 100 : 0;
                 return (
                   <tr key={user.id} className="hover:bg-slate-50 transition-colors">
