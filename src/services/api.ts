@@ -77,10 +77,16 @@ export async function apiAdminLogin(email: string, password: string): Promise<Us
 
 export async function apiFetchDashboard(userId: string, role: string) {
   const [recordsRes, salesRes] = await Promise.all([
-    supabase.from('records').select('*').eq('user_id', userId).order('date', { ascending: false }),
+    supabase.from('records')
+      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, image_url, origin, sale_id')
+      .eq('user_id', userId)
+      .order('date', { ascending: false }),
     role === 'upload_only'
       ? Promise.resolve({ data: [], error: null })
-      : supabase.from('sales').select('*').eq('user_id', userId).order('date', { ascending: false }),
+      : supabase.from('sales')
+          .select('id, user_id, date, product_name, category, quantity, price, total, payment_method, doc_number, customer_name, reconciled, created_at')
+          .eq('user_id', userId)
+          .order('date', { ascending: false }),
   ]);
 
   if (recordsRes.error) throw new Error(recordsRes.error.message);
