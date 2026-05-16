@@ -3366,8 +3366,9 @@ const downloadDocument = async (url: string, filename: string) => {
 
 const DocumentViewerModal = ({ url, filename, onClose }: { url: string; filename: string; onClose: () => void }) => {
   const [downloading, setDownloading] = useState(false);
-  const isPdf = url.includes('.pdf') || url.startsWith('data:application/pdf');
+  const isPdf = url.includes('.pdf') || url.startsWith('data:application/pdf') || filename.endsWith('.pdf');
   const isDataUrl = url.startsWith('data:');
+  const isBlobUrl = url.startsWith('blob:');
 
   const handleDownload = async () => {
     setDownloading(true);
@@ -3485,10 +3486,11 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
   const [loadingImage, setLoadingImage] = useState(false);
 
   useEffect(() => {
-    if (!formData.image_url && record.id) {
+    const needsFetch = !formData.image_url || formData.image_url === '__has_image__';
+    if (needsFetch && record.image_url && record.id) {
       setLoadingImage(true);
-      apiGetRecordImageUrl(record.id).then(url => {
-        if (url) setFormData(prev => ({ ...prev, image_url: url }));
+      apiGetRecordImageUrl(record.id).then(result => {
+        if (result) setFormData(prev => ({ ...prev, image_url: result.url }));
       }).finally(() => setLoadingImage(false));
     }
   }, [record.id]);
@@ -6057,7 +6059,7 @@ const RecordsView = ({
                             <span className="text-[13px] font-bold text-slate-800 truncate">{record.category}</span>
                             {record.image_url && (
                               <button
-                                onClick={async (e) => { e.stopPropagation(); const url = await apiGetRecordImageUrl(record.id); if (url) setViewingDocument({ url, filename: `lampiran-${record.id}.${url.includes('.pdf') || url.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                onClick={async (e) => { e.stopPropagation(); const result = await apiGetRecordImageUrl(record.id); if (result) setViewingDocument({ url: result.url, filename: `lampiran-${record.id}.${result.isPdf ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
                                 title="Lihat Lampiran"
                               >
@@ -6191,7 +6193,7 @@ const RecordsView = ({
                             </span>
                             {record.image_url && (
                               <button
-                                onClick={async (e) => { e.stopPropagation(); const url = await apiGetRecordImageUrl(record.id); if (url) setViewingDocument({ url, filename: `lampiran-${record.id}.${url.includes('.pdf') || url.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                onClick={async (e) => { e.stopPropagation(); const result = await apiGetRecordImageUrl(record.id); if (result) setViewingDocument({ url: result.url, filename: `lampiran-${record.id}.${result.isPdf ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
                                 title="Lihat Lampiran"
                               >

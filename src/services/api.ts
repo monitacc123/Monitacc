@@ -76,9 +76,9 @@ export async function apiAdminLogin(email: string, password: string): Promise<Us
 }
 
 export async function apiFetchDashboard(userId: string, role: string) {
-  const [recordsRes, salesRes, imgIdsRes] = await Promise.all([
+  const [recordsRes, salesRes] = await Promise.all([
     supabase.from('records')
-      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, origin, sale_id')
+      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, origin, sale_id, has_image')
       .eq('user_id', userId)
       .order('date', { ascending: false }),
     role === 'upload_only'
@@ -87,18 +87,12 @@ export async function apiFetchDashboard(userId: string, role: string) {
           .select('id, user_id, date, product_name, category, quantity, price, total, payment_method, doc_number, customer_name, reconciled, created_at')
           .eq('user_id', userId)
           .order('date', { ascending: false }),
-    supabase.from('records')
-      .select('id')
-      .eq('user_id', userId)
-      .neq('image_url', '')
-      .not('image_url', 'is', null),
   ]);
 
   if (recordsRes.error) throw new Error(recordsRes.error.message);
   if (salesRes.error) throw new Error(salesRes.error.message);
 
-  const imageIds = new Set((imgIdsRes.data || []).map((r: any) => r.id));
-  const records = (recordsRes.data || []).map(r => ({ ...mapRecord(r), image_url: imageIds.has(r.id) ? '__has_image__' : '' }));
+  const records = (recordsRes.data || []).map(r => ({ ...mapRecord(r), image_url: r.has_image ? '__has_image__' : '' }));
   const sales = (salesRes.data || []).map(mapSale);
 
   const apiAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
@@ -139,14 +133,36 @@ export async function apiFetchDashboard(userId: string, role: string) {
   };
 }
 
-export async function apiGetRecordImageUrl(recordId: number): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('records')
-    .select('image_url')
-    .eq('id', recordId)
-    .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data?.image_url || null;
+export async function apiGetRecordImageUrl(recordId: number): Promise<{ url: string; isPdf: boolean } | null> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not authenticated');
+
+  const apiUrl = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/get-record-image?id=${recordId}`;
+  const res = await fetch(apiUrl, {
+    headers: {
+      'Authorization': `Bearer ${session.access_token}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Failed to fetch image' }));
+    throw new Error(err.error || 'Failed to fetch image');
+  }
+
+  const contentType = res.headers.get('Content-Type') || '';
+  if (contentType.startsWith('image/') || contentType === 'application/pdf') {
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    return { url: blobUrl, isPdf: contentType === 'application/pdf' };
+  }
+
+  const json = await res.json();
+  if (json.url) {
+    const isPdf = json.url.includes('.pdf');
+    return { url: json.url, isPdf };
+  }
+  return null;
 }
 
 export async function apiSaveRecord(userId: string, data: any): Promise<{ id: number }> {
@@ -188,6 +204,7 @@ export async function apiSaveRecord(userId: string, data: any): Promise<{ id: nu
         origin: data.origin || 'manual',
         sale_id: saleData.id,
         payment_method: data.payment_method || 'bank',
+        has_image: !!(data.image_url),
       }])
       .select('id')
       .single();
@@ -211,6 +228,7 @@ export async function apiSaveRecord(userId: string, data: any): Promise<{ id: nu
       raw_data: data.raw_data || '',
       origin: data.origin || 'manual',
       payment_method: data.payment_method || 'bank',
+      has_image: !!(data.image_url),
     }])
     .select('id')
     .single();
@@ -260,6 +278,7 @@ export async function apiUpdateRecord(id: number, userId: string, data: any): Pr
       image_url: data.image_url || '',
       reconciled: data.reconciled || false,
       payment_method: data.payment_method || 'bank',
+      has_image: !!(data.image_url),
     })
     .eq('id', id);
 
