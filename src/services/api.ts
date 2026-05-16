@@ -76,9 +76,9 @@ export async function apiAdminLogin(email: string, password: string): Promise<Us
 }
 
 export async function apiFetchDashboard(userId: string, role: string) {
-  const [recordsRes, salesRes] = await Promise.all([
+  const [recordsRes, salesRes, imgIdsRes] = await Promise.all([
     supabase.from('records')
-      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, image_url, origin, sale_id')
+      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, origin, sale_id')
       .eq('user_id', userId)
       .order('date', { ascending: false }),
     role === 'upload_only'
@@ -87,12 +87,18 @@ export async function apiFetchDashboard(userId: string, role: string) {
           .select('id, user_id, date, product_name, category, quantity, price, total, payment_method, doc_number, customer_name, reconciled, created_at')
           .eq('user_id', userId)
           .order('date', { ascending: false }),
+    supabase.from('records')
+      .select('id')
+      .eq('user_id', userId)
+      .neq('image_url', '')
+      .not('image_url', 'is', null),
   ]);
 
   if (recordsRes.error) throw new Error(recordsRes.error.message);
   if (salesRes.error) throw new Error(salesRes.error.message);
 
-  const records = (recordsRes.data || []).map(mapRecord);
+  const imageIds = new Set((imgIdsRes.data || []).map((r: any) => r.id));
+  const records = (recordsRes.data || []).map(r => ({ ...mapRecord(r), image_url: imageIds.has(r.id) ? '__has_image__' : '' }));
   const sales = (salesRes.data || []).map(mapSale);
 
   const apiAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
@@ -131,6 +137,16 @@ export async function apiFetchDashboard(userId: string, role: string) {
     stats: { total_income, total_expense, byCategory },
     salesStats: { total_sales, total_orders, total_items, byProduct },
   };
+}
+
+export async function apiGetRecordImageUrl(recordId: number): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('records')
+    .select('image_url')
+    .eq('id', recordId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.image_url || null;
 }
 
 export async function apiSaveRecord(userId: string, data: any): Promise<{ id: number }> {

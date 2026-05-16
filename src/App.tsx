@@ -54,6 +54,7 @@ import {
   apiUpdateAffiliate,
   apiDeleteAffiliate,
   apiTopUpUserTokens,
+  apiGetRecordImageUrl,
   PLAN_TOKEN_LIMITS,
   type Affiliate,
   PLAN_SCAN_LIMITS,
@@ -3474,13 +3475,23 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
     amount: record.amount,
     date: record.date,
     description: record.description,
-    image_url: record.image_url,
+    image_url: record.image_url || '',
     payment_method: record.payment_method || 'bank'
   });
 
   const [isSaving, setIsSaving] = useState(false);
   const [viewingDoc, setViewingDoc] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const [loadingImage, setLoadingImage] = useState(false);
+
+  useEffect(() => {
+    if (!formData.image_url && record.id) {
+      setLoadingImage(true);
+      apiGetRecordImageUrl(record.id).then(url => {
+        if (url) setFormData(prev => ({ ...prev, image_url: url }));
+      }).finally(() => setLoadingImage(false));
+    }
+  }, [record.id]);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -6046,7 +6057,7 @@ const RecordsView = ({
                             <span className="text-[13px] font-bold text-slate-800 truncate">{record.category}</span>
                             {record.image_url && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); setViewingDocument({ url: record.image_url!, filename: `lampiran-${record.id}.${record.image_url!.includes('.pdf') || record.image_url!.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                onClick={async (e) => { e.stopPropagation(); const url = await apiGetRecordImageUrl(record.id); if (url) setViewingDocument({ url, filename: `lampiran-${record.id}.${url.includes('.pdf') || url.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
                                 title="Lihat Lampiran"
                               >
@@ -6180,7 +6191,7 @@ const RecordsView = ({
                             </span>
                             {record.image_url && (
                               <button
-                                onClick={(e) => { e.stopPropagation(); setViewingDocument({ url: record.image_url!, filename: `lampiran-${record.id}.${record.image_url!.includes('.pdf') || record.image_url!.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
+                                onClick={async (e) => { e.stopPropagation(); const url = await apiGetRecordImageUrl(record.id); if (url) setViewingDocument({ url, filename: `lampiran-${record.id}.${url.includes('.pdf') || url.startsWith('data:application/pdf') ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
                                 title="Lihat Lampiran"
                               >
