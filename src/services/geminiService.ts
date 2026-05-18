@@ -9,11 +9,18 @@ const CACHE_DURATION = 1000 * 60 * 15;
 const KIE_BASE = "https://api.kie.ai";
 const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
 
-// Models tried in order — first success wins
-const FALLBACK_MODELS = [
+// Models for analysis tasks (quality priority)
+const ANALYSIS_MODELS = [
   { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
   { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
   { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+];
+
+// Models for scan/OCR tasks (speed priority)
+const SCAN_MODELS = [
+  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
+  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
 ];
 
 function getConfig() {
@@ -30,6 +37,7 @@ async function trySingleModel(
   modelEntry: { model: string; url: string },
   messages: { role: string; content: any }[],
   jsonMode: boolean,
+  maxTokens: number = 8192,
 ): Promise<ChatResult> {
   const { apiKey } = getConfig();
   const hasImage = messages.some(m =>
@@ -39,7 +47,7 @@ async function trySingleModel(
   const body: any = {
     model: modelEntry.model,
     messages,
-    max_tokens: 8192,
+    max_tokens: maxTokens,
   };
 
   if (jsonMode && !hasImage) {
@@ -70,11 +78,16 @@ async function trySingleModel(
   return { content, tokensUsed };
 }
 
-async function chatCompletion(messages: { role: string; content: any }[], jsonMode = false): Promise<ChatResult> {
+async function chatCompletion(
+  messages: { role: string; content: any }[],
+  jsonMode = false,
+  models = ANALYSIS_MODELS,
+  maxTokens = 8192,
+): Promise<ChatResult> {
   let lastError: any;
-  for (const modelEntry of FALLBACK_MODELS) {
+  for (const modelEntry of models) {
     try {
-      const result = await trySingleModel(modelEntry, messages, jsonMode);
+      const result = await trySingleModel(modelEntry, messages, jsonMode, maxTokens);
       if (result.content) return result;
     } catch (err: any) {
       console.warn(`Model ${modelEntry.model} failed:`, err?.message);
@@ -146,7 +159,7 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-async function compressImage(base64Data: string, maxWidth = 2400, quality = 0.92): Promise<string> {
+async function compressImage(base64Data: string, maxWidth = 1200, quality = 0.7): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -162,7 +175,6 @@ async function compressImage(base64Data: string, maxWidth = 2400, quality = 0.92
       if (!ctx) { resolve(base64Data); return; }
       ctx.drawImage(img, 0, 0, width, height);
       const compressed = canvas.toDataURL("image/jpeg", quality);
-      // If compression made it larger than original, return original
       resolve(compressed.length < base64Data.length * 1.1 ? compressed : base64Data);
     };
     img.onerror = () => resolve(base64Data);
@@ -241,7 +253,7 @@ Extract from the document now:`;
       }];
     }
 
-    let { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
+    let { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 2048), 3, 1000);
 
     if (userId && tokensUsed > 0) {
       apiLogAiUsage(userId, tokensUsed, "scan").catch(() => {});
@@ -257,7 +269,6 @@ Extract from the document now:`;
     try {
       parsed = JSON.parse(jsonStr);
     } catch {
-      // JSON parse failed — retry with simpler fallback prompt
       const fallbackMessages = isPdf ? messages : [{
         role: "user" as const,
         content: [
@@ -269,7 +280,7 @@ Extract from the document now:`;
         ],
       }];
       try {
-        const retry = await chatCompletion(fallbackMessages, false);
+        const retry = await chatCompletion(fallbackMessages, false, SCAN_MODELS, 2048);
         parsed = JSON.parse(extractJson(retry.content));
         if (userId && retry.tokensUsed > 0) {
           apiLogAiUsage(userId, retry.tokensUsed, "scan").catch(() => {});
@@ -382,7 +393,7 @@ Extract ALL transactions from the document:`;
       }];
     }
 
-    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false));
+    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 4096), 3, 1000);
 
     if (userId && tokensUsed > 0) {
       apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
