@@ -12636,6 +12636,8 @@ export default function App() {
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
+  const isAdmin = user?.role === 'admin' || isAdminAuthenticated;
+
   useEffect(() => {
     const pathname = window.location.pathname;
     const isAdminLoginPath = window.location.hash === '#admin' || pathname === '/admin/login' || pathname === '/admin';
