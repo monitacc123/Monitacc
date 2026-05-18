@@ -16,10 +16,10 @@ const ANALYSIS_MODELS = [
   { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
 ];
 
-// Models for scan/OCR tasks (speed priority)
+// Models for scan/OCR tasks (speed priority — 2.0-flash is fastest)
 const SCAN_MODELS = [
-  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
   { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
   { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
 ];
 
@@ -129,7 +129,7 @@ async function checkTokenLimit(userId: string, plan: string): Promise<void> {
   }
 }
 
-async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, initialDelay = 500): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -159,7 +159,7 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-async function compressImage(base64Data: string, maxWidth = 1200, quality = 0.7): Promise<string> {
+async function compressImage(base64Data: string, maxWidth = 800, quality = 0.5): Promise<string> {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -184,74 +184,55 @@ async function compressImage(base64Data: string, maxWidth = 1200, quality = 0.7)
 
 export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string, plan?: string): Promise<ExtractedData[] | null> {
   try {
-    if (userId && plan) {
-      await checkTokenLimit(userId, plan);
-    }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
     const currentYear = new Date().getFullYear();
-    const prompt = `You are an expert OCR and accounting data extraction assistant. Your job is to extract transaction data from receipts, invoices, and financial documents.
+    const prompt = `Extract transaction data from this document. Reply ONLY with a JSON array, no other text.
 
-CRITICAL RULES:
-1. You MUST respond with ONLY a valid JSON array — no explanation, no markdown, no preamble
-2. Even if the image is blurry or partial, extract whatever data you can see
-3. If you can see ANY amount, date, or store name — create an entry for it
-4. NEVER refuse to extract — always attempt extraction
-5. If truly nothing can be read, return exactly: []
+Rules: receipt/bill=expense, payment received/sales=income. payment_method: "cash" or "bank". Date: YYYY-MM-DD (default year ${currentYear}). Amount: total as positive number.
+Category must be one of: ${ALL_CATEGORIES.join(", ")}
+docType: "Resit"/"Invoice"/"Bil"/"Lain-lain"
 
-Transaction rules:
-- Receipt/Resit from shop, restaurant, petrol = expense (type: "expense")
-- Payment received, sales, top-up received = income (type: "income")
-- payment_method: "cash" if paid by cash/tunai/wang; "bank" if card/online/transfer
-- date format: YYYY-MM-DD; if year missing use ${currentYear}; if date unclear use ${currentYear}-01-01
-- amount: use the TOTAL amount (Jumlah/Total/Grand Total), as a positive number
-- category must be exactly one of: ${ALL_CATEGORIES.join(", ")}
-- docType: "Resit" for receipt, "Invoice" for invoice, "Bil" for bill, "Lain-lain" for others
+Format: [{"type":"income"|"expense","docType":"","docNumber":"","category":"","amount":0,"date":"","description":"","payment_method":"cash"|"bank"}]
 
-Required JSON fields per item:
-{ "type": "income"|"expense", "docType": string, "docNumber": string, "category": string, "amount": number, "date": "YYYY-MM-DD", "description": string, "payment_method": "cash"|"bank" }
+If nothing readable, return []. Extract now:`;
 
-Example output:
-[{"type":"expense","docType":"Resit","docNumber":"INV-001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"${currentYear}-01-15","description":"Shell Petrol Station","payment_method":"cash"}]
+    // Run token check and image preparation in parallel
+    const tokenCheckPromise = (userId && plan) ? checkTokenLimit(userId, plan) : Promise.resolve();
 
-Extract from the document now:`;
-
-    let messages: { role: string; content: any }[];
+    let messagesPromise: Promise<{ role: string; content: any }[]>;
 
     if (isPdf) {
-      let pdfText = "";
-      try {
-        pdfText = await extractTextFromPdf(base64Data);
-      } catch (pdfErr) {
-        console.error("PDF extraction failed:", pdfErr);
-        pdfText = "[PDF content could not be extracted - please try an image format]";
-      }
-
-      messages = [{
-        role: "user",
-        content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
-      }];
+      messagesPromise = (async () => {
+        let pdfText = "";
+        try {
+          pdfText = await extractTextFromPdf(base64Data);
+        } catch (pdfErr) {
+          console.error("PDF extraction failed:", pdfErr);
+          pdfText = "[PDF content could not be extracted - please try an image format]";
+        }
+        return [{ role: "user", content: `${prompt}\n\nDOCUMENT CONTENT:\n\n${pdfText}` }];
+      })();
     } else {
-      const isUrl = base64Data.startsWith("http");
-      let imageUrl: string;
-      if (isUrl) {
-        imageUrl = base64Data;
-      } else {
-        const dataWithPrefix = base64Data.startsWith("data:")
-          ? base64Data
-          : `data:${mimeType};base64,${base64Data}`;
-        const compressed = await compressImage(dataWithPrefix);
-        imageUrl = compressed;
-      }
-
-      messages = [{
-        role: "user",
-        content: [
+      messagesPromise = (async () => {
+        const isUrl = base64Data.startsWith("http");
+        let imageUrl: string;
+        if (isUrl) {
+          imageUrl = base64Data;
+        } else {
+          const dataWithPrefix = base64Data.startsWith("data:")
+            ? base64Data
+            : `data:${mimeType};base64,${base64Data}`;
+          imageUrl = await compressImage(dataWithPrefix);
+        }
+        return [{ role: "user", content: [
           { type: "image_url", image_url: { url: imageUrl } },
           { type: "text", text: prompt },
-        ],
-      }];
+        ]}];
+      })();
     }
+
+    const [, messages] = await Promise.all([tokenCheckPromise, messagesPromise]);
 
     let { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 2048), 3, 1000);
 
