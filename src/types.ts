@@ -42,6 +42,7 @@ export interface User {
   status?: 'active' | 'cancelled' | 'expired';
   referred_by?: string;
   special_id?: string;
+  special_tier?: string;
   plan_start?: string;
   plan_end?: string;
   created_at?: string;

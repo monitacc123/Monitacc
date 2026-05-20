@@ -568,7 +568,8 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   ];
 
   const PLAN_ORDER: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
-  const userPlanLevel = PLAN_ORDER[user?.plan || 'free'] ?? 0;
+  const effectivePlan = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
+  const userPlanLevel = PLAN_ORDER[effectivePlan] ?? 0;
 
   const isPremiumLocked = (requiredPlan: string | null | undefined): boolean => {
     if (!requiredPlan) return false;
@@ -2154,7 +2155,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
         {user?.role !== 'upload_only' && (
           <div className="mb-5 md:mb-10">
-            <AIInsights records={records} sales={sales} userId={user?.id} userPlan={user?.plan} />
+            <AIInsights records={records} sales={sales} userId={user?.id} userPlan={user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan} />
           </div>
         )}
 
@@ -2571,7 +2572,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const [showCamera, setShowCamera] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
 
-  const planKey = user?.plan || 'free';
+  const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
   const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
   const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
 
@@ -2629,7 +2630,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
     }
     let data: any = null;
     try {
-      data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id, user?.plan);
+      data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
     } catch (err: any) {
       setAnalyzing(false);
       if (err?.message?.startsWith("KUOTA_HABIS:")) {
@@ -5271,7 +5272,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
 
           setUploadStatus({ type: 'info', message: 'AI sedang menganalisis penyata bank anda...' });
 
-          const extracted = await extractBankTransactions(base64Data, mimeType, user?.id, user?.plan);
+          const extracted = await extractBankTransactions(base64Data, mimeType, user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
 
           if (extracted && extracted.length > 0) {
             const data = extracted.map((item, i) => ({
@@ -8820,7 +8821,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
 
   const generateAnalysis = async (conciseMode: boolean = isConcise) => {
     setLoading(true);
-    const result = await analyzeFinancials(records, sales, conciseMode, user?.id, user?.plan);
+    const result = await analyzeFinancials(records, sales, conciseMode, user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
     setAnalysis(result);
     setLoading(false);
   };
@@ -10673,6 +10674,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [editPlan, setEditPlan] = useState('');
   const [editPlanEnd, setEditPlanEnd] = useState('');
+  const [editSpecialTier, setEditSpecialTier] = useState('Starter');
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -10690,10 +10692,11 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
 
   const handleUpdatePlan = async (userId: string) => {
     try {
-      await apiUpdateUserPlan(userId, editPlan, editPlanEnd || undefined);
+      await apiUpdateUserPlan(userId, editPlan, editPlanEnd || undefined, editPlan === 'Special' ? editSpecialTier : undefined);
       setEditingUser(null);
       setEditPlan('');
       setEditPlanEnd('');
+      setEditSpecialTier('Starter');
       fetchUsers();
     } catch (err) {
       console.error(err);
@@ -10848,7 +10851,12 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                       <div className="text-[10px] text-slate-400 font-medium">{u.email}</div>
                       {u.company_name && <div className="text-[10px] text-emerald-600 font-bold mt-0.5 uppercase tracking-tighter">{u.company_name}</div>}
                     </td>
-                    <td className="px-5 py-4">{planBadge(u.plan || 'free')}</td>
+                    <td className="px-5 py-4">
+                      {planBadge(u.plan || 'free')}
+                      {u.plan === 'Special' && (u as any).special_tier && (
+                        <span className="ml-1.5 px-2 py-0.5 rounded text-[8px] font-bold text-amber-700 bg-amber-50 border border-amber-200">{(u as any).special_tier}</span>
+                      )}
+                    </td>
                     <td className="px-5 py-4">{statusBadge(u.status || 'active')}</td>
                     <td className="px-5 py-4">
                       <div className="text-[10px] text-slate-500 font-medium">
@@ -10869,7 +10877,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-2">
                         <button
-                          onClick={() => { setEditingUser(u); setEditPlan(u.plan || 'free'); setEditPlanEnd(u.plan_end || ''); }}
+                          onClick={() => { setEditingUser(u); setEditPlan(u.plan || 'free'); setEditPlanEnd(u.plan_end || ''); setEditSpecialTier((u as any).special_tier || 'Starter'); }}
                           className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-all"
                         >
                           Tukar Pakej
@@ -10936,12 +10944,40 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                         className={`p-3 rounded-xl border-2 text-left transition-all ${editPlan === p.name ? (p.name === 'Special' ? 'border-amber-500 bg-amber-50' : 'border-emerald-500 bg-emerald-50') : 'border-slate-100 hover:border-slate-200'}`}
                       >
                         <div className="text-xs font-bold text-slate-900">{p.name === 'free' ? 'Percuma' : p.name}</div>
-                        <div className="text-[10px] text-slate-500 font-medium">{p.name === 'Special' ? 'Pakej Khas' : `RM${p.price}/bln`}</div>
+                        <div className="text-[10px] text-slate-500 font-medium">{p.name === 'Special' ? 'Pakej Khas (Bukan Langganan)' : `RM${p.price}/bln`}</div>
                       </button>
                     ))}
                   </div>
                 </div>
-                {editPlan !== 'free' && (
+                {editPlan === 'Special' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tahap Akses</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {['Starter', 'Growth', 'Ultimate'].map(tier => (
+                        <button
+                          key={tier}
+                          onClick={() => setEditSpecialTier(tier)}
+                          className={`p-3 rounded-xl border-2 text-center transition-all ${editSpecialTier === tier ? 'border-amber-500 bg-amber-50' : 'border-slate-100 hover:border-slate-200'}`}
+                        >
+                          <div className="text-xs font-bold text-slate-900">{tier}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {editPlan === 'Special' && (
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tarikh Tamat <span className="text-rose-500">*</span></label>
+                    <input
+                      type="date"
+                      value={editPlanEnd}
+                      onChange={e => setEditPlanEnd(e.target.value)}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-amber-500/20"
+                    />
+                    {!editPlanEnd && <p className="text-[10px] text-rose-500 mt-1 font-medium">Sila pilih tarikh tamat</p>}
+                  </div>
+                )}
+                {editPlan !== 'free' && editPlan !== 'Special' && (
                   <div>
                     <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Tarikh Tamat (Pilihan)</label>
                     <input
@@ -10954,7 +10990,8 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                 )}
                 <button
                   onClick={() => handleUpdatePlan(editingUser.id)}
-                  className="w-full py-3.5 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-[0.98]"
+                  disabled={editPlan === 'Special' && !editPlanEnd}
+                  className={`w-full py-3.5 rounded-xl font-bold text-sm shadow-lg transition-all active:scale-[0.98] ${editPlan === 'Special' && !editPlanEnd ? 'bg-slate-300 text-slate-500 cursor-not-allowed shadow-none' : 'bg-emerald-600 text-white shadow-emerald-100 hover:bg-emerald-700'}`}
                 >
                   Kemaskini Pakej
                 </button>
@@ -13237,7 +13274,8 @@ export default function App() {
             {view === 'reconcile' && (
               (() => {
                 const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
-                const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
+                const effectivePlanMain = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
+                const userLevel = planOrderMain[effectivePlanMain] ?? 0;
                 if (!isAdmin && userLevel < planOrderMain['Ultimate']) {
                   return <PremiumGateView featureId="reconcile" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
                 }
@@ -13271,7 +13309,8 @@ export default function App() {
             {view === 'ai-analysis' && (
               (() => {
                 const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
-                const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
+                const effectivePlanMain = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
+                const userLevel = planOrderMain[effectivePlanMain] ?? 0;
                 if (!isAdmin && userLevel < planOrderMain['Starter']) {
                   return <PremiumGateView featureId="ai-analysis" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
                 }
