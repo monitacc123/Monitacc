@@ -10690,7 +10690,10 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
 
   useEffect(() => { fetchUsers(); }, []);
 
+  const [updateError, setUpdateError] = useState('');
+
   const handleUpdatePlan = async (userId: string) => {
+    setUpdateError('');
     try {
       await apiUpdateUserPlan(userId, editPlan, editPlanEnd || undefined, editPlan === 'Special' ? editSpecialTier : undefined);
       setEditingUser(null);
@@ -10698,8 +10701,9 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
       setEditPlanEnd('');
       setEditSpecialTier('Starter');
       fetchUsers();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
+      setUpdateError(err.message || 'Gagal kemaskini pakej');
     }
   };
 
@@ -10986,6 +10990,11 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                       onChange={e => setEditPlanEnd(e.target.value)}
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20"
                     />
+                  </div>
+                )}
+                {updateError && (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <p className="text-xs text-rose-700 font-medium">{updateError}</p>
                   </div>
                 )}
                 <button
