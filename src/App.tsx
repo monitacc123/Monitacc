@@ -567,7 +567,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
     { id: 'profile', label: 'Akaun', icon: User },
   ];
 
-  const PLAN_ORDER: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+  const PLAN_ORDER: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
   const userPlanLevel = PLAN_ORDER[user?.plan || 'free'] ?? 0;
 
   const isPremiumLocked = (requiredPlan: string | null | undefined): boolean => {
@@ -10660,6 +10660,7 @@ const PLAN_CONFIG: { name: string; price: number; color: string; features: strin
   { name: 'Starter', price: 50, color: 'emerald', features: ['100 Imbasan / bulan', '3x Bank Statement', '1x Smart Analysis'] },
   { name: 'Growth', price: 100, color: 'emerald', features: ['250 Imbasan / bulan', '9x Bank Statement', '4x Smart Analysis'] },
   { name: 'Ultimate', price: 150, color: 'emerald', features: ['Unlimited Imbasan', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L + Balance Sheet'] },
+  { name: 'Special', price: 0, color: 'amber', features: ['Unlimited Imbasan', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L + Balance Sheet', 'Semua Akses Premium'] },
 ];
 
 const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
@@ -10737,7 +10738,8 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   }, 0);
 
   const planBadge = (plan: string) => {
-    const cls = plan === 'Ultimate' ? 'bg-slate-900 text-white' :
+    const cls = plan === 'Special' ? 'bg-amber-500 text-white' :
+      plan === 'Ultimate' ? 'bg-slate-900 text-white' :
       plan === 'Growth' ? 'bg-emerald-600 text-white' :
       plan === 'Starter' ? 'bg-emerald-100 text-emerald-700' :
       'bg-slate-100 text-slate-500';
@@ -10762,7 +10764,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         {planCounts.map(p => (
           <button
             key={p.name}
@@ -10771,7 +10773,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
           >
             <div className="flex items-center justify-between mb-2">
               {planBadge(p.name)}
-              <span className="text-[10px] font-bold text-slate-400">RM{p.price}/bln</span>
+              <span className="text-[10px] font-bold text-slate-400">{p.price === 0 && p.name === 'Special' ? 'Khas' : `RM${p.price}/bln`}</span>
             </div>
             <p className="text-2xl font-bold text-slate-900">{p.count}</p>
             <p className="text-[10px] font-medium text-slate-400 mt-0.5">pengguna</p>
@@ -10931,10 +10933,10 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                       <button
                         key={p.name}
                         onClick={() => setEditPlan(p.name)}
-                        className={`p-3 rounded-xl border-2 text-left transition-all ${editPlan === p.name ? 'border-emerald-500 bg-emerald-50' : 'border-slate-100 hover:border-slate-200'}`}
+                        className={`p-3 rounded-xl border-2 text-left transition-all ${editPlan === p.name ? (p.name === 'Special' ? 'border-amber-500 bg-amber-50' : 'border-emerald-500 bg-emerald-50') : 'border-slate-100 hover:border-slate-200'}`}
                       >
                         <div className="text-xs font-bold text-slate-900">{p.name === 'free' ? 'Percuma' : p.name}</div>
-                        <div className="text-[10px] text-slate-500 font-medium">RM{p.price}/bln</div>
+                        <div className="text-[10px] text-slate-500 font-medium">{p.name === 'Special' ? 'Pakej Khas' : `RM${p.price}/bln`}</div>
                       </button>
                     ))}
                   </div>
@@ -13234,7 +13236,7 @@ export default function App() {
             )}
             {view === 'reconcile' && (
               (() => {
-                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
                 const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
                 if (!isAdmin && userLevel < planOrderMain['Ultimate']) {
                   return <PremiumGateView featureId="reconcile" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;
@@ -13268,7 +13270,7 @@ export default function App() {
             )}
             {view === 'ai-analysis' && (
               (() => {
-                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3 };
+                const planOrderMain: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
                 const userLevel = planOrderMain[user?.plan || 'free'] ?? 0;
                 if (!isAdmin && userLevel < planOrderMain['Starter']) {
                   return <PremiumGateView featureId="ai-analysis" onUpgrade={() => setView('plans')} onBack={() => setView('dashboard')} />;

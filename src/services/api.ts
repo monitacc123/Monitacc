@@ -623,6 +623,7 @@ export const PLAN_TOKEN_LIMITS: Record<string, number> = {
   Starter: 100000,
   Growth: 250000,
   Ultimate: 10000000,
+  Special: 10000000,
 };
 
 export async function apiGetTokenUsageByUser() {
@@ -684,6 +685,7 @@ export const PLAN_SCAN_LIMITS: Record<string, number> = {
   Starter: 100,
   Growth: 250,
   Ultimate: Infinity,
+  Special: Infinity,
 };
 
 export const PLAN_PDF_LIMITS: Record<string, number> = {
@@ -692,6 +694,7 @@ export const PLAN_PDF_LIMITS: Record<string, number> = {
   Starter: 3,
   Growth: 9,
   Ultimate: Infinity,
+  Special: Infinity,
 };
 
 function getCurrentYearMonth(): string {
