@@ -2571,6 +2571,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const [results, setResults] = useState<any[]>([]);
   const [showCamera, setShowCamera] = useState(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
+  const [scanError, setScanError] = useState<string>('');
 
   const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
   const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
@@ -2623,6 +2624,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
   const analyze = async (base64: string, type?: string) => {
     setAnalyzing(true);
+    setScanError('');
     let finalMimeType = type;
     if (!finalMimeType && base64.startsWith('data:')) {
       const match = base64.match(/^data:([^;]+);/);
@@ -2637,7 +2639,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
         alert(err.message.replace("KUOTA_HABIS:", ""));
         onUpgrade();
       } else {
-        alert("Ralat menganalisis dokumen. Sila cuba lagi.");
+        setScanError(err?.message || "Ralat menganalisis dokumen. Sila cuba lagi.");
       }
       return;
     }
@@ -2993,9 +2995,9 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <SearchX size={32} className="md:hidden" />
                 <SearchX size={40} className="hidden md:block" />
               </div>
-              <h3 className="text-lg md:text-xl font-black text-slate-900 mb-2 font-display">Tiada Data Dikesan</h3>
+              <h3 className="text-lg md:text-xl font-black text-slate-900 mb-2 font-display">{scanError ? 'Ralat Analisis' : 'Tiada Data Dikesan'}</h3>
               <p className="text-slate-500 text-xs md:text-sm mb-8 max-w-xs mx-auto font-medium">
-                AI tidak dapat mengekstrak maklumat dari imej ini. Anda boleh cuba lagi atau masukkan data secara manual.
+                {scanError || 'AI tidak dapat mengekstrak maklumat dari imej ini. Anda boleh cuba lagi atau masukkan data secara manual.'}
               </p>
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
                 <button 
@@ -3013,10 +3015,11 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 >
                   <Plus size={18} className="inline-block mr-2" /> Masukkan Secara Manual
                 </button>
-                <button 
+                <button
                   onClick={() => {
                     setImage(null);
                     setResults([]);
+                    setScanError('');
                   }}
                   className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >

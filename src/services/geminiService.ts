@@ -159,7 +159,8 @@ export interface ExtractedData {
   payment_method?: "cash" | "bank";
 }
 
-async function compressImage(base64Data: string, maxWidth = 1200, quality = 0.7): Promise<string> {
+async function compressImage(base64Data: string, maxWidth = 1024, quality = 0.6): Promise<string> {
+  const MAX_SIZE = 1_500_000;
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -174,7 +175,14 @@ async function compressImage(base64Data: string, maxWidth = 1200, quality = 0.7)
       const ctx = canvas.getContext("2d");
       if (!ctx) { resolve(base64Data); return; }
       ctx.drawImage(img, 0, 0, width, height);
-      const compressed = canvas.toDataURL("image/jpeg", quality);
+      let compressed = canvas.toDataURL("image/jpeg", quality);
+      if (compressed.length > MAX_SIZE) {
+        const ratio = Math.sqrt(MAX_SIZE / compressed.length);
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        compressed = canvas.toDataURL("image/jpeg", 0.5);
+      }
       resolve(compressed.length < base64Data.length * 1.1 ? compressed : base64Data);
     };
     img.onerror = () => resolve(base64Data);
@@ -247,13 +255,20 @@ Extract from the document now:`;
       messages = [{
         role: "user",
         content: [
-          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           { type: "text", text: prompt },
         ],
       }];
     }
 
-    let { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 2048), 3, 1000);
+    let result: ChatResult;
+    try {
+      result = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 4096), 3, 1000);
+    } catch (apiErr: any) {
+      console.error("AI API call failed:", apiErr?.message);
+      throw new Error("AI tidak dapat memproses imej. Sila cuba lagi.");
+    }
+    let { content: text, tokensUsed } = result;
 
     if (userId && tokensUsed > 0) {
       apiLogAiUsage(userId, tokensUsed, "scan").catch(() => {});
@@ -261,7 +276,7 @@ Extract from the document now:`;
 
     if (!text || text.trim() === "") {
       console.error("Empty response from AI");
-      return null;
+      throw new Error("AI tidak dapat membaca dokumen ini. Sila cuba imej yang lebih jelas.");
     }
 
     const jsonStr = extractJson(text);
@@ -280,13 +295,13 @@ Extract from the document now:`;
         ],
       }];
       try {
-        const retry = await chatCompletion(fallbackMessages, false, SCAN_MODELS, 2048);
+        const retry = await chatCompletion(fallbackMessages, false, SCAN_MODELS, 4096);
         parsed = JSON.parse(extractJson(retry.content));
         if (userId && retry.tokensUsed > 0) {
           apiLogAiUsage(userId, retry.tokensUsed, "scan").catch(() => {});
         }
       } catch {
-        return null;
+        throw new Error("AI tidak dapat membaca resit ini. Sila cuba gambar yang lebih jelas atau terang.");
       }
     }
 
@@ -298,9 +313,11 @@ Extract from the document now:`;
       item && item.type && item.amount && item.date && item.category
     );
 
+    if (filtered.length > 0) return filtered;
+
     // If filtered is empty but we got items with partial data, relax the filter
-    if (filtered.length === 0 && parsed.length > 0) {
-      return parsed.filter((item: any) => item && item.amount > 0).map((item: any) => ({
+    if (parsed.length > 0) {
+      const relaxed = parsed.filter((item: any) => item && Number(item.amount) > 0).map((item: any) => ({
         type: item.type || "expense",
         docType: item.docType || "Lain-lain",
         docNumber: item.docNumber || "",
@@ -310,12 +327,14 @@ Extract from the document now:`;
         description: item.description || "Transaksi",
         payment_method: item.payment_method || "cash",
       }));
+      if (relaxed.length > 0) return relaxed;
     }
 
-    return filtered;
+    throw new Error("AI tidak dapat mengekstrak data dari dokumen ini. Sila pastikan gambar jelas dan cuba lagi.");
   } catch (error: any) {
     console.error("Error analyzing document:", error?.message || error);
-    return null;
+    if (error?.message?.startsWith("KUOTA_HABIS:")) throw error;
+    throw new Error(error?.message || "AI tidak dapat memproses dokumen ini. Sila cuba lagi.");
   }
 }
 
@@ -387,7 +406,7 @@ Extract ALL transactions from the document:`;
       messages = [{
         role: "user",
         content: [
-          { type: "image_url", image_url: { url: imageUrl } },
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           { type: "text", text: prompt },
         ],
       }];
