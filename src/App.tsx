@@ -3012,7 +3012,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: idx * 0.05 }}
-                    className="card-premium p-5 bg-white border border-slate-200 relative group"
+                    className="card-premium p-4 md:p-5 bg-white border border-slate-200 relative group"
                   >
                     {checkExistingDuplicate(result) && (
                       <div className="absolute -top-3 left-6 z-10 px-3 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
@@ -3020,37 +3020,36 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                         Rekod Bertindih
                       </div>
                     )}
-                    <div className="flex flex-col gap-6">
-                      <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
-                        <div className="w-full sm:max-w-xs">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Jenis Transaksi</p>
-                          <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 hover:border-emerald-500/30 transition-all shadow-sm">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${result.type === 'income' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
-                              {React.createElement(getCategoryIcon(result.category), { size: 20, strokeWidth: 2.5 })}
-                            </div>
-                            <div className="min-w-0 flex-1 relative">
-                              <select
-                                value={result.type}
-                                onChange={(e) => updateTaskResult(activeTask.id, idx, 'type', e.target.value)}
-                                className="w-full bg-transparent font-bold text-slate-900 text-xs outline-none cursor-pointer appearance-none pr-6"
-                              >
-                                <option value="income">Duit Masuk</option>
-                                <option value="expense">Duit Keluar</option>
-                              </select>
-                              <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                            </div>
+                    <div className="flex flex-col gap-4 md:gap-6">
+                      {/* Transaction type + delete */}
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 bg-slate-50 p-2.5 md:p-3 rounded-2xl border border-slate-200 flex-1 min-w-0">
+                          <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${result.type === 'income' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                            {React.createElement(getCategoryIcon(result.category), { size: 18, strokeWidth: 2.5 })}
+                          </div>
+                          <div className="min-w-0 flex-1 relative">
+                            <select
+                              value={result.type}
+                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'type', e.target.value)}
+                              className="w-full bg-transparent font-bold text-slate-900 text-xs outline-none cursor-pointer appearance-none pr-6"
+                            >
+                              <option value="income">Duit Masuk</option>
+                              <option value="expense">Duit Keluar</option>
+                            </select>
+                            <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
                         </div>
                         <button
                           onClick={() => removeTaskResult(activeTask.id, idx)}
-                          className="p-2 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all border border-rose-100 self-end sm:self-start"
+                          className="p-2 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all border border-rose-100 shrink-0"
                         >
                           <Trash2 size={16} />
                         </button>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-4 w-full">
-                        <div className="space-y-1.5">
+                      {/* Fields grid - 2 cols on mobile for compact layout */}
+                      <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-x-6 md:gap-y-4 w-full">
+                        <div className="col-span-2 space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori</p>
                           <SearchableSelect
                             value={result.category}
@@ -3069,13 +3068,13 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Jumlah (RM)</p>
                           <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">RM</span>
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[11px]">RM</span>
                             <input
                               type="number"
                               step="0.01"
                               value={result.amount}
                               onChange={(e) => updateTaskResult(activeTask.id, idx, 'amount', parseFloat(e.target.value))}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
                               placeholder="0.00"
                             />
                           </div>
@@ -3087,38 +3086,36 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                               type="date"
                               value={result.date}
                               onChange={(e) => updateTaskResult(activeTask.id, idx, 'date', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none"
                             />
-                            <Calendar size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            <Calendar size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kaedah Bayaran</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bayaran</p>
                           <div className="relative">
                             <select
                               value={result.payment_method || 'bank'}
                               onChange={(e) => updateTaskResult(activeTask.id, idx, 'payment_method', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none pr-10"
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none pr-8"
                             >
-                              <option value="bank">Bank / Online</option>
-                              <option value="cash">Tunai (Cash)</option>
+                              <option value="bank">Bank</option>
+                              <option value="cash">Tunai</option>
                             </select>
-                            <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
                         </div>
-                      </div>
-
-                      <div className="w-full">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Penerangan</p>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={result.description}
-                            onChange={(e) => updateTaskResult(activeTask.id, idx, 'description', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
-                            placeholder="Masukkan butiran transaksi..."
-                          />
-                          <FileText size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" />
+                        <div className="space-y-1.5">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={result.description}
+                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'description', e.target.value)}
+                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+                              placeholder="Butiran transaksi..."
+                            />
+                          </div>
                         </div>
                       </div>
                     </div>
