@@ -2876,7 +2876,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
         <div className="flex items-center gap-2.5 pl-12">
           <label className="group px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm hover:shadow-md active:scale-95">
             <ImagePlus size={16} strokeWidth={2.5} />
-            Tambah Resit
+            Upload Resit
             <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
           </label>
           <button
@@ -2884,7 +2884,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             className="group px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 hover:text-slate-900 transition-all flex items-center gap-2 active:scale-95"
           >
             <Camera size={16} strokeWidth={2.5} />
-            Kamera
+            Scan
           </button>
         </div>
       </header>
