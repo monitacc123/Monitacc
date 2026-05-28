@@ -2580,6 +2580,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0 });
   const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
   const processingRef = useRef(false);
+  const initialImageProcessedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
@@ -2677,9 +2678,10 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
     processNext();
   }, [queue]);
 
-  // Handle initial image
+  // Handle initial image (guard against React strict mode double-fire)
   useEffect(() => {
-    if (initialImage && queue.length === 0) {
+    if (initialImage && !initialImageProcessedRef.current) {
+      initialImageProcessedRef.current = true;
       let mime = 'image/jpeg';
       if (initialImage.startsWith('data:')) {
         const match = initialImage.match(/^data:([^;]+);/);
