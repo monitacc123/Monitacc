@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, EyeOff, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2 } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, EyeOff, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2, ImagePlus, RotateCcw, CircleX } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -2563,22 +2563,49 @@ const CameraView = ({ onCapture, onCancel }: { onCapture: (base64: string) => vo
   );
 };
 
+interface ScanTask {
+  id: string;
+  image: string;
+  mimeType: string;
+  status: 'pending' | 'analyzing' | 'complete' | 'failed';
+  results: any[];
+  error: string;
+}
+
 const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCategory, records, sales, user, onUpgrade }: { onSave: (data: any) => void, initialImage?: string | null, onCancel: () => void, allCategories: string[], onAddNewCategory: (name: string, type: string) => void, records: TransactionRecord[], sales: Sale[], user: UserType | null, onUpgrade: () => void }) => {
-  const [image, setImage] = useState<string | null>(initialImage || null);
-  const [mimeType, setMimeType] = useState<string>("image/jpeg");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [results, setResults] = useState<any[]>([]);
+  const [queue, setQueue] = useState<ScanTask[]>([]);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0 });
   const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
-  const [scanError, setScanError] = useState<string>('');
+  const processingRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
   const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
   const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
 
-  const checkLimitAndAnalyze = async (base64: string, type: string) => {
-    const isPdf = type === 'application/pdf';
+  const activeTask = queue.find(t => t.id === activeTaskId) || null;
+  const completedCount = queue.filter(t => t.status === 'complete').length;
+  const failedCount = queue.filter(t => t.status === 'failed').length;
+  const totalRecords = queue.filter(t => t.status === 'complete').reduce((sum, t) => sum + t.results.length, 0);
+
+  const addToQueue = (image: string, mimeType: string) => {
+    const task: ScanTask = {
+      id: `scan-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      image,
+      mimeType,
+      status: 'pending',
+      results: [],
+      error: '',
+    };
+    setQueue(prev => [...prev, task]);
+    if (!activeTaskId) setActiveTaskId(task.id);
+  };
+
+  const checkLimitAndAnalyze = async (task: ScanTask): Promise<boolean> => {
+    const isPdf = task.mimeType === 'application/pdf';
     const scanType = isPdf ? 'pdf' : 'receipt';
     const isAdminUser = user?.role === 'admin';
     if (!isAdminUser && user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
@@ -2587,142 +2614,223 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       const limit = isPdf ? pdfLimit : receiptLimit;
       if (used >= limit) {
         setShowUpgradeModal({ type: scanType, used, limit });
-        return;
+        return false;
       }
       await apiLogScanUsage(user.id, scanType);
     }
-    analyze(base64, type);
+    return true;
   };
 
+  const analyzeTask = async (taskId: string) => {
+    const task = queue.find(t => t.id === taskId);
+    if (!task) return;
+
+    setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'analyzing', error: '' } : t));
+
+    const allowed = await checkLimitAndAnalyze(task);
+    if (!allowed) {
+      setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: 'Had imbasan telah dicapai. Sila naik taraf pakej.' } : t));
+      return;
+    }
+
+    let finalMimeType = task.mimeType;
+    if (!finalMimeType && task.image.startsWith('data:')) {
+      const match = task.image.match(/^data:([^;]+);/);
+      if (match) finalMimeType = match[1];
+    }
+
+    try {
+      const data = await analyzeDocument(task.image, finalMimeType || "image/jpeg", user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
+      if (data && Array.isArray(data) && data.length > 0) {
+        const uniqueData = data.filter((item, index, self) =>
+          index === self.findIndex((t2) => (
+            t2.date === item.date &&
+            Math.abs(t2.amount - item.amount) < 0.01 &&
+            t2.description.toLowerCase().trim() === item.description.toLowerCase().trim() &&
+            t2.type === item.type
+          ))
+        );
+        const sortedData = [...uniqueData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+        setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'complete', results: sortedData, error: '' } : t));
+      } else {
+        setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: 'AI tidak dapat mengekstrak data dari dokumen ini.' } : t));
+      }
+    } catch (err: any) {
+      if (err?.message?.startsWith("KUOTA_HABIS:")) {
+        setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: 'Had token AI dicapai. Sila naik taraf.' } : t));
+      } else {
+        setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: err?.message || 'Ralat menganalisis dokumen.' } : t));
+      }
+    }
+  };
+
+  // Process queue sequentially
   useEffect(() => {
-    if (initialImage) {
+    const processNext = async () => {
+      if (processingRef.current) return;
+      const nextPending = queue.find(t => t.status === 'pending');
+      if (!nextPending) return;
+      processingRef.current = true;
+      await analyzeTask(nextPending.id);
+      processingRef.current = false;
+    };
+    processNext();
+  }, [queue]);
+
+  // Handle initial image
+  useEffect(() => {
+    if (initialImage && queue.length === 0) {
+      let mime = 'image/jpeg';
       if (initialImage.startsWith('data:')) {
         const match = initialImage.match(/^data:([^;]+);/);
-        if (match) {
-          setMimeType(match[1]);
-          checkLimitAndAnalyze(initialImage, match[1]);
-          return;
-        }
+        if (match) mime = match[1];
       }
-      checkLimitAndAnalyze(initialImage, 'image/jpeg');
+      addToQueue(initialImage, mime);
     }
   }, [initialImage]);
 
-  const handleCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
+  const handleMultiCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    Array.from(files).forEach(file => {
       const reader = new FileReader();
       reader.onloadend = () => {
         const base64 = reader.result as string;
-        setImage(base64);
-        setMimeType(file.type);
-        checkLimitAndAnalyze(base64, file.type);
+        addToQueue(base64, file.type);
       };
       reader.readAsDataURL(file);
-    }
+    });
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const analyze = async (base64: string, type?: string) => {
-    setAnalyzing(true);
-    setScanError('');
-    let finalMimeType = type;
-    if (!finalMimeType && base64.startsWith('data:')) {
-      const match = base64.match(/^data:([^;]+);/);
-      if (match) finalMimeType = match[1];
-    }
-    let data: any = null;
-    try {
-      data = await analyzeDocument(base64, finalMimeType || "image/jpeg", user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
-    } catch (err: any) {
-      setAnalyzing(false);
-      if (err?.message?.startsWith("KUOTA_HABIS:")) {
-        alert(err.message.replace("KUOTA_HABIS:", ""));
-        onUpgrade();
-      } else {
-        setScanError(err?.message || "Ralat menganalisis dokumen. Sila cuba lagi.");
-      }
-      return;
-    }
-    if (data && Array.isArray(data)) {
-      // Deduplicate within the extracted data - only if EXACTLY the same
-      const uniqueData = data.filter((item, index, self) =>
-        index === self.findIndex((t) => (
-          t.date === item.date &&
-          Math.abs(t.amount - item.amount) < 0.01 &&
-          t.description.toLowerCase().trim() === item.description.toLowerCase().trim() &&
-          t.type === item.type
-        ))
-      );
-
-      // Sort results by date ASC
-      const sortedData = [...uniqueData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-      setResults(sortedData);
-    }
-    setAnalyzing(false);
+  const updateTaskResult = (taskId: string, index: number, field: string, value: any) => {
+    setQueue(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newResults = [...t.results];
+      newResults[index] = { ...newResults[index], [field]: value };
+      return { ...t, results: newResults };
+    }));
   };
 
-  const updateResult = (index: number, field: string, value: any) => {
-    const newResults = [...results];
-    newResults[index] = { ...newResults[index], [field]: value };
-    setResults(newResults);
+  const removeTaskResult = (taskId: string, index: number) => {
+    setQueue(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newResults = t.results.filter((_, i) => i !== index);
+      return { ...t, results: newResults, status: newResults.length > 0 ? 'complete' : 'failed', error: newResults.length === 0 ? 'Semua rekod telah dibuang.' : '' };
+    }));
   };
 
-  const removeResult = (index: number) => {
-    setResults(results.filter((_, i) => i !== index));
+  const addManualResult = (taskId: string) => {
+    setQueue(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      return {
+        ...t,
+        status: 'complete',
+        error: '',
+        results: [...t.results, {
+          type: 'expense',
+          docType: 'Manual',
+          category: 'OTHER',
+          amount: 0,
+          date: new Date().toISOString().split('T')[0],
+          description: 'Rekod Manual',
+          payment_method: 'bank'
+        }]
+      };
+    }));
+  };
+
+  const retryTask = (taskId: string) => {
+    setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'pending', error: '', results: [] } : t));
+  };
+
+  const removeTask = (taskId: string) => {
+    setQueue(prev => prev.filter(t => t.id !== taskId));
+    if (activeTaskId === taskId) {
+      const remaining = queue.filter(t => t.id !== taskId);
+      setActiveTaskId(remaining.length > 0 ? remaining[0].id : null);
+    }
   };
 
   const checkExistingDuplicate = (item: any) => {
     const type = item.type;
     const amount = item.amount;
     const date = item.date;
-    const desc = item.description.toLowerCase().trim();
-
-    // Check against records
-    const existingRecord = records.find(r => 
-      r.type === type && 
-      Math.abs(r.amount - amount) < 0.01 && 
+    const desc = (item.description || '').toLowerCase().trim();
+    const existingRecord = records.find(r =>
+      r.type === type &&
+      Math.abs(r.amount - amount) < 0.01 &&
       r.date === date &&
       (r.description.toLowerCase().trim() === desc || (desc.length > 10 && r.description.toLowerCase().includes(desc)))
     );
     if (existingRecord) return { type: 'record', item: existingRecord };
-
-    // Check against sales (income only)
     if (type === 'income') {
-      const existingSale = sales.find(s => 
-        Math.abs(s.total - amount) < 0.01 && 
+      const existingSale = sales.find(s =>
+        Math.abs(s.total - amount) < 0.01 &&
         s.date === date &&
         (s.product_name.toLowerCase().includes(desc) || desc.includes(s.product_name.toLowerCase()))
       );
       if (existingSale) return { type: 'sale', item: existingSale };
     }
-
     return null;
   };
 
-  return (
-    <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-4xl mx-auto">
-      <header className="mb-12 flex items-center gap-6">
-        <button onClick={onCancel} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
-          <ArrowLeft size={24} />
-        </button>
-        <div>
-          <div className="flex items-center gap-3">
-            <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter font-display">Imbas Dokumen</h2>
-          </div>
-          <p className="text-slate-500 font-medium text-xs md:text-base">AI akan mengesan jenis dokumen secara automatik (Resit akan dikategorikan sebagai Duit Keluar).</p>
-        </div>
-      </header>
+  const handleSaveAll = async () => {
+    const tasksToSave = queue.filter(t => t.status === 'complete' && t.results.length > 0);
+    if (tasksToSave.length === 0) return;
+    setSaving(true);
+    setSaveProgress({ current: 0, total: tasksToSave.length });
 
-      {!image ? (
-        <div className="aspect-[3/4] bg-white rounded-[48px] border-4 border-dashed border-slate-100 flex flex-col items-center justify-center p-12 text-center shadow-inner relative overflow-hidden group">
+    try {
+      const allRecords: any[] = [];
+      for (let i = 0; i < tasksToSave.length; i++) {
+        const task = tasksToSave[i];
+        setSaveProgress({ current: i + 1, total: tasksToSave.length });
+        let storedImageUrl = task.image;
+        if (task.image && user?.id) {
+          const isPdf = task.mimeType === 'application/pdf';
+          try {
+            storedImageUrl = await apiUploadReceiptFile(user.id, task.image, isPdf ? 'pdf' : 'receipt');
+          } catch {
+            storedImageUrl = task.image;
+          }
+        }
+        const recordsWithImage = task.results.map(r => ({ ...r, image_url: storedImageUrl }));
+        allRecords.push(...recordsWithImage);
+      }
+      await onSave(allRecords);
+    } catch (error) {
+      console.error("Error saving records:", error);
+      alert("Gagal menyimpan rekod. Sila cuba lagi.");
+    } finally {
+      setSaving(false);
+      setSaveProgress({ current: 0, total: 0 });
+    }
+  };
+
+  // Empty state - no tasks in queue
+  if (queue.length === 0) {
+    return (
+      <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-4xl mx-auto">
+        <header className="mb-12 flex items-center gap-6">
+          <button onClick={onCancel} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
+            <ArrowLeft size={24} />
+          </button>
+          <div>
+            <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter font-display">Imbas Dokumen</h2>
+            <p className="text-slate-500 font-medium text-xs md:text-base">Imbas satu atau banyak resit sekaligus. AI akan mengesan data secara automatik.</p>
+          </div>
+        </header>
+
+        <div className="aspect-[3/4] max-h-[500px] bg-white rounded-[48px] border-4 border-dashed border-slate-100 flex flex-col items-center justify-center p-12 text-center shadow-inner relative overflow-hidden group">
           <div className="absolute inset-0 bg-emerald-50/30 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
           <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center shadow-xl shadow-emerald-100 mb-8 relative z-10">
             <Camera size={40} strokeWidth={1.5} />
           </div>
           <h3 className="text-2xl font-black mb-3 tracking-tight font-display relative z-10">Sedia untuk mengimbas?</h3>
-          <p className="text-slate-500 font-bold mb-10 relative z-10">Pilih fail atau ambil gambar dokumen anda.</p>
+          <p className="text-slate-500 font-bold mb-10 relative z-10">Pilih satu atau banyak fail sekaligus, atau tangkap gambar.</p>
           <div className="flex flex-col gap-4 w-full max-w-xs relative z-10">
-            <button 
+            <button
               onClick={() => setShowCamera(true)}
               className="btn-primary py-5"
             >
@@ -2730,141 +2838,217 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             </button>
             <label className="px-8 py-5 bg-white border-2 border-slate-100 text-slate-700 rounded-3xl font-black text-xs uppercase tracking-widest cursor-pointer hover:bg-slate-50 transition-all flex items-center justify-center gap-2 shadow-sm">
               <FileText size={20} /> Pilih Fail (Imej/PDF)
-              <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleCapture} />
+              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
             </label>
           </div>
 
           {showCamera && (
             <CameraView
               onCapture={(base64) => {
-                setImage(base64);
                 setShowCamera(false);
-                checkLimitAndAnalyze(base64, 'image/jpeg');
+                addToQueue(base64, 'image/jpeg');
               }}
               onCancel={() => setShowCamera(false)}
             />
           )}
         </div>
-      ) : (
-        <div className="space-y-8">
-          <div className="relative rounded-[40px] overflow-hidden border border-slate-200 shadow-sm max-h-[400px] bg-slate-50 flex items-center justify-center">
-            {mimeType === 'application/pdf' ? (
-              <div className="py-20 flex flex-col items-center gap-4">
-                <div className="w-20 h-20 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center shadow-sm">
-                  <FileText size={40} />
+      </div>
+    );
+  }
+
+  // Queue view
+  return (
+    <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-5xl mx-auto">
+      <header className="mb-8 flex items-center gap-6">
+        <button onClick={onCancel} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
+          <ArrowLeft size={24} />
+        </button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter font-display">Imbas Dokumen</h2>
+          <p className="text-slate-500 font-medium text-xs md:text-sm">
+            {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod dikesan`}
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          <label className="px-4 py-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-100 transition-all flex items-center gap-1.5">
+            <ImagePlus size={16} /> Tambah
+            <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
+          </label>
+          <button
+            onClick={() => setShowCamera(true)}
+            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-all flex items-center gap-1.5"
+          >
+            <Camera size={16} /> Kamera
+          </button>
+        </div>
+      </header>
+
+      {showCamera && (
+        <CameraView
+          onCapture={(base64) => {
+            setShowCamera(false);
+            addToQueue(base64, 'image/jpeg');
+          }}
+          onCancel={() => setShowCamera(false)}
+        />
+      )}
+
+      {/* Queue Progress Strip */}
+      <div className="mb-8 overflow-x-auto pb-2 -mx-4 px-4">
+        <div className="flex gap-3 min-w-max">
+          {queue.map((task) => (
+            <button
+              key={task.id}
+              onClick={() => setActiveTaskId(task.id)}
+              className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all min-w-[160px] ${
+                task.id === activeTaskId
+                  ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
+                  : 'border-slate-200 bg-white hover:border-slate-300'
+              }`}
+            >
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+                {task.mimeType === 'application/pdf' ? (
+                  <div className="w-full h-full flex items-center justify-center bg-rose-50 text-rose-500">
+                    <FileText size={18} />
+                  </div>
+                ) : (
+                  <img src={task.image} alt="" className="w-full h-full object-cover" />
+                )}
+              </div>
+              <div className="text-left min-w-0">
+                <p className="text-[10px] font-bold text-slate-500 truncate">
+                  {task.mimeType === 'application/pdf' ? 'PDF' : 'Resit'} #{queue.indexOf(task) + 1}
+                </p>
+                <div className="flex items-center gap-1.5">
+                  {task.status === 'pending' && <Clock size={12} className="text-slate-400" />}
+                  {task.status === 'analyzing' && <Loader2 size={12} className="text-emerald-500 animate-spin" />}
+                  {task.status === 'complete' && <CheckCircle2 size={12} className="text-emerald-500" />}
+                  {task.status === 'failed' && <CircleX size={12} className="text-rose-500" />}
+                  <span className={`text-[10px] font-bold ${
+                    task.status === 'pending' ? 'text-slate-400' :
+                    task.status === 'analyzing' ? 'text-emerald-600' :
+                    task.status === 'complete' ? 'text-emerald-600' :
+                    'text-rose-500'
+                  }`}>
+                    {task.status === 'pending' && 'Menunggu'}
+                    {task.status === 'analyzing' && 'Menganalisa...'}
+                    {task.status === 'complete' && `${task.results.length} rekod`}
+                    {task.status === 'failed' && 'Gagal'}
+                  </span>
                 </div>
-                <p className="font-bold text-slate-600">Dokumen PDF Dimuat Naik</p>
+              </div>
+              {task.id === activeTaskId && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-500 rounded-full border-2 border-white" />
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Active Task Detail */}
+      {activeTask && (
+        <div className="space-y-6">
+          {/* Image Preview */}
+          <div className="relative rounded-[32px] overflow-hidden border border-slate-200 shadow-sm max-h-[300px] bg-slate-50 flex items-center justify-center">
+            {activeTask.mimeType === 'application/pdf' ? (
+              <div className="py-16 flex flex-col items-center gap-3">
+                <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center">
+                  <FileText size={32} />
+                </div>
+                <p className="font-bold text-slate-600 text-sm">Dokumen PDF</p>
               </div>
             ) : (
-              <>
-                <img src={image} alt="Scanned" className="w-full h-auto object-contain" />
-                {!analyzing && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const link = document.createElement('a');
-                      link.href = image;
-                      link.download = `imbasan-${new Date().getTime()}.png`;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    }}
-                    className="absolute top-6 right-6 w-12 h-12 bg-white/90 backdrop-blur-md text-emerald-600 rounded-2xl flex items-center justify-center shadow-xl hover:bg-white transition-all group"
-                    title="Muat Turun Gambar"
-                  >
-                    <Download size={24} className="group-hover:scale-110 transition-transform" />
-                  </button>
-                )}
-              </>
+              <img src={activeTask.image} alt="Scanned" className="w-full h-auto object-contain" />
             )}
-            {analyzing && (
+            {activeTask.status === 'analyzing' && (
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white">
-                <div className="w-12 h-12 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-                <p className="font-bold">Menganalisa Dokumen...</p>
+                <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                <p className="font-bold text-sm">Menganalisa Dokumen...</p>
               </div>
+            )}
+            {activeTask.status !== 'analyzing' && activeTask.mimeType !== 'application/pdf' && (
+              <button
+                type="button"
+                onClick={() => {
+                  const link = document.createElement('a');
+                  link.href = activeTask.image;
+                  link.download = `imbasan-${Date.now()}.png`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-md text-emerald-600 rounded-xl flex items-center justify-center shadow-lg hover:bg-white transition-all"
+              >
+                <Download size={20} />
+              </button>
             )}
           </div>
 
-          {results.length > 0 ? (
-            <div className="space-y-6">
+          {/* Results or Error */}
+          {activeTask.status === 'complete' && activeTask.results.length > 0 && (
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-xl font-black text-slate-900 font-display">
-                  {results.length > 1 ? `${results.length} Transaksi Dikesan` : 'Transaksi Dikesan'}
+                <h3 className="text-lg font-black text-slate-900 font-display">
+                  {activeTask.results.length > 1 ? `${activeTask.results.length} Transaksi Dikesan` : 'Transaksi Dikesan'}
                 </h3>
-                <button 
-                  onClick={() => {
-                    setResults([...results, {
-                      type: 'expense',
-                      docType: 'Manual',
-                      category: 'OTHER',
-                      amount: 0,
-                      date: new Date().toISOString().split('T')[0],
-                      description: 'Rekod Manual',
-                      payment_method: 'bank'
-                    }]);
-                  }}
-                  className="px-4 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-100 transition-all"
+                <button
+                  onClick={() => addManualResult(activeTask.id)}
+                  className="px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-100 transition-all"
                 >
-                  <Plus size={14} className="inline-block mr-1" /> Tambah Rekod
+                  <Plus size={14} className="inline-block mr-1" /> Tambah
                 </button>
               </div>
 
               <div className="space-y-4">
-                {results.map((result, idx) => (
-                  <motion.div 
+                {activeTask.results.map((result, idx) => (
+                  <motion.div
                     key={idx}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: idx * 0.05 }}
-                    className="card-premium p-6 bg-white border border-slate-200 relative group"
+                    className="card-premium p-5 bg-white border border-slate-200 relative group"
                   >
                     {checkExistingDuplicate(result) && (
                       <div className="absolute -top-3 left-6 z-10 px-3 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
                         <AlertTriangle size={12} />
-                        Rekod Bertindih Dikesan
+                        Rekod Bertindih
                       </div>
                     )}
-                    <div className="flex flex-col gap-8">
-                      {/* Top Section: Jenis Transaksi & Delete Button */}
-                      <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div className="flex flex-col gap-6">
+                      <div className="flex flex-col sm:flex-row justify-between items-start gap-3">
                         <div className="w-full sm:max-w-xs">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Jenis Transaksi</p>
-                          <div className="flex items-center gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 hover:border-emerald-500/30 transition-all shadow-sm group/jenis">
-                            <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-md transition-transform group-hover/jenis:scale-105 ${result.type === 'income' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
-                              {React.createElement(getCategoryIcon(result.category), { size: 24, strokeWidth: 2.5 })}
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Jenis Transaksi</p>
+                          <div className="flex items-center gap-3 bg-slate-50 p-3 rounded-2xl border border-slate-200 hover:border-emerald-500/30 transition-all shadow-sm">
+                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${result.type === 'income' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
+                              {React.createElement(getCategoryIcon(result.category), { size: 20, strokeWidth: 2.5 })}
                             </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="relative">
-                                <select 
-                                  value={result.type}
-                                  onChange={(e) => updateResult(idx, 'type', e.target.value)}
-                                  className="w-full bg-transparent font-bold text-slate-900 text-xs outline-none cursor-pointer appearance-none pr-6"
-                                >
-                                  <option value="income">Duit Masuk</option>
-                                  <option value="expense">Duit Keluar</option>
-                                </select>
-                                <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                              </div>
+                            <div className="min-w-0 flex-1 relative">
+                              <select
+                                value={result.type}
+                                onChange={(e) => updateTaskResult(activeTask.id, idx, 'type', e.target.value)}
+                                className="w-full bg-transparent font-bold text-slate-900 text-xs outline-none cursor-pointer appearance-none pr-6"
+                              >
+                                <option value="income">Duit Masuk</option>
+                                <option value="expense">Duit Keluar</option>
+                              </select>
+                              <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                             </div>
                           </div>
                         </div>
-
-                        <button 
-                          onClick={() => removeResult(idx)}
-                          className="p-2.5 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all shadow-sm border border-rose-100 self-end sm:self-start"
-                          title="Buang Rekod"
+                        <button
+                          onClick={() => removeTaskResult(activeTask.id, idx)}
+                          className="p-2 bg-rose-50 text-rose-500 hover:bg-rose-500 hover:text-white rounded-xl transition-all border border-rose-100 self-end sm:self-start"
                         >
-                          <Trash2 size={18} />
+                          <Trash2 size={16} />
                         </button>
                       </div>
 
-                      {/* Middle Section: Main Fields Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-8 gap-y-6 w-full">
-                        <div className="space-y-2">
+                      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-4 w-full">
+                        <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori</p>
-                          <SearchableSelect 
+                          <SearchableSelect
                             value={result.category}
-                            onChange={(val) => updateResult(idx, 'category', val)}
+                            onChange={(val) => updateTaskResult(activeTask.id, idx, 'category', val)}
                             options={allCategories.filter(cat => {
                               if (result.type === 'income') {
                                 return INCOME_CATEGORIES.includes(cat) || ASSET_LIABILITY_CATEGORIES.includes(cat) || !ALL_CATEGORIES.includes(cat);
@@ -2876,41 +3060,38 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                             className="w-full"
                           />
                         </div>
-
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Jumlah (RM)</p>
                           <div className="relative">
                             <span className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">RM</span>
-                            <input 
+                            <input
                               type="number"
                               step="0.01"
                               value={result.amount}
-                              onChange={(e) => updateResult(idx, 'amount', parseFloat(e.target.value))}
+                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'amount', parseFloat(e.target.value))}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-11 pr-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
                               placeholder="0.00"
                             />
                           </div>
                         </div>
-
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarikh</p>
                           <div className="relative">
-                            <input 
+                            <input
                               type="date"
                               value={result.date}
-                              onChange={(e) => updateResult(idx, 'date', e.target.value)}
+                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'date', e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none"
                             />
                             <Calendar size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
                         </div>
-
-                        <div className="space-y-2">
+                        <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kaedah Bayaran</p>
                           <div className="relative">
-                            <select 
+                            <select
                               value={result.payment_method || 'bank'}
-                              onChange={(e) => updateResult(idx, 'payment_method', e.target.value)}
+                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'payment_method', e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none pr-10"
                             >
                               <option value="bank">Bank / Online</option>
@@ -2921,113 +3102,102 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                         </div>
                       </div>
 
-                      {/* Bottom Section: Penerangan */}
                       <div className="w-full">
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1">Penerangan Transaksi</p>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Penerangan</p>
                         <div className="relative">
-                          <input 
+                          <input
                             type="text"
                             value={result.description}
-                            onChange={(e) => updateResult(idx, 'description', e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+                            onChange={(e) => updateTaskResult(activeTask.id, idx, 'description', e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-5 py-3 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
                             placeholder="Masukkan butiran transaksi..."
                           />
-                          <FileText size={16} className="absolute right-5 top-1/2 -translate-y-1/2 text-slate-300" />
+                          <FileText size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300" />
                         </div>
                       </div>
                     </div>
                   </motion.div>
                 ))}
               </div>
-
-              <div className="flex gap-4 pt-6">
-                <button 
-                  onClick={() => {
-                    setImage(null);
-                    setResults([]);
-                  }}
-                  className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
-                >
-                  Batal
-                </button>
-                <button
-                  disabled={saving}
-                  onClick={async () => {
-                    setSaving(true);
-                    try {
-                      let storedImageUrl = image || '';
-                      if (image && user?.id) {
-                        const isPdf = mimeType === 'application/pdf';
-                        try {
-                          storedImageUrl = await apiUploadReceiptFile(user.id, image, isPdf ? 'pdf' : 'receipt');
-                        } catch (uploadErr) {
-                          console.error('Upload failed, using base64 fallback:', uploadErr);
-                          storedImageUrl = image;
-                        }
-                      }
-                      const recordsToSave = results.map(r => ({ ...r, image_url: storedImageUrl }));
-                      await onSave(recordsToSave);
-                    } catch (error) {
-                      console.error("Error saving records:", error);
-                      alert("Gagal menyimpan rekod. Sila cuba lagi.");
-                    } finally {
-                      setSaving(false);
-                    }
-                  }}
-                  className={`btn-primary flex-1 py-4 flex items-center justify-center gap-2 ${saving ? 'opacity-70 cursor-not-allowed' : ''}`}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="animate-spin" size={18} />
-                      <span>Menyimpan...</span>
-                    </>
-                  ) : (
-                    <>
-                      Simpan {results.length} Rekod Pintar
-                    </>
-                  )}
-                </button>
-              </div>
             </div>
-          ) : !analyzing && (
-            <div className="card-premium p-6 md:p-12 text-center bg-white border border-slate-200">
-              <div className="w-16 h-16 md:w-20 md:h-20 bg-slate-50 text-slate-300 rounded-3xl flex items-center justify-center mx-auto mb-6">
-                <SearchX size={32} className="md:hidden" />
-                <SearchX size={40} className="hidden md:block" />
+          )}
+
+          {/* Failed State */}
+          {activeTask.status === 'failed' && (
+            <div className="card-premium p-6 md:p-10 text-center bg-white border border-slate-200">
+              <div className="w-14 h-14 bg-rose-50 text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <CircleX size={28} />
               </div>
-              <h3 className="text-lg md:text-xl font-black text-slate-900 mb-2 font-display">{scanError ? 'Ralat Analisis' : 'Tiada Data Dikesan'}</h3>
-              <p className="text-slate-500 text-xs md:text-sm mb-8 max-w-xs mx-auto font-medium">
-                {scanError || 'AI tidak dapat mengekstrak maklumat dari imej ini. Anda boleh cuba lagi atau masukkan data secara manual.'}
+              <h3 className="text-lg font-black text-slate-900 mb-2 font-display">Gagal Dianalisis</h3>
+              <p className="text-slate-500 text-xs mb-6 max-w-xs mx-auto font-medium">
+                {activeTask.error || 'AI tidak dapat mengekstrak maklumat dari dokumen ini.'}
               </p>
               <div className="flex flex-col gap-3 max-w-xs mx-auto">
-                <button 
-                  onClick={() => {
-                    setResults([{
-                      type: 'expense',
-                      docType: 'Manual',
-                      category: 'OTHER',
-                      amount: 0,
-                      date: new Date().toISOString().split('T')[0],
-                      description: 'Rekod Manual'
-                    }]);
-                  }}
-                  className="btn-primary py-4"
+                <button
+                  onClick={() => retryTask(activeTask.id)}
+                  className="btn-primary py-3.5 flex items-center justify-center gap-2"
                 >
-                  <Plus size={18} className="inline-block mr-2" /> Masukkan Secara Manual
+                  <RotateCcw size={16} /> Imbas Semula
                 </button>
                 <button
-                  onClick={() => {
-                    setImage(null);
-                    setResults([]);
-                    setScanError('');
-                  }}
-                  className="py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  onClick={() => addManualResult(activeTask.id)}
+                  className="py-3.5 bg-slate-100 text-slate-700 rounded-2xl font-bold text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center gap-2"
                 >
-                  Cuba Imej Lain
+                  <Plus size={16} /> Masukkan Manual
+                </button>
+                <button
+                  onClick={() => removeTask(activeTask.id)}
+                  className="py-3 text-slate-400 text-[10px] font-bold uppercase tracking-widest hover:text-rose-500 transition-colors"
+                >
+                  Buang dari Senarai
                 </button>
               </div>
             </div>
           )}
+
+          {/* Pending State */}
+          {activeTask.status === 'pending' && (
+            <div className="card-premium p-8 text-center bg-white border border-slate-200">
+              <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Clock size={24} />
+              </div>
+              <h3 className="text-base font-black text-slate-900 mb-1 font-display">Dalam Barisan</h3>
+              <p className="text-slate-500 text-xs font-medium">Dokumen ini sedang menunggu giliran untuk dianalisis.</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Bottom Action Bar */}
+      {queue.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 z-50">
+          <div className="max-w-5xl mx-auto flex items-center gap-3">
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-bold text-slate-700 truncate">
+                {completedCount > 0 ? `${totalRecords} rekod dari ${completedCount} resit` : 'Tiada rekod lagi'}
+              </p>
+              {failedCount > 0 && (
+                <p className="text-[10px] text-rose-500 font-bold">{failedCount} gagal</p>
+              )}
+            </div>
+            <button
+              disabled={saving || totalRecords === 0}
+              onClick={handleSaveAll}
+              className={`btn-primary px-6 py-3.5 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="animate-spin" size={16} />
+                  <span className="text-xs font-bold">Menyimpan {saveProgress.current}/{saveProgress.total}...</span>
+                </>
+              ) : (
+                <>
+                  <Check size={16} />
+                  <span className="text-xs font-bold">Simpan {totalRecords} Rekod</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       )}
 
@@ -3053,8 +3223,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Naik Taraf Untuk Lebih Banyak</p>
                 <div className="space-y-2">
                   {[
-                    { plan: 'Starter', receipt: '100 imbasan', pdf: '3× PDF', price: 'RM 50/bln' },
-                    { plan: 'Growth', receipt: '250 imbasan', pdf: '9× PDF', price: 'RM 100/bln' },
+                    { plan: 'Starter', receipt: '100 imbasan', pdf: '3x PDF', price: 'RM 50/bln' },
+                    { plan: 'Growth', receipt: '250 imbasan', pdf: '9x PDF', price: 'RM 100/bln' },
                     { plan: 'Ultimate', receipt: 'Unlimited', pdf: 'Unlimited PDF', price: 'RM 150/bln' },
                   ].map(p => (
                     <div key={p.plan} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
