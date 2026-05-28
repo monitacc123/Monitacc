@@ -2859,26 +2859,28 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   // Queue view
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-5xl mx-auto">
-      <header className="mb-8 flex items-center gap-6">
-        <button onClick={onCancel} className="w-12 h-12 flex items-center justify-center bg-white border border-slate-200 rounded-2xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
-          <ArrowLeft size={24} />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tighter font-display">Imbas Dokumen</h2>
-          <p className="text-slate-500 font-medium text-xs md:text-sm">
-            {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod dikesan`}
-          </p>
+      <header className="mb-6">
+        <div className="flex items-center gap-4 mb-3">
+          <button onClick={onCancel} className="w-10 h-10 shrink-0 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
+            <ArrowLeft size={20} />
+          </button>
+          <div className="flex-1 min-w-0">
+            <h2 className="text-xl md:text-3xl font-black text-slate-900 tracking-tighter font-display leading-tight">Imbas Dokumen</h2>
+            <p className="text-slate-500 font-medium text-[11px] md:text-sm">
+              {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod`}
+            </p>
+          </div>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="px-4 py-2.5 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-100 transition-all flex items-center gap-1.5">
-            <ImagePlus size={16} /> Tambah
+        <div className="flex items-center gap-2 pl-14">
+          <label className="px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-emerald-100 transition-all flex items-center gap-1.5">
+            <ImagePlus size={14} /> Tambah Resit
             <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
           </label>
           <button
             onClick={() => setShowCamera(true)}
-            className="px-4 py-2.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-all flex items-center gap-1.5"
+            className="px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-bold uppercase tracking-wider hover:bg-slate-200 transition-all flex items-center gap-1.5"
           >
-            <Camera size={16} /> Kamera
+            <Camera size={14} /> Kamera
           </button>
         </div>
       </header>
@@ -2894,44 +2896,44 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       )}
 
       {/* Queue Progress Strip */}
-      <div className="mb-8 overflow-x-auto pb-2 -mx-4 px-4">
-        <div className="flex gap-3 min-w-max">
-          {queue.map((task) => (
+      <div className="mb-6 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-hide">
+        <div className="flex gap-2 min-w-max">
+          {queue.map((task, taskIdx) => (
             <button
               key={task.id}
               onClick={() => setActiveTaskId(task.id)}
-              className={`relative flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition-all min-w-[160px] ${
+              className={`relative flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 transition-all ${
                 task.id === activeTaskId
-                  ? 'border-emerald-500 bg-emerald-50 shadow-lg shadow-emerald-100'
+                  ? 'border-emerald-500 bg-emerald-50 shadow-md shadow-emerald-100'
                   : 'border-slate-200 bg-white hover:border-slate-300'
               }`}
             >
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-slate-100 shrink-0">
+              <div className="w-9 h-9 rounded-lg overflow-hidden bg-slate-100 shrink-0">
                 {task.mimeType === 'application/pdf' ? (
                   <div className="w-full h-full flex items-center justify-center bg-rose-50 text-rose-500">
-                    <FileText size={18} />
+                    <FileText size={16} />
                   </div>
                 ) : (
                   <img src={task.image} alt="" className="w-full h-full object-cover" />
                 )}
               </div>
               <div className="text-left min-w-0">
-                <p className="text-[10px] font-bold text-slate-500 truncate">
-                  {task.mimeType === 'application/pdf' ? 'PDF' : 'Resit'} #{queue.indexOf(task) + 1}
+                <p className="text-[10px] font-bold text-slate-500 leading-tight">
+                  #{taskIdx + 1}
                 </p>
-                <div className="flex items-center gap-1.5">
-                  {task.status === 'pending' && <Clock size={12} className="text-slate-400" />}
-                  {task.status === 'analyzing' && <Loader2 size={12} className="text-emerald-500 animate-spin" />}
-                  {task.status === 'complete' && <CheckCircle2 size={12} className="text-emerald-500" />}
-                  {task.status === 'failed' && <CircleX size={12} className="text-rose-500" />}
-                  <span className={`text-[10px] font-bold ${
+                <div className="flex items-center gap-1">
+                  {task.status === 'pending' && <Clock size={10} className="text-slate-400" />}
+                  {task.status === 'analyzing' && <Loader2 size={10} className="text-emerald-500 animate-spin" />}
+                  {task.status === 'complete' && <CheckCircle2 size={10} className="text-emerald-500" />}
+                  {task.status === 'failed' && <CircleX size={10} className="text-rose-500" />}
+                  <span className={`text-[9px] font-bold ${
                     task.status === 'pending' ? 'text-slate-400' :
                     task.status === 'analyzing' ? 'text-emerald-600' :
                     task.status === 'complete' ? 'text-emerald-600' :
                     'text-rose-500'
                   }`}>
-                    {task.status === 'pending' && 'Menunggu'}
-                    {task.status === 'analyzing' && 'Menganalisa...'}
+                    {task.status === 'pending' && 'Tunggu'}
+                    {task.status === 'analyzing' && 'Imbas...'}
                     {task.status === 'complete' && `${task.results.length} rekod`}
                     {task.status === 'failed' && 'Gagal'}
                   </span>
@@ -2949,7 +2951,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       {activeTask && (
         <div className="space-y-6">
           {/* Image Preview */}
-          <div className="relative rounded-[32px] overflow-hidden border border-slate-200 shadow-sm max-h-[300px] bg-slate-50 flex items-center justify-center">
+          <div className="relative rounded-2xl md:rounded-[32px] overflow-hidden border border-slate-200 shadow-sm max-h-[220px] md:max-h-[300px] bg-slate-50 flex items-center justify-center">
             {activeTask.mimeType === 'application/pdf' ? (
               <div className="py-16 flex flex-col items-center gap-3">
                 <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center">
@@ -3170,11 +3172,11 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
       {/* Bottom Action Bar */}
       {queue.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 p-4 z-50">
+        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3 z-50">
           <div className="max-w-5xl mx-auto flex items-center gap-3">
             <div className="flex-1 min-w-0">
-              <p className="text-xs font-bold text-slate-700 truncate">
-                {completedCount > 0 ? `${totalRecords} rekod dari ${completedCount} resit` : 'Tiada rekod lagi'}
+              <p className="text-[11px] font-bold text-slate-700 truncate">
+                {completedCount > 0 ? `${totalRecords} rekod | ${completedCount} resit` : 'Tiada rekod lagi'}
               </p>
               {failedCount > 0 && (
                 <p className="text-[10px] text-rose-500 font-bold">{failedCount} gagal</p>
@@ -3183,7 +3185,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             <button
               disabled={saving || totalRecords === 0}
               onClick={handleSaveAll}
-              className={`btn-primary px-6 py-3.5 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`btn-primary px-5 py-3 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {saving ? (
                 <>
