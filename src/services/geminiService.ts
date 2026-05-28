@@ -211,7 +211,7 @@ Transaction rules:
 - Receipt/Resit from shop, restaurant, petrol = expense (type: "expense")
 - Payment received, sales, top-up received = income (type: "income")
 - payment_method: "cash" if paid by cash/tunai/wang; "bank" if card/online/transfer
-- date format: YYYY-MM-DD; if year missing use ${currentYear}; if date unclear use ${currentYear}-01-01
+- DATE IS CRITICAL: You MUST read the EXACT date printed on the receipt/document. Look for date formats like DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, or written dates. Convert to YYYY-MM-DD format. If only day and month visible, use ${currentYear} as year. ONLY use today's date (${new Date().toISOString().split('T')[0]}) as absolute last resort if NO date is visible anywhere on the document.
 - amount: use the TOTAL amount (Jumlah/Total/Grand Total), as a positive number
 - category must be exactly one of: ${ALL_CATEGORIES.join(", ")}
 - docType: "Resit" for receipt, "Invoice" for invoice, "Bil" for bill, "Lain-lain" for others
@@ -290,7 +290,7 @@ Extract from the document now:`;
           ...(Array.isArray(messages[0].content) ? messages[0].content.filter((c: any) => c.type === "image_url") : []),
           {
             type: "text",
-            text: `Look at this document image. Tell me: what is the total amount, the date, and the store/vendor name? Reply ONLY as JSON: [{"type":"expense","docType":"Resit","docNumber":"","category":"Lain-lain","amount":0,"date":"${new Date().getFullYear()}-01-01","description":"","payment_method":"cash"}] — fill in the values you can read.`,
+            text: `Look at this document image. Tell me: what is the total amount, the EXACT date printed on the document, and the store/vendor name? The date MUST match what is printed on the receipt. Reply ONLY as JSON: [{"type":"expense","docType":"Resit","docNumber":"","category":"Lain-lain","amount":0,"date":"YYYY-MM-DD","description":"","payment_method":"cash"}] — fill in the values you can read. Use the actual date from the document.`,
           },
         ],
       }];
