@@ -2861,7 +2861,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   // Queue view
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-5xl mx-auto">
-      <header className="mb-6">
+      <header className="mb-6 space-y-3">
         <div className="flex items-center gap-3">
           <button onClick={onCancel} className="w-9 h-9 shrink-0 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
             <ArrowLeft size={18} />
@@ -2872,20 +2872,20 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod`}
             </p>
           </div>
-          <div className="flex items-center gap-2.5 shrink-0">
-            <label className="group px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm hover:shadow-md active:scale-95">
-              <ImagePlus size={16} strokeWidth={2.5} />
-              Tambah Resit
-              <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
-            </label>
-            <button
-              onClick={() => setShowCamera(true)}
-              className="group px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 hover:text-slate-900 transition-all flex items-center gap-2 active:scale-95"
-            >
-              <Camera size={16} strokeWidth={2.5} />
-              Kamera
-            </button>
-          </div>
+        </div>
+        <div className="flex items-center gap-2.5 pl-12">
+          <label className="group px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm hover:shadow-md active:scale-95">
+            <ImagePlus size={16} strokeWidth={2.5} />
+            Tambah Resit
+            <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
+          </label>
+          <button
+            onClick={() => setShowCamera(true)}
+            className="group px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 hover:text-slate-900 transition-all flex items-center gap-2 active:scale-95"
+          >
+            <Camera size={16} strokeWidth={2.5} />
+            Kamera
+          </button>
         </div>
       </header>
 
