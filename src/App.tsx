@@ -2860,7 +2860,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
   // Queue view
   return (
-    <div className="p-4 md:p-6 pb-24 md:pl-80 md:pt-12 max-w-5xl mx-auto">
+    <div className="p-4 md:p-6 pb-36 md:pl-80 md:pt-12 max-w-5xl mx-auto">
       <header className="mb-6 space-y-3">
         <div className="flex items-center gap-3">
           <button onClick={onCancel} className="w-9 h-9 shrink-0 flex items-center justify-center bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-emerald-600 hover:border-emerald-200 transition-all shadow-sm">
@@ -3176,10 +3176,10 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
       {/* Bottom Action Bar */}
       {queue.length > 0 && (
-        <div className="fixed bottom-16 md:bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3 z-50">
-          <div className="max-w-5xl mx-auto flex items-center gap-3">
+        <div className="fixed bottom-20 md:bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3.5 z-50">
+          <div className="max-w-5xl mx-auto flex items-center gap-4">
             <div className="flex-1 min-w-0">
-              <p className="text-[11px] font-bold text-slate-700 truncate">
+              <p className="text-xs font-bold text-slate-700 truncate">
                 {completedCount > 0 ? `${totalRecords} rekod | ${completedCount} resit` : 'Tiada rekod lagi'}
               </p>
               {failedCount > 0 && (
@@ -3189,7 +3189,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             <button
               disabled={saving || totalRecords === 0}
               onClick={handleSaveAll}
-              className={`btn-primary px-5 py-3 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`btn-primary px-6 py-3 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {saving ? (
                 <>
