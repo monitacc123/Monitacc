@@ -3173,8 +3173,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
       {/* Bottom Action Bar */}
       {queue.length > 0 && (
-        <div className="fixed bottom-20 md:bottom-0 left-0 right-0 md:left-64 bg-white/95 backdrop-blur-md border-t border-slate-200 px-4 py-3.5 z-50">
-          <div className="max-w-5xl mx-auto flex items-center gap-4">
+        <div className="fixed bottom-20 md:bottom-0 left-4 right-4 md:left-68 md:right-4 z-50">
+          <div className="max-w-5xl mx-auto bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-xl shadow-slate-900/10 rounded-2xl px-5 py-3.5 flex items-center gap-4">
             <div className="flex-1 min-w-0">
               <p className="text-xs font-bold text-slate-700 truncate">
                 {completedCount > 0 ? `${totalRecords} rekod | ${completedCount} resit` : 'Tiada rekod lagi'}
@@ -3186,17 +3186,17 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             <button
               disabled={saving || totalRecords === 0}
               onClick={handleSaveAll}
-              className={`btn-primary px-6 py-3 flex items-center gap-2 ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
+              className={`btn-primary px-5 py-2.5 flex items-center gap-2 rounded-xl ${(saving || totalRecords === 0) ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
               {saving ? (
                 <>
-                  <Loader2 className="animate-spin" size={16} />
-                  <span className="text-xs font-bold">Menyimpan {saveProgress.current}/{saveProgress.total}...</span>
+                  <Loader2 className="animate-spin" size={15} />
+                  <span className="text-[11px] font-bold">Menyimpan {saveProgress.current}/{saveProgress.total}...</span>
                 </>
               ) : (
                 <>
-                  <Check size={16} />
-                  <span className="text-xs font-bold">Simpan {totalRecords} Rekod</span>
+                  <Check size={15} />
+                  <span className="text-[11px] font-bold">Simpan {totalRecords} Rekod</span>
                 </>
               )}
             </button>
