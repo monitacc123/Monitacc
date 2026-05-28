@@ -2872,17 +2872,17 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod`}
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <label className="group px-3 py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-semibold uppercase tracking-wide cursor-pointer hover:bg-emerald-700 transition-all flex items-center gap-1.5 shadow-sm hover:shadow-md active:scale-95">
-              <ImagePlus size={13} strokeWidth={2.5} />
-              <span className="hidden sm:inline">Tambah</span> Resit
+          <div className="flex items-center gap-2.5 shrink-0">
+            <label className="group px-4 py-2.5 bg-emerald-600 text-white rounded-xl text-xs font-bold cursor-pointer hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm hover:shadow-md active:scale-95">
+              <ImagePlus size={16} strokeWidth={2.5} />
+              Tambah Resit
               <input ref={fileInputRef} type="file" accept="image/*,application/pdf" multiple className="hidden" onChange={handleMultiCapture} />
             </label>
             <button
               onClick={() => setShowCamera(true)}
-              className="group px-3 py-2 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-semibold uppercase tracking-wide hover:bg-slate-200 hover:text-slate-800 transition-all flex items-center gap-1.5 active:scale-95"
+              className="group px-4 py-2.5 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 hover:text-slate-900 transition-all flex items-center gap-2 active:scale-95"
             >
-              <Camera size={13} strokeWidth={2.5} />
+              <Camera size={16} strokeWidth={2.5} />
               Kamera
             </button>
           </div>
