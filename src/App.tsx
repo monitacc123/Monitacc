@@ -3215,9 +3215,9 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Zap size={28} className="text-amber-400" />
                 </div>
-                <h3 className="text-xl font-black tracking-tight font-display mb-2">Had {showUpgradeModal.type === 'pdf' ? 'PDF' : 'Imbasan'} Dicapai</h3>
+                <h3 className="text-xl font-black tracking-tight font-display mb-2">Had Imbasan Habis</h3>
                 <p className="text-white/60 text-sm font-medium">
-                  Anda telah menggunakan {showUpgradeModal.used}/{showUpgradeModal.limit} {showUpgradeModal.type === 'pdf' ? 'imbasan PDF' : 'imbasan resit'} bulan ini.
+                  Had imbasan untuk pakej {user?.plan || 'anda'} telah habis. Sila naik taraf pelan atau hubungi admin untuk dapatkan bantuan.
                 </p>
               </div>
             </div>

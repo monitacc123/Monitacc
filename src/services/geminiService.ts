@@ -125,7 +125,7 @@ function extractJson(text: string): string {
 async function checkTokenLimit(userId: string, plan: string): Promise<void> {
   const usage = await apiGetUserTokenUsage(userId, plan);
   if (usage.remaining <= 0) {
-    throw new Error(`KUOTA_HABIS:Had token AI anda (${usage.limit.toLocaleString()} token) telah habis untuk pelan ${plan}. Sila naik taraf pelan atau hubungi admin untuk top up.`);
+    throw new Error(`KUOTA_HABIS:Had imbasan untuk pakej ${plan} telah habis. Sila naik taraf pelan atau hubungi admin untuk dapatkan bantuan.`);
   }
 }
 
