@@ -626,9 +626,9 @@ export async function apiGetAdminDashboardStats() {
 }
 
 export const PLAN_TOKEN_LIMITS: Record<string, number> = {
-  free: 10000, Percuma: 10000,
-  Starter: 100000,
-  Growth: 250000,
+  free: 20000, Percuma: 20000,
+  Starter: 500000,
+  Growth: 1000000,
   Ultimate: 10000000,
   Special: 10000000,
 };
@@ -667,10 +667,15 @@ export async function apiLogAiUsage(userId: string, tokensUsed: number, operatio
 }
 
 export async function apiGetUserTokenUsage(userId: string, plan: string): Promise<{ tokensUsed: number; limit: number; remaining: number }> {
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
   const { data, error } = await supabase
     .from('ai_usage')
     .select('tokens_used')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .gte('created_at', startOfMonth.toISOString());
 
   if (error) throw new Error(error.message);
 
