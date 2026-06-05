@@ -401,17 +401,14 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       const firstPageLines = pages[0]?.split("\n") || [];
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
-      // Transaction start detection:
-      // 1. Date followed by a letter: "01/01/2025 DUITNOW..." or "01/01/2025AUTOPAY..."
-      // 2. Date alone on the line: "01/01/2025" (PDF split date from description)
-      // Does NOT match: "05/01/2025 5542" (POS DEBIT embedded date - digit after date)
-      const txStartPattern = /^\d{1,2}\/\d{1,2}\/\d{4}(\s*[A-Za-z]|\s*$)/;
-
-      // Known CIMB keywords for safer mid-line splitting
+      // CIMB transaction keywords that follow a date
       const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
-      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}).*)`);
+      // Regex: date followed by a known transaction keyword (at line start)
+      const txStartPattern = new RegExp(`^\\d{2}\\/\\d{2}\\/\\d{4}\\s+(?:${TX_KEYWORDS})`);
+      // Regex: date+keyword anywhere in string (for mid-line detection)
+      const txMidPattern = new RegExp(`(.+?)(\\d{2}\\/\\d{2}\\/\\d{4}\\s+(?:${TX_KEYWORDS}).*)`);
 
-      // Pre-process: split merged lines that have a transaction start mid-line
+      // Pre-process lines: split lines that have a transaction start mid-line
       const preprocessLines = (lines: string[]): string[] => {
         const result: string[] = [];
         for (const line of lines) {
@@ -419,6 +416,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
             result.push(line);
             continue;
           }
+          // Check if there's a date+keyword pattern mid-line (from merged rows)
           const midMatch = line.match(txMidPattern);
           if (midMatch) {
             if (midMatch[1].trim()) result.push(midMatch[1].trim());
@@ -441,7 +439,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
         const pageLines = preprocessLines(rawLines);
 
-        // Group lines into transactions (each starts with date + uppercase)
+        // Group lines into transactions (each starts with date + keyword)
         const transactions: string[][] = [];
         let currentTx: string[] | null = null;
 
