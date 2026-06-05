@@ -352,9 +352,15 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const buildPrompt = (lineCount: number, partInfo?: string) => `You are a bank statement data extractor. Convert EVERY transaction line into JSON.
+    const countDatePatterns = (text: string): number => {
+      const dateRegex = /\b\d{1,2}[\/.\\-]\d{1,2}[\/.\\-]\d{2,4}\b/g;
+      const matches = text.match(dateRegex);
+      return matches ? matches.length : 0;
+    };
 
-CRITICAL: This section has ${lineCount} text lines. Extract ALL transactions found - do not skip any.
+    const buildPrompt = (lineCount: number, expectedTxCount: number, partInfo?: string) => `You are a bank statement data extractor. Convert EVERY transaction into JSON.
+
+CRITICAL: This section contains approximately ${expectedTxCount} transactions across ${lineCount} lines. You MUST return close to ${expectedTxCount} items.
 
 Rules:
 - "credit" = money IN (deposit, transfer in, salary, refund, interest, CR, masuk)
@@ -362,13 +368,12 @@ Rules:
 - amount = POSITIVE number (no negatives)
 - date = YYYY-MM-DD (infer year from statement period/header)
 - description = exact text from statement
-- Include fees, charges, interest, service charges, stamp duty, tax
-- If amount is 0.00 still include it
-- Multi-line descriptions: merge into single entry
-- Lines without a date: either continuation of previous description, or use nearest date above
-- Do NOT skip repeated/similar transactions - each line is separate
-- Do NOT summarize or group
-- Continue to the VERY LAST line
+- Include ALL: fees, charges, interest, service charges, stamp duty, tax, even 0.00
+- Multi-line descriptions: merge into single transaction entry
+- Lines without a date that contain amounts: use the nearest date above them
+- Do NOT skip repeated/similar looking transactions - each is a SEPARATE entry
+- Do NOT summarize or group multiple transactions into one
+- Process EVERY SINGLE LINE from start to end
 ${partInfo || ""}
 
 Output ONLY a JSON array:
@@ -394,8 +399,8 @@ Output ONLY a JSON array:
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
       // Split pages into smaller batches for accuracy
-      const MAX_LINES_PER_BATCH = 40;
-      const batches: { text: string; lineCount: number; pageNum: number }[] = [];
+      const MAX_LINES_PER_BATCH = 35;
+      const batches: { text: string; lineCount: number; dateCount: number; pageNum: number }[] = [];
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
@@ -404,19 +409,22 @@ Output ONLY a JSON array:
         if (pageLines.length < 2) continue;
 
         if (pageLines.length > MAX_LINES_PER_BATCH) {
-          // Split large pages into smaller batches
           for (let start = 0; start < pageLines.length; start += MAX_LINES_PER_BATCH) {
             const batchLines = pageLines.slice(start, start + MAX_LINES_PER_BATCH);
+            const batchText = batchLines.join("\n");
             batches.push({
-              text: batchLines.join("\n"),
+              text: batchText,
               lineCount: batchLines.length,
+              dateCount: countDatePatterns(batchText),
               pageNum: i + 1,
             });
           }
         } else {
+          const pageText = pageLines.join("\n");
           batches.push({
-            text: pageLines.join("\n"),
+            text: pageText,
             lineCount: pageLines.length,
+            dateCount: countDatePatterns(pageText),
             pageNum: i + 1,
           });
         }
@@ -426,8 +434,9 @@ Output ONLY a JSON array:
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
+        const expectedTx = batch.dateCount > 0 ? batch.dateCount : Math.floor(batch.lineCount / 2);
         const partInfo = `\nThis is batch ${i + 1} of ${batches.length} (from page ${batch.pageNum}).${batch.pageNum > 1 ? `\n\nCOLUMN HEADER REFERENCE:\n${headerContext}` : ""}`;
-        const prompt = buildPrompt(batch.lineCount, partInfo);
+        const prompt = buildPrompt(batch.lineCount, expectedTx, partInfo);
 
         const messages = [{
           role: "user",
@@ -473,7 +482,7 @@ Output ONLY a JSON array:
         imageUrl = compressed;
       }
 
-      const prompt = buildPrompt(50);
+      const prompt = buildPrompt(50, 50);
       const messages = [{
         role: "user",
         content: [

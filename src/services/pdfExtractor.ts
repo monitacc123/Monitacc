@@ -21,50 +21,54 @@ function extractLinesFromItems(items: any[]): string[] {
     textItems.push({
       str: item.str,
       x: item.transform[4],
-      y: Math.round(item.transform[5] * 10) / 10,
+      y: item.transform[5],
       width: item.width || 0,
     });
   }
 
   if (textItems.length === 0) return [];
 
-  // Group items by Y position (same row)
-  const rows = new Map<number, TextItem[]>();
-  for (const item of textItems) {
-    let foundRow = false;
-    for (const [key] of rows) {
-      if (Math.abs(item.y - key) <= 2) {
-        rows.get(key)!.push(item);
-        foundRow = true;
-        break;
-      }
-    }
-    if (!foundRow) {
-      rows.set(item.y, [item]);
+  // Sort all items by Y descending (top to bottom in PDF), then X ascending
+  textItems.sort((a, b) => {
+    const yDiff = b.y - a.y;
+    if (Math.abs(yDiff) > 1) return yDiff;
+    return a.x - b.x;
+  });
+
+  // Group items into rows - items within 1 unit of Y are same row
+  const rows: TextItem[][] = [];
+  let currentRow: TextItem[] = [textItems[0]];
+  let currentRowY = textItems[0].y;
+
+  for (let i = 1; i < textItems.length; i++) {
+    const item = textItems[i];
+    if (Math.abs(item.y - currentRowY) <= 1) {
+      currentRow.push(item);
+    } else {
+      rows.push(currentRow);
+      currentRow = [item];
+      currentRowY = item.y;
     }
   }
-
-  // Sort rows by Y position descending (PDF Y goes bottom-up)
-  const sortedRows = [...rows.entries()]
-    .sort((a, b) => b[0] - a[0]);
+  rows.push(currentRow);
 
   const lines: string[] = [];
-  for (const [, rowItems] of sortedRows) {
+  for (const rowItems of rows) {
     // Sort items in row by X position (left to right)
     rowItems.sort((a, b) => a.x - b.x);
 
     let line = "";
-    let lastX = 0;
+    let lastEndX = 0;
     for (const item of rowItems) {
       if (!item.str) continue;
-      // Add spacing based on X gap
-      if (line && item.x - lastX > 15) {
+      const gap = item.x - lastEndX;
+      if (line && gap > 20) {
         line += "  ";
-      } else if (line && item.x - lastX > 3) {
+      } else if (line && gap > 5) {
         line += " ";
       }
       line += item.str;
-      lastX = item.x + item.width;
+      lastEndX = item.x + item.width;
     }
     if (line.trim()) lines.push(line.trim());
   }
