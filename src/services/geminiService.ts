@@ -404,18 +404,21 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
       // Transaction start detection:
-      // 1. Date followed by a letter: "01/01/2025 DUITNOW..." or "01/01/2025AUTOPAY..."
-      // 2. Date alone on the line: "01/01/2025" (PDF split date from description)
-      // 3. Date followed by digits (reference number): "01/01/2025 1234567..."
-      // The key insight: any line starting with DD/MM/YYYY is a transaction start.
-      // Previous false-positive concern (embedded dates like "05/01/2025 5542" in POS DEBIT)
-      // is handled by the fact that continuation lines don't start at column 0 with a date.
-      const txStartPattern = /^\d{1,2}\/\d{1,2}\/\d{4}/;
-
-      // Known CIMB keywords for safer mid-line splitting
+      // A real transaction line starts with DD/MM/YYYY followed by:
+      //   - A transaction keyword (DUITNOW, AUTOPAY, MYDEBIT, POS DEBIT, etc.)
+      //   - A long reference number (6+ digits)
+      //   - End of line (date alone, description on next line)
+      // FALSE positives to avoid:
+      //   - "05/01/2025 5542" inside POS DEBIT (date + 4-digit card number)
+      //   - "PSS PANDAN J MELAKA" continuation lines
       const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
-      // Also detect mid-line dates followed by reference numbers (digits)
-      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{4,}).*)`);
+      const txStartPattern = new RegExp(
+        `^\\d{1,2}\\/\\d{1,2}\\/\\d{4}` +
+        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s*$)`
+      );
+
+      // Also detect mid-line dates followed by keywords or long reference numbers
+      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}).*)`);
 
       // Pre-process: split merged lines that have a transaction start mid-line
       const preprocessLines = (lines: string[]): string[] => {
@@ -563,15 +566,16 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
         }
       }
 
-      // Deduplicate ONLY when two transactions share the same non-empty reference number.
-      // Transactions with no reference or different references are always kept,
-      // even if date/amount/description match (legitimate repeated transactions exist).
-      const seenRefs = new Set<string>();
+      // Deduplicate only true duplicates (same date + reference + amount).
+      // Some transactions share a reference number (e.g. AUTOPAY CR uses the same
+      // merchant ref 1248401903 for every payment) but differ in date or amount.
+      const seen = new Set<string>();
       const deduped: BankTransaction[] = [];
       for (const tx of allTransactions) {
         if (tx.reference) {
-          if (seenRefs.has(tx.reference)) continue;
-          seenRefs.add(tx.reference);
+          const key = `${tx.date}|${tx.reference}|${tx.amount}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
         }
         deduped.push(tx);
       }
