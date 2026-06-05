@@ -370,7 +370,7 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
 
     const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this CIMB bank statement section into JSON.
 
-There are EXACTLY ${txCount} transactions below (each starts with DD/MM/YYYY). Return EXACTLY ${txCount} items.
+There are EXACTLY ${txCount} transactions below, each marked with [TX n]. Return EXACTLY ${txCount} items — one per [TX] marker.
 
 Rules:
 - credit = money IN (Deposits column has value): AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, DUITNOW TO ACCOUNT with deposit amount
@@ -379,8 +379,8 @@ Rules:
 - date = YYYY-MM-DD (year 2025)
 - description = transaction description text
 - reference = the reference number (No Rujukan) shown on the transaction line (numeric sequence after the date, e.g. "0100012345678"). Include the FULL reference number exactly as shown.
-- Every entry starting with a date is a separate transaction
-- Do NOT merge or skip any — even if two transactions have similar descriptions, they are separate entries if they have different reference numbers or dates
+- CRITICAL: Two transactions with the SAME amount and description but DIFFERENT reference numbers are SEPARATE entries. Never merge them.
+- Every [TX] block is a separate transaction — return one JSON item for each
 ${partInfo || ""}
 Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
 
@@ -469,7 +469,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
         for (let start = 0; start < transactions.length; start += MAX_TX_PER_BATCH) {
           const batchTxs = transactions.slice(start, start + MAX_TX_PER_BATCH);
-          const batchText = batchTxs.map(tx => tx.join("\n")).join("\n");
+          const batchText = batchTxs.map((tx, idx) => `[TX ${start + idx + 1}]\n${tx.join("\n")}`).join("\n");
           batches.push({
             text: batchText,
             txCount: batchTxs.length,
@@ -518,11 +518,11 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
             console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
 
-            // Retry once if significantly fewer results than expected
-            if (valid.length < batch.txCount - 1 && valid.length < batch.txCount * 0.9) {
+            // Retry if fewer results than expected (even 1 missing matters)
+            if (valid.length < batch.txCount) {
               const retryMessages = [{
                 role: "user",
-                content: `${prompt}\n\nIMPORTANT: You must return EXACTLY ${batch.txCount} items. Count each date line carefully.\n\nDATA:\n${batch.text}`,
+                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with a DD/MM/YYYY date). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions may have the same description and amount but different reference numbers — they are SEPARATE transactions. Do NOT merge them.\n\nDATA:\n${batch.text}`,
               }];
               const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
               totalTokensUsed += retryTokens;
