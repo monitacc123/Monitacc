@@ -37,7 +37,7 @@ function extractLinesFromItems(items: any[]): string[] {
 
   // Group items into rows using adaptive Y threshold
   // Compare each item to the MEAN Y of the current row to prevent drift
-  // Threshold 2 keeps same-row items across columns together but
+  // Threshold 1.5 keeps same-row items across columns together but
   // prevents merging adjacent transaction rows in tightly-spaced bank statements
   const rows: TextItem[][] = [];
   let currentRow: TextItem[] = [textItems[0]];
@@ -46,7 +46,7 @@ function extractLinesFromItems(items: any[]): string[] {
   for (let i = 1; i < textItems.length; i++) {
     const item = textItems[i];
     const meanY = currentRowYSum / currentRow.length;
-    if (Math.abs(item.y - meanY) <= 2) {
+    if (Math.abs(item.y - meanY) <= 1.5) {
       currentRow.push(item);
       currentRowYSum += item.y;
     } else {
@@ -67,7 +67,9 @@ function extractLinesFromItems(items: any[]): string[] {
     for (const item of rowItems) {
       if (!item.str) continue;
       const gap = item.x - lastEndX;
-      if (line && gap > 20) {
+      if (line && gap > 30) {
+        line += "   ";
+      } else if (line && gap > 15) {
         line += "  ";
       } else if (line && gap > 5) {
         line += " ";
