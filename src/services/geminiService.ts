@@ -352,30 +352,21 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const countDatePatterns = (text: string): number => {
-      const dateRegex = /\b\d{1,2}[\/.\\-]\d{1,2}[\/.\\-]\d{2,4}\b/g;
-      const matches = text.match(dateRegex);
-      return matches ? matches.length : 0;
-    };
+    const buildPrompt = (txCount: number, partInfo?: string) => `You are a CIMB bank statement parser. Extract ALL ${txCount} transactions from this section into JSON.
 
-    const buildPrompt = (lineCount: number, expectedTxCount: number, partInfo?: string) => `You are a bank statement data extractor. Convert EVERY transaction into JSON.
-
-CRITICAL: This section contains approximately ${expectedTxCount} transactions across ${lineCount} lines. You MUST return close to ${expectedTxCount} items.
+IMPORTANT: There are exactly ${txCount} transactions in this section (each starts with a date DD/MM/YYYY). You MUST return exactly ${txCount} items.
 
 Rules:
-- "credit" = money IN (deposit, transfer in, salary, refund, interest, CR, masuk)
-- "debit" = money OUT (payment, withdrawal, charge, fee, transfer out, DR, keluar)
-- amount = POSITIVE number (no negatives)
-- date = YYYY-MM-DD (infer year from statement period/header)
-- description = exact text from statement
-- Include ALL: fees, charges, interest, service charges, stamp duty, tax, even 0.00
-- Multi-line descriptions: merge into single transaction entry
-- Lines without a date that contain amounts: use the nearest date above them
-- Do NOT skip repeated/similar looking transactions - each is a SEPARATE entry
-- Do NOT summarize or group multiple transactions into one
-- Process EVERY SINGLE LINE from start to end
-${partInfo || ""}
+- "credit" = money IN (deposit, transfer in, CR, AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, any entry in Deposits column)
+- "debit" = money OUT (payment, withdrawal, DR, DUITNOW TO ACCOUNT/MOBILE that shows amount in Withdrawal column, MYDEBIT PURCHASE, POS DEBIT, JOMPAY)
+- amount = POSITIVE number always
+- date = YYYY-MM-DD (year is 2025 for this statement)
+- description = first line of transaction text (e.g. "DUITNOW TO ACCOUNT Yuran Tusyen SYAMSINAR BINTI MBB")
+- Each transaction starts with a date (DD/MM/YYYY) - everything until the next date is ONE transaction
+- Do NOT skip ANY transaction even if it looks similar to another
+- Short transactions like "CDM CASH DEPOSIT" or "HSE CHQ DEPOSIT" are still separate entries
 
+${partInfo || ""}
 Output ONLY a JSON array:
 [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
 
@@ -398,33 +389,44 @@ Output ONLY a JSON array:
       const firstPageLines = pages[0]?.split("\n") || [];
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
-      // Split pages into smaller batches for accuracy
-      const MAX_LINES_PER_BATCH = 35;
-      const batches: { text: string; lineCount: number; dateCount: number; pageNum: number }[] = [];
+      // Date pattern that appears at START of a line (transaction boundary)
+      const txStartRegex = /^\d{1,2}\/\d{1,2}\/\d{4}/;
+
+      // Split into batches at transaction boundaries
+      const MAX_TX_PER_BATCH = 15;
+      const batches: { text: string; txCount: number; pageNum: number }[] = [];
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
         const pageLines = page.split("\n").filter(l => l.trim());
-
         if (pageLines.length < 2) continue;
 
-        if (pageLines.length > MAX_LINES_PER_BATCH) {
-          for (let start = 0; start < pageLines.length; start += MAX_LINES_PER_BATCH) {
-            const batchLines = pageLines.slice(start, start + MAX_LINES_PER_BATCH);
-            const batchText = batchLines.join("\n");
-            batches.push({
-              text: batchText,
-              lineCount: batchLines.length,
-              dateCount: countDatePatterns(batchText),
-              pageNum: i + 1,
-            });
+        // Group lines into transactions (each starts with a date)
+        const transactions: string[][] = [];
+        let currentTx: string[] = [];
+
+        for (const line of pageLines) {
+          if (txStartRegex.test(line)) {
+            if (currentTx.length > 0) {
+              transactions.push(currentTx);
+            }
+            currentTx = [line];
+          } else {
+            currentTx.push(line);
           }
-        } else {
-          const pageText = pageLines.join("\n");
+        }
+        if (currentTx.length > 0) transactions.push(currentTx);
+
+        // Skip pages with no transactions (header pages, etc.)
+        if (transactions.length === 0) continue;
+
+        // Split into batches of MAX_TX_PER_BATCH transactions
+        for (let start = 0; start < transactions.length; start += MAX_TX_PER_BATCH) {
+          const batchTxs = transactions.slice(start, start + MAX_TX_PER_BATCH);
+          const batchText = batchTxs.map(tx => tx.join("\n")).join("\n");
           batches.push({
-            text: pageText,
-            lineCount: pageLines.length,
-            dateCount: countDatePatterns(pageText),
+            text: batchText,
+            txCount: batchTxs.length,
             pageNum: i + 1,
           });
         }
@@ -434,9 +436,8 @@ Output ONLY a JSON array:
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        const expectedTx = batch.dateCount > 0 ? batch.dateCount : Math.floor(batch.lineCount / 2);
-        const partInfo = `\nThis is batch ${i + 1} of ${batches.length} (from page ${batch.pageNum}).${batch.pageNum > 1 ? `\n\nCOLUMN HEADER REFERENCE:\n${headerContext}` : ""}`;
-        const prompt = buildPrompt(batch.lineCount, expectedTx, partInfo);
+        const partInfo = `\nBatch ${i + 1} of ${batches.length} (page ${batch.pageNum}).${batch.pageNum > 1 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
+        const prompt = buildPrompt(batch.txCount, partInfo);
 
         const messages = [{
           role: "user",
@@ -482,7 +483,7 @@ Output ONLY a JSON array:
         imageUrl = compressed;
       }
 
-      const prompt = buildPrompt(50, 50);
+      const prompt = buildPrompt(50);
       const messages = [{
         role: "user",
         content: [
