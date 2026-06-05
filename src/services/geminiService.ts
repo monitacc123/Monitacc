@@ -352,26 +352,29 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const prompt = `You are a bank statement parser. Extract ALL transactions from this bank statement document.
+    const prompt = `You are an expert bank statement parser. Your job is to extract EVERY SINGLE transaction from this bank statement. Do NOT skip any transaction.
 
-IMPORTANT: You MUST respond with ONLY a valid JSON array. No explanation, no markdown, just the raw JSON array.
+CRITICAL RULES:
+- Extract ALL transactions without exception - even if there are hundreds
+- "credit" = money coming IN (deposits, transfers in, salary, refunds, interest)
+- "debit" = money going OUT (payments, withdrawals, charges, fees, transfers out)
+- amount must be a POSITIVE number regardless of credit/debit
+- date format: YYYY-MM-DD (if year is missing, infer from statement header/period)
+- description: use the EXACT original transaction description from the statement
+- Do NOT summarize or group transactions
+- Do NOT skip transactions even if they look similar
+- Include ALL fees, charges, interest entries
 
-Rules:
-- "credit" = money coming IN to the account (deposits, transfers in, sales receipts)
-- "debit" = money going OUT of the account (payments, withdrawals, charges)
-- amount must be a positive number regardless of credit/debit
-- date format: YYYY-MM-DD
-- description: use the original transaction description from the statement
+You MUST respond with ONLY a valid JSON array. No explanation, no markdown, no text before or after.
 
-Each item in the JSON array must have exactly these fields:
-{ "date": "YYYY-MM-DD", "description": string, "amount": number, "type": "credit"|"debit" }
+Each item: { "date": "YYYY-MM-DD", "description": string, "amount": number, "type": "credit"|"debit" }
 
-Example response:
+Example:
 [{"date":"2024-01-15","description":"PETRONAS FUEL STATION","amount":85.50,"type":"debit"},{"date":"2024-01-16","description":"TRANSFER FROM ABU BAKAR","amount":500.00,"type":"credit"}]
 
-Extract ALL transactions from the document:`;
+Now extract ALL transactions:`;
 
-    let messages: { role: string; content: any }[];
+    let allTransactions: BankTransaction[] = [];
 
     if (isPdf) {
       let pdfText = "";
@@ -386,10 +389,55 @@ Extract ALL transactions from the document:`;
         return null;
       }
 
-      messages = [{
-        role: "user",
-        content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${pdfText}`,
-      }];
+      const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
+      const CHARS_PER_CHUNK = 12000;
+      const chunks: string[] = [];
+      let currentChunk = "";
+
+      for (const page of pages) {
+        if ((currentChunk + page).length > CHARS_PER_CHUNK && currentChunk.length > 0) {
+          chunks.push(currentChunk);
+          currentChunk = page;
+        } else {
+          currentChunk += "\n" + page;
+        }
+      }
+      if (currentChunk.trim()) chunks.push(currentChunk);
+
+      let totalTokensUsed = 0;
+
+      for (const chunk of chunks) {
+        const messages = [{
+          role: "user",
+          content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${chunk}`,
+        }];
+
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 16384), 3, 1000);
+        totalTokensUsed += tokensUsed;
+
+        if (text && text.trim()) {
+          const jsonStr = extractJson(text);
+          try {
+            let parsed = JSON.parse(jsonStr);
+            if (!Array.isArray(parsed)) {
+              parsed = parsed.transactions || parsed.data || [parsed];
+            }
+            const valid = parsed.filter((item: any) =>
+              item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
+            ).map((item: any) => ({
+              date: item.date,
+              description: item.description || "Transaksi Bank",
+              amount: Math.abs(Number(item.amount)),
+              type: item.type as "credit" | "debit",
+            }));
+            allTransactions.push(...valid);
+          } catch {}
+        }
+      }
+
+      if (userId && totalTokensUsed > 0) {
+        apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
+      }
     } else {
       const isUrl = base64Data.startsWith("http");
       let imageUrl: string;
@@ -403,40 +451,52 @@ Extract ALL transactions from the document:`;
         imageUrl = compressed;
       }
 
-      messages = [{
+      const messages = [{
         role: "user",
         content: [
           { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
           { type: "text", text: prompt },
         ],
       }];
+
+      const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 16384), 3, 1000);
+
+      if (userId && tokensUsed > 0) {
+        apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+      }
+
+      if (!text || text.trim() === "") return null;
+
+      const jsonStr = extractJson(text);
+      let parsed = JSON.parse(jsonStr);
+
+      if (!Array.isArray(parsed)) {
+        parsed = parsed.transactions || parsed.data || [parsed];
+      }
+
+      allTransactions = parsed.filter((item: any) =>
+        item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
+      ).map((item: any) => ({
+        date: item.date,
+        description: item.description || "Transaksi Bank",
+        amount: Math.abs(Number(item.amount)),
+        type: item.type as "credit" | "debit",
+      }));
     }
 
-    const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 4096), 3, 1000);
+    // Deduplicate transactions with same date, description, amount, type
+    const seen = new Set<string>();
+    const deduplicated = allTransactions.filter(t => {
+      const key = `${t.date}|${t.description}|${t.amount}|${t.type}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 
-    if (userId && tokensUsed > 0) {
-      apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
-    }
-
-    if (!text || text.trim() === "") return null;
-
-    const jsonStr = extractJson(text);
-    let parsed = JSON.parse(jsonStr);
-
-    if (!Array.isArray(parsed)) {
-      parsed = parsed.transactions || parsed.data || [parsed];
-    }
-
-    return parsed.filter((item: any) =>
-      item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
-    ).map((item: any) => ({
-      date: item.date,
-      description: item.description || "Transaksi Bank",
-      amount: Math.abs(Number(item.amount)),
-      type: item.type as "credit" | "debit",
-    }));
+    return deduplicated.length > 0 ? deduplicated : null;
   } catch (error) {
     console.error("Error extracting bank transactions:", error);
+    if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
     return null;
   }
 }
