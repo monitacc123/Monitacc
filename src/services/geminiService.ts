@@ -352,24 +352,27 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const buildPrompt = (lineCount: number, partInfo?: string) => `You are an expert bank statement parser. Extract EVERY transaction from this bank statement into a JSON array.
+    const buildPrompt = (lineCount: number, partInfo?: string) => `You are a bank statement data extractor. Convert EVERY transaction line into JSON.
 
-RULES:
-- Extract ALL transactions - there are approximately ${lineCount} data lines in this section, extract every transaction you find
-- "credit" = money IN (deposits, transfers in, salary, refunds, interest, CR, masuk)
-- "debit" = money OUT (payments, withdrawals, charges, fees, transfers out, DR, keluar)
-- amount = POSITIVE number always
-- date format: YYYY-MM-DD (infer year from statement header/period)
-- description: EXACT original text from statement
-- Do NOT skip, summarize, or group any transaction
-- Do NOT stop early
-- Include ALL: fees, charges, interest, service charges, tax, stamp duty, even 0.00 amounts
-- A transaction might span multiple lines - combine description lines into one entry
-- If a line has no date, it belongs to the previous transaction's description OR use the nearest date above
+CRITICAL: This section has ${lineCount} text lines. Extract ALL transactions found - do not skip any.
+
+Rules:
+- "credit" = money IN (deposit, transfer in, salary, refund, interest, CR, masuk)
+- "debit" = money OUT (payment, withdrawal, charge, fee, transfer out, DR, keluar)
+- amount = POSITIVE number (no negatives)
+- date = YYYY-MM-DD (infer year from statement period/header)
+- description = exact text from statement
+- Include fees, charges, interest, service charges, stamp duty, tax
+- If amount is 0.00 still include it
+- Multi-line descriptions: merge into single entry
+- Lines without a date: either continuation of previous description, or use nearest date above
+- Do NOT skip repeated/similar transactions - each line is separate
+- Do NOT summarize or group
+- Continue to the VERY LAST line
 ${partInfo || ""}
 
-OUTPUT: ONLY a JSON array, nothing else.
-Format: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
+Output ONLY a JSON array:
+[{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
 
     let allTransactions: BankTransaction[] = [];
 
@@ -388,24 +391,47 @@ Format: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
       const firstPageLines = pages[0]?.split("\n") || [];
-      const headerContext = firstPageLines.slice(0, 10).join("\n");
+      const headerContext = firstPageLines.slice(0, 12).join("\n");
 
-      let totalTokensUsed = 0;
+      // Split pages into smaller batches for accuracy
+      const MAX_LINES_PER_BATCH = 40;
+      const batches: { text: string; lineCount: number; pageNum: number }[] = [];
 
-      // Process each page individually for maximum accuracy
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
         const pageLines = page.split("\n").filter(l => l.trim());
 
-        // Skip pages with very little content (likely cover/summary pages with no transactions)
-        if (pageLines.length < 3) continue;
+        if (pageLines.length < 2) continue;
 
-        const lineCount = pageLines.length;
-        const prompt = buildPrompt(lineCount, i > 0 ? `\nCOLUMN REFERENCE from page 1:\n${headerContext}` : undefined);
+        if (pageLines.length > MAX_LINES_PER_BATCH) {
+          // Split large pages into smaller batches
+          for (let start = 0; start < pageLines.length; start += MAX_LINES_PER_BATCH) {
+            const batchLines = pageLines.slice(start, start + MAX_LINES_PER_BATCH);
+            batches.push({
+              text: batchLines.join("\n"),
+              lineCount: batchLines.length,
+              pageNum: i + 1,
+            });
+          }
+        } else {
+          batches.push({
+            text: pageLines.join("\n"),
+            lineCount: pageLines.length,
+            pageNum: i + 1,
+          });
+        }
+      }
+
+      let totalTokensUsed = 0;
+
+      for (let i = 0; i < batches.length; i++) {
+        const batch = batches[i];
+        const partInfo = `\nThis is batch ${i + 1} of ${batches.length} (from page ${batch.pageNum}).${batch.pageNum > 1 ? `\n\nCOLUMN HEADER REFERENCE:\n${headerContext}` : ""}`;
+        const prompt = buildPrompt(batch.lineCount, partInfo);
 
         const messages = [{
           role: "user",
-          content: `${prompt}\n\nBANK STATEMENT PAGE ${i + 1} of ${pages.length}:\n\n${page}`,
+          content: `${prompt}\n\nDATA:\n${batch.text}`,
         }];
 
         const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
