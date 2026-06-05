@@ -20,21 +20,29 @@ export async function extractTextFromPdf(base64Data: string): Promise<string> {
   for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
     const page = await pdf.getPage(pageNum);
     const content = await page.getTextContent();
+    const items = content.items as any[];
 
-    let lastY: number | null = null;
+    if (items.length === 0) continue;
+
     const lines: string[] = [];
     let currentLine = "";
+    let lastY: number | null = null;
 
-    for (const item of content.items as any[]) {
-      if (!item.str) continue;
-      const y = Math.round(item.transform[5]);
-      if (lastY !== null && Math.abs(y - lastY) > 3) {
+    for (const item of items) {
+      const text = item.str;
+      if (text === undefined || text === null) continue;
+
+      const y = item.transform[5];
+      const roundedY = Math.round(y);
+
+      if (lastY !== null && Math.abs(roundedY - lastY) > 2) {
         if (currentLine.trim()) lines.push(currentLine.trim());
-        currentLine = item.str;
+        currentLine = text;
       } else {
-        currentLine += (currentLine ? "  " : "") + item.str;
+        const gap = item.transform[4] - (currentLine.length > 0 ? 0 : 0);
+        currentLine += (currentLine && text ? "  " : "") + text;
       }
-      lastY = y;
+      lastY = roundedY;
     }
     if (currentLine.trim()) lines.push(currentLine.trim());
 

@@ -352,21 +352,24 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const buildPrompt = (totalHint?: string) => `You are an expert bank statement parser. Your ONLY job is to extract EVERY SINGLE transaction line from this bank statement into JSON.
+    const buildPrompt = (partInfo?: string) => `You are an expert bank statement parser. Your ONLY job is to extract EVERY SINGLE transaction line from this bank statement into JSON.
 
 ABSOLUTE RULES - VIOLATION IS UNACCEPTABLE:
-- You MUST extract ALL transactions. ${totalHint ? `There should be approximately ${totalHint} transactions.` : "Count every line carefully."}
-- "credit" = money IN (deposits, transfers in, salary, refunds, interest, CR)
-- "debit" = money OUT (payments, withdrawals, charges, fees, transfers out, DR)
+- You MUST extract ALL transactions without skipping any. Count each line carefully.
+- "credit" = money IN (deposits, transfers in, salary, refunds, interest, CR, masuk)
+- "debit" = money OUT (payments, withdrawals, charges, fees, transfers out, DR, keluar)
 - amount must be a POSITIVE number regardless of credit/debit
 - date format: YYYY-MM-DD (infer year from statement period if not shown on each line)
-- description: use the EXACT original description text
-- Do NOT summarize, group, or skip ANY transaction
-- Do NOT stop early - continue until the very last transaction
-- Include opening/closing balance entries if they appear as transaction lines
+- description: use the EXACT original description text from the statement
+- Do NOT summarize, group, or skip ANY transaction - even repeated ones
+- Do NOT stop early - continue until the VERY LAST transaction in this section
+- Include ALL entries: fees, charges, interest, service charges, tax, stamp duty
 - If a transaction has no clear date, use the most recent date above it
+- If amount is 0.00 (e.g. fee waiver), still include it
+- Multi-line descriptions: combine them into one transaction
+${partInfo ? `\nNOTE: ${partInfo}` : ""}
 
-Respond with ONLY a JSON array. No markdown, no explanation, no text outside the array.
+Respond with ONLY a valid JSON array. No markdown, no explanation, no text before or after the array.
 
 Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"credit"|"debit"}`;
 
@@ -386,14 +389,22 @@ Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"c
       }
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
-      const CHARS_PER_CHUNK = 20000;
+
+      // Extract header from first page (first 5 lines) for context in subsequent chunks
+      const firstPageLines = pages[0]?.split("\n") || [];
+      const headerContext = firstPageLines.slice(0, 8).join("\n");
+
+      // Chunk by pages - keep chunks larger to avoid splitting tables
+      const CHARS_PER_CHUNK = 30000;
       const chunks: string[] = [];
       let currentChunk = "";
 
       for (const page of pages) {
         if ((currentChunk + page).length > CHARS_PER_CHUNK && currentChunk.length > 0) {
           chunks.push(currentChunk);
-          currentChunk = page;
+          // Add last 3 lines as overlap context for next chunk
+          const overlapLines = currentChunk.split("\n").slice(-3).join("\n");
+          currentChunk = overlapLines + "\n" + page;
         } else {
           currentChunk += "\n" + page;
         }
@@ -404,10 +415,19 @@ Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"c
 
       for (let i = 0; i < chunks.length; i++) {
         const chunk = chunks[i];
-        const prompt = buildPrompt();
+        const partInfo = chunks.length > 1
+          ? `This is part ${i + 1} of ${chunks.length}. Extract ONLY the transactions visible in THIS section. Do not invent transactions.`
+          : undefined;
+        const prompt = buildPrompt(partInfo);
+
+        // Include header context for non-first chunks so AI understands column format
+        const contentToSend = i > 0
+          ? `[Statement Header for column reference]:\n${headerContext}\n\n[Transaction Data]:\n${chunk}`
+          : chunk;
+
         const messages = [{
           role: "user",
-          content: `${prompt}\n\nBANK STATEMENT CONTENT (Part ${i + 1} of ${chunks.length}):\n\n${chunk}`,
+          content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${contentToSend}`,
         }];
 
         const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
@@ -421,7 +441,7 @@ Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"c
               parsed = parsed.transactions || parsed.data || [parsed];
             }
             const valid = parsed.filter((item: any) =>
-              item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
+              item && item.date && item.amount !== undefined && item.amount !== null && (item.type === "credit" || item.type === "debit")
             ).map((item: any) => ({
               date: item.date,
               description: item.description || "Transaksi Bank",
@@ -431,6 +451,21 @@ Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"c
             allTransactions.push(...valid);
           } catch {}
         }
+      }
+
+      // Remove overlap duplicates (from chunk overlap lines)
+      if (chunks.length > 1) {
+        const deduped: BankTransaction[] = [];
+        for (let i = 0; i < allTransactions.length; i++) {
+          const t = allTransactions[i];
+          // Only dedupe if the exact same transaction appears consecutively (from overlap)
+          const prev = deduped[deduped.length - 1];
+          if (prev && prev.date === t.date && prev.description === t.description && prev.amount === t.amount && prev.type === t.type) {
+            continue;
+          }
+          deduped.push(t);
+        }
+        allTransactions = deduped;
       }
 
       if (userId && totalTokensUsed > 0) {
@@ -474,7 +509,7 @@ Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"c
       }
 
       allTransactions = parsed.filter((item: any) =>
-        item && item.date && item.amount && (item.type === "credit" || item.type === "debit")
+        item && item.date && item.amount !== undefined && item.amount !== null && (item.type === "credit" || item.type === "debit")
       ).map((item: any) => ({
         date: item.date,
         description: item.description || "Transaksi Bank",
