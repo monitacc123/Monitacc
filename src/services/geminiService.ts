@@ -352,27 +352,23 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const prompt = `You are an expert bank statement parser. Your job is to extract EVERY SINGLE transaction from this bank statement. Do NOT skip any transaction.
+    const buildPrompt = (totalHint?: string) => `You are an expert bank statement parser. Your ONLY job is to extract EVERY SINGLE transaction line from this bank statement into JSON.
 
-CRITICAL RULES:
-- Extract ALL transactions without exception - even if there are hundreds
-- "credit" = money coming IN (deposits, transfers in, salary, refunds, interest)
-- "debit" = money going OUT (payments, withdrawals, charges, fees, transfers out)
+ABSOLUTE RULES - VIOLATION IS UNACCEPTABLE:
+- You MUST extract ALL transactions. ${totalHint ? `There should be approximately ${totalHint} transactions.` : "Count every line carefully."}
+- "credit" = money IN (deposits, transfers in, salary, refunds, interest, CR)
+- "debit" = money OUT (payments, withdrawals, charges, fees, transfers out, DR)
 - amount must be a POSITIVE number regardless of credit/debit
-- date format: YYYY-MM-DD (if year is missing, infer from statement header/period)
-- description: use the EXACT original transaction description from the statement
-- Do NOT summarize or group transactions
-- Do NOT skip transactions even if they look similar
-- Include ALL fees, charges, interest entries
+- date format: YYYY-MM-DD (infer year from statement period if not shown on each line)
+- description: use the EXACT original description text
+- Do NOT summarize, group, or skip ANY transaction
+- Do NOT stop early - continue until the very last transaction
+- Include opening/closing balance entries if they appear as transaction lines
+- If a transaction has no clear date, use the most recent date above it
 
-You MUST respond with ONLY a valid JSON array. No explanation, no markdown, no text before or after.
+Respond with ONLY a JSON array. No markdown, no explanation, no text outside the array.
 
-Each item: { "date": "YYYY-MM-DD", "description": string, "amount": number, "type": "credit"|"debit" }
-
-Example:
-[{"date":"2024-01-15","description":"PETRONAS FUEL STATION","amount":85.50,"type":"debit"},{"date":"2024-01-16","description":"TRANSFER FROM ABU BAKAR","amount":500.00,"type":"credit"}]
-
-Now extract ALL transactions:`;
+Each item: {"date":"YYYY-MM-DD","description":"string","amount":number,"type":"credit"|"debit"}`;
 
     let allTransactions: BankTransaction[] = [];
 
@@ -390,7 +386,7 @@ Now extract ALL transactions:`;
       }
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
-      const CHARS_PER_CHUNK = 12000;
+      const CHARS_PER_CHUNK = 20000;
       const chunks: string[] = [];
       let currentChunk = "";
 
@@ -406,13 +402,15 @@ Now extract ALL transactions:`;
 
       let totalTokensUsed = 0;
 
-      for (const chunk of chunks) {
+      for (let i = 0; i < chunks.length; i++) {
+        const chunk = chunks[i];
+        const prompt = buildPrompt();
         const messages = [{
           role: "user",
-          content: `${prompt}\n\nBANK STATEMENT CONTENT:\n\n${chunk}`,
+          content: `${prompt}\n\nBANK STATEMENT CONTENT (Part ${i + 1} of ${chunks.length}):\n\n${chunk}`,
         }];
 
-        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 16384), 3, 1000);
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
         totalTokensUsed += tokensUsed;
 
         if (text && text.trim()) {
@@ -451,6 +449,7 @@ Now extract ALL transactions:`;
         imageUrl = compressed;
       }
 
+      const prompt = buildPrompt();
       const messages = [{
         role: "user",
         content: [
@@ -459,7 +458,7 @@ Now extract ALL transactions:`;
         ],
       }];
 
-      const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 16384), 3, 1000);
+      const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
 
       if (userId && tokensUsed > 0) {
         apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
@@ -484,16 +483,7 @@ Now extract ALL transactions:`;
       }));
     }
 
-    // Deduplicate transactions with same date, description, amount, type
-    const seen = new Set<string>();
-    const deduplicated = allTransactions.filter(t => {
-      const key = `${t.date}|${t.description}|${t.amount}|${t.type}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-
-    return deduplicated.length > 0 ? deduplicated : null;
+    return allTransactions.length > 0 ? allTransactions : null;
   } catch (error) {
     console.error("Error extracting bank transactions:", error);
     if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
