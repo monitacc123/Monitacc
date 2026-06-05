@@ -563,17 +563,17 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
         }
       }
 
-      // Deduplicate using reference numbers
-      const seen = new Set<string>();
+      // Deduplicate ONLY when two transactions share the same non-empty reference number.
+      // Transactions with no reference or different references are always kept,
+      // even if date/amount/description match (legitimate repeated transactions exist).
+      const seenRefs = new Set<string>();
       const deduped: BankTransaction[] = [];
       for (const tx of allTransactions) {
-        const key = tx.reference
-          ? tx.reference
-          : `${tx.date}|${tx.amount}|${tx.type}|${tx.description}`;
-        if (!seen.has(key)) {
-          seen.add(key);
-          deduped.push(tx);
+        if (tx.reference) {
+          if (seenRefs.has(tx.reference)) continue;
+          seenRefs.add(tx.reference);
         }
+        deduped.push(tx);
       }
       const beforeDedup = allTransactions.length;
       allTransactions = deduped;
