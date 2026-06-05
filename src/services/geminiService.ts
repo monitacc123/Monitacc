@@ -454,7 +454,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
       // Collect all transaction groups across all pages
       const MAX_TX_PER_BATCH = 12;
-      const batches: { text: string; txCount: number; pageNum: number }[] = [];
+      const batches: { text: string; txCount: number; pageNum: number; rawTxBlocks: string[][] }[] = [];
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
@@ -490,6 +490,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
             text: batchText,
             txCount: batchTxs.length,
             pageNum: i + 1,
+            rawTxBlocks: batchTxs,
           });
         }
       }
@@ -539,43 +540,52 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
             console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
 
-            // Retry if fewer results than expected (even 1 missing matters)
-            if (valid.length < batch.txCount) {
-              const retryMessages = [{
-                role: "user",
-                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with a DD/MM/YYYY date). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions may have the same description and amount but different reference numbers — they are SEPARATE transactions. Do NOT merge them.\n\nDATA:\n${batch.text}`,
-              }];
-              const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
-              totalTokensUsed += retryTokens;
+            // If AI returned fewer items, extract missing ones individually
+            if (valid.length < batch.txCount && batch.rawTxBlocks.length > valid.length) {
+              console.log(`[BankExtract] Batch ${i + 1}: ${batch.txCount - valid.length} items missing, extracting individually`);
+              // Send each raw TX block as individual extraction
+              const individualResults: BankTransaction[] = [];
+              for (let t = 0; t < batch.rawTxBlocks.length; t++) {
+                const txBlock = batch.rawTxBlocks[t];
+                const singlePrompt = `Extract this SINGLE bank transaction into JSON.
 
-              if (retryText && retryText.trim()) {
-                const retryJson = extractJson(retryText);
-                try {
-                  let retryParsed = JSON.parse(retryJson);
-                  if (!Array.isArray(retryParsed)) {
-                    retryParsed = retryParsed.transactions || retryParsed.data || [retryParsed];
-                  }
-                  const retryValid = retryParsed.filter((item: any) => {
-                    if (!item || !item.date) return false;
+Rules:
+- credit = money IN (deposit): AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, DUITNOW TO ACCOUNT with deposit amount
+- debit = money OUT (withdrawal): DUITNOW TO ACCOUNT/MOBILE/ID with withdrawal, MYDEBIT PURCHASE, POS DEBIT, JOMPAY
+- amount = positive number, no comma
+- date = YYYY-MM-DD (year 2025)
+- reference = numeric reference number (No Rujukan)
+
+Return ONLY: {"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}
+
+DATA:
+${txBlock.join("\n")}`;
+                const { content: singleText, tokensUsed: singleTokens } = await withRetry(
+                  () => chatCompletion([{ role: "user", content: singlePrompt }], false, ANALYSIS_MODELS, 4000), 2, 500
+                );
+                totalTokensUsed += singleTokens;
+                if (singleText && singleText.trim()) {
+                  try {
+                    const singleJson = extractJson(singleText);
+                    const item = JSON.parse(singleJson);
                     const amt = parseAmount(item.amount);
-                    if (isNaN(amt)) return false;
                     const type = normalizeType(item.type);
-                    if (!type) return false;
-                    return true;
-                  }).map((item: any) => ({
-                    date: item.date,
-                    description: (item.description || "Transaksi Bank").trim(),
-                    amount: parseAmount(item.amount),
-                    type: normalizeType(item.type)! as "credit" | "debit",
-                    reference: (item.reference || "").trim(),
-                  }));
-
-                  if (retryValid.length > valid.length) {
-                    console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
-                    allTransactions.push(...retryValid);
-                    continue;
-                  }
-                } catch {}
+                    if (item.date && !isNaN(amt) && type) {
+                      individualResults.push({
+                        date: item.date,
+                        description: (item.description || "Transaksi Bank").trim(),
+                        amount: amt,
+                        type: type as "credit" | "debit",
+                        reference: (item.reference || "").trim(),
+                      });
+                    }
+                  } catch {}
+                }
+              }
+              console.log(`[BankExtract] Batch ${i + 1} individual extraction: got ${individualResults.length}/${batch.rawTxBlocks.length}`);
+              if (individualResults.length > valid.length) {
+                allTransactions.push(...individualResults);
+                continue;
               }
             }
 
