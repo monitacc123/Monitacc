@@ -31,23 +31,26 @@ function extractLinesFromItems(items: any[]): string[] {
   // Sort all items by Y descending (top to bottom in PDF), then X ascending
   textItems.sort((a, b) => {
     const yDiff = b.y - a.y;
-    if (Math.abs(yDiff) > 1) return yDiff;
+    if (Math.abs(yDiff) > 0.5) return yDiff;
     return a.x - b.x;
   });
 
-  // Group items into rows - items within 1 unit of Y are same row
+  // Group items into rows using adaptive Y threshold
+  // Compare each item to the MEAN Y of the current row to prevent drift
   const rows: TextItem[][] = [];
   let currentRow: TextItem[] = [textItems[0]];
-  let currentRowY = textItems[0].y;
+  let currentRowYSum = textItems[0].y;
 
   for (let i = 1; i < textItems.length; i++) {
     const item = textItems[i];
-    if (Math.abs(item.y - currentRowY) <= 1) {
+    const meanY = currentRowYSum / currentRow.length;
+    if (Math.abs(item.y - meanY) <= 2) {
       currentRow.push(item);
+      currentRowYSum += item.y;
     } else {
       rows.push(currentRow);
       currentRow = [item];
-      currentRowY = item.y;
+      currentRowYSum = item.y;
     }
   }
   rows.push(currentRow);

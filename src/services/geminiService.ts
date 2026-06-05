@@ -352,23 +352,35 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    const buildPrompt = (txCount: number, partInfo?: string) => `You are a CIMB bank statement parser. Extract ALL ${txCount} transactions from this section into JSON.
+    const normalizeType = (type: any): "credit" | "debit" | null => {
+      if (!type) return null;
+      const t = String(type).toLowerCase().trim();
+      if (t === "credit" || t === "cr" || t === "deposit" || t === "in") return "credit";
+      if (t === "debit" || t === "dr" || t === "withdrawal" || t === "out") return "debit";
+      return null;
+    };
 
-IMPORTANT: There are exactly ${txCount} transactions in this section (each starts with a date DD/MM/YYYY). You MUST return exactly ${txCount} items.
+    const parseAmount = (val: any): number => {
+      if (val === undefined || val === null) return NaN;
+      if (typeof val === "number") return Math.abs(val);
+      const cleaned = String(val).replace(/[,\s]/g, "");
+      return Math.abs(Number(cleaned));
+    };
+
+    const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this CIMB bank statement section into JSON.
+
+There are EXACTLY ${txCount} transactions below (each starts with DD/MM/YYYY). Return EXACTLY ${txCount} items.
 
 Rules:
-- "credit" = money IN (deposit, transfer in, CR, AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, any entry in Deposits column)
-- "debit" = money OUT (payment, withdrawal, DR, DUITNOW TO ACCOUNT/MOBILE that shows amount in Withdrawal column, MYDEBIT PURCHASE, POS DEBIT, JOMPAY)
-- amount = POSITIVE number always
-- date = YYYY-MM-DD (year is 2025 for this statement)
-- description = first line of transaction text (e.g. "DUITNOW TO ACCOUNT Yuran Tusyen SYAMSINAR BINTI MBB")
-- Each transaction starts with a date (DD/MM/YYYY) - everything until the next date is ONE transaction
-- Do NOT skip ANY transaction even if it looks similar to another
-- Short transactions like "CDM CASH DEPOSIT" or "HSE CHQ DEPOSIT" are still separate entries
-
+- credit = money IN (Deposits column has value): AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, DUITNOW TO ACCOUNT with deposit amount
+- debit = money OUT (Withdrawal column has value): DUITNOW TO ACCOUNT/MOBILE/ID with withdrawal, MYDEBIT PURCHASE, POS DEBIT, JOMPAY
+- amount = positive number, no comma separators
+- date = YYYY-MM-DD (year 2025)
+- description = transaction description text
+- Every entry starting with a date is a separate transaction
+- Do NOT merge or skip any
 ${partInfo || ""}
-Output ONLY a JSON array:
-[{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
+Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
 
     let allTransactions: BankTransaction[] = [];
 
@@ -389,11 +401,11 @@ Output ONLY a JSON array:
       const firstPageLines = pages[0]?.split("\n") || [];
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
-      // Date pattern that appears at START of a line (transaction boundary)
+      // Date pattern at START of line = transaction boundary
       const txStartRegex = /^\d{1,2}\/\d{1,2}\/\d{4}/;
 
-      // Split into batches at transaction boundaries
-      const MAX_TX_PER_BATCH = 15;
+      // Collect all transaction groups across all pages
+      const MAX_TX_PER_BATCH = 12;
       const batches: { text: string; txCount: number; pageNum: number }[] = [];
 
       for (let i = 0; i < pages.length; i++) {
@@ -401,26 +413,27 @@ Output ONLY a JSON array:
         const pageLines = page.split("\n").filter(l => l.trim());
         if (pageLines.length < 2) continue;
 
-        // Group lines into transactions (each starts with a date)
+        // Only collect lines that belong to actual transactions (start with date)
         const transactions: string[][] = [];
-        let currentTx: string[] = [];
+        let currentTx: string[] | null = null;
 
         for (const line of pageLines) {
           if (txStartRegex.test(line)) {
-            if (currentTx.length > 0) {
+            if (currentTx !== null) {
               transactions.push(currentTx);
             }
             currentTx = [line];
-          } else {
+          } else if (currentTx !== null) {
             currentTx.push(line);
           }
+          // Lines before first date on the page are skipped (headers)
         }
-        if (currentTx.length > 0) transactions.push(currentTx);
+        if (currentTx !== null && currentTx.length > 0) {
+          transactions.push(currentTx);
+        }
 
-        // Skip pages with no transactions (header pages, etc.)
         if (transactions.length === 0) continue;
 
-        // Split into batches of MAX_TX_PER_BATCH transactions
         for (let start = 0; start < transactions.length; start += MAX_TX_PER_BATCH) {
           const batchTxs = transactions.slice(start, start + MAX_TX_PER_BATCH);
           const batchText = batchTxs.map(tx => tx.join("\n")).join("\n");
@@ -433,10 +446,11 @@ Output ONLY a JSON array:
       }
 
       let totalTokensUsed = 0;
+      console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${batches.reduce((a, b) => a + b.txCount, 0)}`);
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        const partInfo = `\nBatch ${i + 1} of ${batches.length} (page ${batch.pageNum}).${batch.pageNum > 1 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
+        const partInfo = `\nBatch ${i + 1}/${batches.length} (page ${batch.pageNum}).${i > 0 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
         const prompt = buildPrompt(batch.txCount, partInfo);
 
         const messages = [{
@@ -454,18 +468,67 @@ Output ONLY a JSON array:
             if (!Array.isArray(parsed)) {
               parsed = parsed.transactions || parsed.data || [parsed];
             }
-            const valid = parsed.filter((item: any) =>
-              item && item.date && item.amount !== undefined && item.amount !== null && (item.type === "credit" || item.type === "debit")
-            ).map((item: any) => ({
+            const valid = parsed.filter((item: any) => {
+              if (!item || !item.date) return false;
+              const amt = parseAmount(item.amount);
+              if (isNaN(amt)) return false;
+              const type = normalizeType(item.type);
+              if (!type) return false;
+              return true;
+            }).map((item: any) => ({
               date: item.date,
               description: (item.description || "Transaksi Bank").trim(),
-              amount: Math.abs(Number(item.amount)),
-              type: item.type as "credit" | "debit",
+              amount: parseAmount(item.amount),
+              type: normalizeType(item.type)! as "credit" | "debit",
             }));
+
+            console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
+
+            // Retry once if significantly fewer results than expected
+            if (valid.length < batch.txCount - 1 && valid.length < batch.txCount * 0.9) {
+              const retryMessages = [{
+                role: "user",
+                content: `${prompt}\n\nIMPORTANT: You must return EXACTLY ${batch.txCount} items. Count each date line carefully.\n\nDATA:\n${batch.text}`,
+              }];
+              const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
+              totalTokensUsed += retryTokens;
+
+              if (retryText && retryText.trim()) {
+                const retryJson = extractJson(retryText);
+                try {
+                  let retryParsed = JSON.parse(retryJson);
+                  if (!Array.isArray(retryParsed)) {
+                    retryParsed = retryParsed.transactions || retryParsed.data || [retryParsed];
+                  }
+                  const retryValid = retryParsed.filter((item: any) => {
+                    if (!item || !item.date) return false;
+                    const amt = parseAmount(item.amount);
+                    if (isNaN(amt)) return false;
+                    const type = normalizeType(item.type);
+                    if (!type) return false;
+                    return true;
+                  }).map((item: any) => ({
+                    date: item.date,
+                    description: (item.description || "Transaksi Bank").trim(),
+                    amount: parseAmount(item.amount),
+                    type: normalizeType(item.type)! as "credit" | "debit",
+                  }));
+
+                  if (retryValid.length > valid.length) {
+                    console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
+                    allTransactions.push(...retryValid);
+                    continue;
+                  }
+                } catch {}
+              }
+            }
+
             allTransactions.push(...valid);
           } catch {}
         }
       }
+
+      console.log(`[BankExtract] Final total: ${allTransactions.length}`);
 
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
@@ -507,13 +570,18 @@ Output ONLY a JSON array:
         parsed = parsed.transactions || parsed.data || [parsed];
       }
 
-      allTransactions = parsed.filter((item: any) =>
-        item && item.date && item.amount !== undefined && item.amount !== null && (item.type === "credit" || item.type === "debit")
-      ).map((item: any) => ({
+      allTransactions = parsed.filter((item: any) => {
+        if (!item || !item.date) return false;
+        const amt = parseAmount(item.amount);
+        if (isNaN(amt)) return false;
+        const type = normalizeType(item.type);
+        if (!type) return false;
+        return true;
+      }).map((item: any) => ({
         date: item.date,
         description: (item.description || "Transaksi Bank").trim(),
-        amount: Math.abs(Number(item.amount)),
-        type: item.type as "credit" | "debit",
+        amount: parseAmount(item.amount),
+        type: normalizeType(item.type)! as "credit" | "debit",
       }));
     }
 
