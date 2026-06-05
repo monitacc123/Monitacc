@@ -37,6 +37,8 @@ function extractLinesFromItems(items: any[]): string[] {
 
   // Group items into rows using adaptive Y threshold
   // Compare each item to the MEAN Y of the current row to prevent drift
+  // Threshold 3 is wide enough for same-row items across columns but
+  // narrow enough (with mean-based grouping) to avoid merging different rows
   const rows: TextItem[][] = [];
   let currentRow: TextItem[] = [textItems[0]];
   let currentRowYSum = textItems[0].y;
@@ -44,7 +46,7 @@ function extractLinesFromItems(items: any[]): string[] {
   for (let i = 1; i < textItems.length; i++) {
     const item = textItems[i];
     const meanY = currentRowYSum / currentRow.length;
-    if (Math.abs(item.y - meanY) <= 1.5) {
+    if (Math.abs(item.y - meanY) <= 3) {
       currentRow.push(item);
       currentRowYSum += item.y;
     } else {
