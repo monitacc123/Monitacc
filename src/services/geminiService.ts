@@ -225,6 +225,7 @@ Example output:
 Extract from the document now:`;
 
     let messages: { role: string; content: any }[];
+    let isBankStatement = false;
 
     if (isPdf) {
       let pdfText = "";
@@ -235,10 +236,111 @@ Extract from the document now:`;
         pdfText = "[PDF content could not be extracted - please try an image format]";
       }
 
-      messages = [{
-        role: "user",
-        content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
-      }];
+      // Detect if this is a bank statement
+      isBankStatement = /Statement of Account|Penyata Akaun|OPENING BALANCE|CLOSING BALANCE|No of Withdrawal/i.test(pdfText);
+
+      if (isBankStatement) {
+        // Process bank statement page by page for accuracy
+        const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
+        const allResults: ExtractedData[] = [];
+        let totalTokens = 0;
+
+        const bankPrompt = (pageInfo: string) => `Extract ALL transactions from this page of a CIMB Islamic Bank statement into JSON.
+
+CRITICAL RULES:
+1. Respond with ONLY a valid JSON array
+2. Extract EVERY transaction line — do NOT skip or merge any
+3. Each transaction has a UNIQUE reference number — use it as docNumber
+4. Two transactions with same amount/date are DIFFERENT if they have different reference numbers
+5. NEVER merge transactions. Every date line = one transaction.
+
+Transaction type rules:
+- Withdrawal (money OUT) = "expense": DUITNOW TO ACCOUNT/MOBILE/ID when sending money, MYDEBIT PURCHASE, POS DEBIT, JOMPAY
+- Deposit (money IN) = "income": AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, DUITNOW TO ACCOUNT when receiving
+- Balance column: increases = income; decreases = expense
+- payment_method: always "bank"
+- category: "SALES" for income, "Lain-lain" for expense
+- date: YYYY-MM-DD (year 2025)
+- docNumber: the Cheque/Ref No shown
+- docType: "Penyata Bank"
+- description: transaction description
+
+${pageInfo}
+Return ONLY JSON: [{"type":"income"|"expense","docType":"Penyata Bank","docNumber":"...","category":"SALES"|"Lain-lain","amount":number,"date":"YYYY-MM-DD","description":"...","payment_method":"bank"}]`;
+
+        for (let i = 0; i < pages.length; i++) {
+          const pageContent = pages[i].trim();
+          if (!pageContent || pageContent.length < 30) continue;
+          // Skip pages that don't have transaction data
+          if (!/\d{1,2}\/\d{1,2}\/\d{4}/.test(pageContent)) continue;
+
+          const pageMessages = [{
+            role: "user",
+            content: `${bankPrompt(`Page ${i + 1} of ${pages.length}.`)}\n\nPAGE CONTENT:\n${pageContent}`,
+          }];
+
+          try {
+            const { content: pageResult, tokensUsed: pgTokens } = await withRetry(
+              () => chatCompletion(pageMessages, false, SCAN_MODELS, 16384), 3, 1000
+            );
+            totalTokens += pgTokens;
+
+            if (pageResult && pageResult.trim()) {
+              const jsonStr = extractJson(pageResult);
+              let parsed = JSON.parse(jsonStr);
+              if (!Array.isArray(parsed)) parsed = parsed.transactions || parsed.data || [parsed];
+              const valid = parsed.filter((item: any) => item && Number(item.amount) > 0);
+              allResults.push(...valid);
+            }
+          } catch (pageErr: any) {
+            console.warn(`[BankScan] Page ${i + 1} failed:`, pageErr?.message);
+          }
+        }
+
+        if (userId && totalTokens > 0) {
+          apiLogAiUsage(userId, totalTokens, "scan").catch(() => {});
+        }
+
+        if (allResults.length > 0) {
+          // Deduplicate using docNumber
+          const seen = new Set<string>();
+          const deduped = allResults.filter(item => {
+            const key = `${item.date}|${item.amount}|${item.docNumber || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+
+          // Check expected count from summary
+          const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
+          if (summaryMatch) {
+            const expectedTotal = parseInt(summaryMatch[1], 10) + parseInt(summaryMatch[2], 10);
+            if (deduped.length < expectedTotal) {
+              const missing = expectedTotal - deduped.length;
+              for (let m = 0; m < missing; m++) {
+                deduped.push({
+                  type: "income",
+                  docType: "Penyata Bank",
+                  docNumber: `MANUAL-CHECK-${m + 1}`,
+                  category: "Lain-lain",
+                  amount: 0,
+                  date: "2025-01-01",
+                  description: `Transaksi tidak dapat dikesan (#${m + 1}) - sila semak manual`,
+                  payment_method: "bank",
+                });
+              }
+            }
+          }
+
+          return deduped;
+        }
+        return null;
+      } else {
+        messages = [{
+          role: "user",
+          content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
+        }];
+      }
     } else {
       const isUrl = base64Data.startsWith("http");
       let imageUrl: string;
@@ -344,6 +446,90 @@ export interface BankTransaction {
   amount: number;
   type: "credit" | "debit";
   reference?: string;
+  remark?: string;
+}
+
+function localParseFallback(pdfText: string, existing: BankTransaction[]): BankTransaction[] {
+  const recovered: BankTransaction[] = [];
+  const existingKeys = new Set(
+    existing.map(t => `${t.date}|${t.amount}|${t.type}|${t.reference || ""}`)
+  );
+
+  // Pattern: date line followed by content, then amounts and balance
+  // Each transaction has: date, description lines, reference, withdrawal OR deposit, balance
+  const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
+  const lines = pdfText.split("\n");
+
+  const datePattern = new RegExp(`^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})\\s*(?:${TX_KEYWORDS})`);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    const dateMatch = line.match(datePattern);
+    if (!dateMatch) continue;
+
+    const day = dateMatch[1].padStart(2, "0");
+    const month = dateMatch[2].padStart(2, "0");
+    const year = dateMatch[3];
+    const date = `${year}-${month}-${day}`;
+
+    // Collect the transaction block (up to 8 lines after the date line)
+    const block = [line];
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+      const nextLine = lines[j].trim();
+      if (!nextLine) continue;
+      if (datePattern.test(nextLine)) break;
+      block.push(nextLine);
+    }
+
+    const blockText = block.join(" ");
+    // Extract amounts - look for decimal numbers like 100.00, 1,810.00
+    const amounts = blockText.match(/\d{1,3}(?:,\d{3})*\.\d{2}/g);
+    if (!amounts || amounts.length === 0) continue;
+
+    // The last number is typically the balance; amounts before it are withdrawal/deposit
+    // For a simple fallback, take the first or second-to-last amount as the transaction amount
+    const balanceStr = amounts[amounts.length - 1];
+    const amountStr = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0];
+    const amount = parseFloat(amountStr.replace(/,/g, ""));
+    if (isNaN(amount) || amount === 0) continue;
+
+    // Determine type from keywords
+    const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY/i.test(blockText);
+    const isExplicitCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA/i.test(blockText);
+
+    let type: "credit" | "debit" = isDebit ? "debit" : (isExplicitCredit ? "credit" : "credit");
+
+    // If it's a DUITNOW TO ACCOUNT with withdrawal-related desc
+    if (/DUITNOW TO ACCOUNT/i.test(blockText)) {
+      // Check if it's outgoing (payment, restok, komisen, salery, sewa)
+      if (/Restok|Komisen|Saler|Sewa|Payment|Print|Refund|Insurance|Bill|Advance/i.test(blockText)) {
+        type = "debit";
+      }
+    }
+
+    // Extract reference
+    const refMatch = blockText.match(/(\d{9,})/);
+    const reference = refMatch ? refMatch[1] : "";
+
+    const key = `${date}|${amount}|${type}|${reference}`;
+    if (existingKeys.has(key)) continue;
+
+    // Description
+    const descMatch = line.match(new RegExp(`\\d{4}\\s+(.*)`));
+    const description = descMatch ? descMatch[1].trim() : "Transaksi Bank";
+
+    recovered.push({
+      date,
+      description,
+      amount,
+      type,
+      reference,
+      remark: "Diekstrak secara tempatan - sila semak semula",
+    });
+    existingKeys.add(key);
+  }
+
+  return recovered;
 }
 
 export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string, plan?: string): Promise<BankTransaction[] | null> {
@@ -596,6 +782,43 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       allTransactions = deduped;
 
       console.log(`[BankExtract] Final total: ${allTransactions.length} (removed ${beforeDedup - allTransactions.length} duplicates)`);
+
+      // Try to detect expected count from statement summary
+      const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
+      if (summaryMatch) {
+        const expectedWithdrawals = parseInt(summaryMatch[1], 10);
+        const expectedDeposits = parseInt(summaryMatch[2], 10);
+        const expectedTotal = expectedWithdrawals + expectedDeposits;
+        const actualCredits = allTransactions.filter(t => t.type === "credit").length;
+        const actualDebits = allTransactions.filter(t => t.type === "debit").length;
+
+        console.log(`[BankExtract] Expected: ${expectedTotal} (${expectedWithdrawals}W + ${expectedDeposits}D), Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
+
+        if (allTransactions.length < expectedTotal) {
+          const missing = expectedTotal - allTransactions.length;
+          // Try to find missing transactions from the raw text using a direct local parse
+          const locallyParsed = localParseFallback(pdfText, allTransactions);
+          if (locallyParsed.length > 0) {
+            allTransactions.push(...locallyParsed);
+            console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
+          }
+
+          // If still missing, add stubs with remark for manual check
+          const stillMissing = expectedTotal - allTransactions.length;
+          if (stillMissing > 0) {
+            for (let i = 0; i < stillMissing; i++) {
+              allTransactions.push({
+                date: "2025-01-01",
+                description: `Transaksi tidak dapat dikesan (#${i + 1})`,
+                amount: 0,
+                type: "credit",
+                remark: "Sila semak penyata bank secara manual - transaksi ini tidak dapat diekstrak oleh AI",
+              });
+            }
+            console.log(`[BankExtract] Added ${stillMissing} stub entries for manual review`);
+          }
+        }
+      }
 
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});

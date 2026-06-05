@@ -2648,7 +2648,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             t2.date === item.date &&
             Math.abs(t2.amount - item.amount) < 0.01 &&
             t2.description.toLowerCase().trim() === item.description.toLowerCase().trim() &&
-            t2.type === item.type
+            t2.type === item.type &&
+            (t2.docNumber || '').trim() === (item.docNumber || '').trim()
           ))
         );
         const sortedData = [...uniqueData].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -5456,7 +5457,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               date: item.date || format(new Date(), 'yyyy-MM-dd'),
               description: item.description || 'Transaksi Bank',
               amount: item.amount,
-              type: item.type
+              type: item.type,
+              reference: item.reference || '',
+              remark: item.remark || ''
             }));
 
             const uniqueData = data.filter((item, index, self) =>
@@ -5464,7 +5467,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                 t.date === item.date &&
                 Math.abs(t.amount - item.amount) < 0.01 &&
                 t.description.toLowerCase() === item.description.toLowerCase() &&
-                t.type === item.type
+                t.type === item.type &&
+                t.reference === item.reference
               ))
             );
 
@@ -5752,6 +5756,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 uppercase">{bt.type === 'credit' ? 'Duit Masuk' : 'Duit Keluar'}</span>
                         </div>
+                        {bt.remark && (
+                          <p className="text-[10px] text-amber-600 font-medium mt-1">{bt.remark}</p>
+                        )}
                       </div>
                       <p className={`text-base font-bold shrink-0 ${bt.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'}`}>
                         {bt.type === 'credit' ? '+' : '-'} RM {bt.amount.toFixed(2)}
@@ -5837,6 +5844,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                         <td className="px-6 py-4">
                           <p className="text-xs font-bold text-slate-900">{bt.description}</p>
                           <p className="text-[10px] text-slate-400 uppercase tracking-tight">{bt.type === 'credit' ? 'Duit Masuk' : 'Duit Keluar'}</p>
+                          {bt.remark && <p className="text-[10px] text-amber-600 font-medium mt-0.5">{bt.remark}</p>}
                         </td>
                         <td className={`px-6 py-4 text-xs font-bold text-right ${bt.type === 'credit' ? 'text-emerald-600' : 'text-rose-600'}`}>
                           {bt.type === 'credit' ? '+' : '-'} {bt.amount.toFixed(2)}
