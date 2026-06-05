@@ -343,6 +343,7 @@ export interface BankTransaction {
   description: string;
   amount: number;
   type: "credit" | "debit";
+  reference?: string;
 }
 
 export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string, plan?: string): Promise<BankTransaction[] | null> {
@@ -377,10 +378,11 @@ Rules:
 - amount = positive number, no comma separators
 - date = YYYY-MM-DD (year 2025)
 - description = transaction description text
+- reference = the reference number (No Rujukan) shown on the transaction line (numeric sequence after the date, e.g. "0100012345678"). Include the FULL reference number exactly as shown.
 - Every entry starting with a date is a separate transaction
-- Do NOT merge or skip any
+- Do NOT merge or skip any — even if two transactions have similar descriptions, they are separate entries if they have different reference numbers or dates
 ${partInfo || ""}
-Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit"}]`;
+Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
 
     let allTransactions: BankTransaction[] = [];
 
@@ -404,12 +406,16 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       // Transaction start detection:
       // 1. Date followed by a letter: "01/01/2025 DUITNOW..." or "01/01/2025AUTOPAY..."
       // 2. Date alone on the line: "01/01/2025" (PDF split date from description)
-      // Does NOT match: "05/01/2025 5542" (POS DEBIT embedded date - digit after date)
-      const txStartPattern = /^\d{1,2}\/\d{1,2}\/\d{4}(\s*[A-Za-z]|\s*$)/;
+      // 3. Date followed by digits (reference number): "01/01/2025 1234567..."
+      // The key insight: any line starting with DD/MM/YYYY is a transaction start.
+      // Previous false-positive concern (embedded dates like "05/01/2025 5542" in POS DEBIT)
+      // is handled by the fact that continuation lines don't start at column 0 with a date.
+      const txStartPattern = /^\d{1,2}\/\d{1,2}\/\d{4}/;
 
       // Known CIMB keywords for safer mid-line splitting
       const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
-      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}).*)`);
+      // Also detect mid-line dates followed by reference numbers (digits)
+      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{4,}).*)`);
 
       // Pre-process: split merged lines that have a transaction start mid-line
       const preprocessLines = (lines: string[]): string[] => {
@@ -507,6 +513,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
               description: (item.description || "Transaksi Bank").trim(),
               amount: parseAmount(item.amount),
               type: normalizeType(item.type)! as "credit" | "debit",
+              reference: (item.reference || "").trim(),
             }));
 
             console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
@@ -539,6 +546,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
                     description: (item.description || "Transaksi Bank").trim(),
                     amount: parseAmount(item.amount),
                     type: normalizeType(item.type)! as "credit" | "debit",
+                    reference: (item.reference || "").trim(),
                   }));
 
                   if (retryValid.length > valid.length) {
@@ -555,7 +563,22 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
         }
       }
 
-      console.log(`[BankExtract] Final total: ${allTransactions.length}`);
+      // Deduplicate using reference numbers
+      const seen = new Set<string>();
+      const deduped: BankTransaction[] = [];
+      for (const tx of allTransactions) {
+        const key = tx.reference
+          ? tx.reference
+          : `${tx.date}|${tx.amount}|${tx.type}|${tx.description}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduped.push(tx);
+        }
+      }
+      const beforeDedup = allTransactions.length;
+      allTransactions = deduped;
+
+      console.log(`[BankExtract] Final total: ${allTransactions.length} (removed ${beforeDedup - allTransactions.length} duplicates)`);
 
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
@@ -609,6 +632,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
         description: (item.description || "Transaksi Bank").trim(),
         amount: parseAmount(item.amount),
         type: normalizeType(item.type)! as "credit" | "debit",
+        reference: (item.reference || "").trim(),
       }));
     }
 
