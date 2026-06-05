@@ -401,8 +401,32 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       const firstPageLines = pages[0]?.split("\n") || [];
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
-      // Date pattern at START of line = transaction boundary
-      const txStartRegex = /^\d{1,2}\/\d{1,2}\/\d{4}/;
+      // CIMB transaction keywords that follow a date
+      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
+      // Regex: date followed by a known transaction keyword (at line start)
+      const txStartPattern = new RegExp(`^\\d{2}\\/\\d{2}\\/\\d{4}\\s+(?:${TX_KEYWORDS})`);
+      // Regex: date+keyword anywhere in string (for mid-line detection)
+      const txMidPattern = new RegExp(`(.+?)(\\d{2}\\/\\d{2}\\/\\d{4}\\s+(?:${TX_KEYWORDS}).*)`);
+
+      // Pre-process lines: split lines that have a transaction start mid-line
+      const preprocessLines = (lines: string[]): string[] => {
+        const result: string[] = [];
+        for (const line of lines) {
+          if (txStartPattern.test(line)) {
+            result.push(line);
+            continue;
+          }
+          // Check if there's a date+keyword pattern mid-line (from merged rows)
+          const midMatch = line.match(txMidPattern);
+          if (midMatch) {
+            if (midMatch[1].trim()) result.push(midMatch[1].trim());
+            result.push(midMatch[2].trim());
+          } else {
+            result.push(line);
+          }
+        }
+        return result;
+      };
 
       // Collect all transaction groups across all pages
       const MAX_TX_PER_BATCH = 12;
@@ -410,15 +434,17 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
 
       for (let i = 0; i < pages.length; i++) {
         const page = pages[i];
-        const pageLines = page.split("\n").filter(l => l.trim());
-        if (pageLines.length < 2) continue;
+        const rawLines = page.split("\n").filter(l => l.trim());
+        if (rawLines.length < 2) continue;
 
-        // Only collect lines that belong to actual transactions (start with date)
+        const pageLines = preprocessLines(rawLines);
+
+        // Group lines into transactions (each starts with date + keyword)
         const transactions: string[][] = [];
         let currentTx: string[] | null = null;
 
         for (const line of pageLines) {
-          if (txStartRegex.test(line)) {
+          if (txStartPattern.test(line)) {
             if (currentTx !== null) {
               transactions.push(currentTx);
             }
@@ -426,7 +452,6 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
           } else if (currentTx !== null) {
             currentTx.push(line);
           }
-          // Lines before first date on the page are skipped (headers)
         }
         if (currentTx !== null && currentTx.length > 0) {
           transactions.push(currentTx);

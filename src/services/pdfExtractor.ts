@@ -44,7 +44,7 @@ function extractLinesFromItems(items: any[]): string[] {
   for (let i = 1; i < textItems.length; i++) {
     const item = textItems[i];
     const meanY = currentRowYSum / currentRow.length;
-    if (Math.abs(item.y - meanY) <= 2) {
+    if (Math.abs(item.y - meanY) <= 1.5) {
       currentRow.push(item);
       currentRowYSum += item.y;
     } else {
