@@ -420,23 +420,10 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       // Also detect mid-line dates followed by keywords or long reference numbers
       const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}).*)`);
 
-      // Pre-process: split merged lines that have multiple transaction starts
-      const splitDatePattern = new RegExp(
-        `(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}))`, "g"
-      );
+      // Pre-process: split merged lines that have a transaction start mid-line
       const preprocessLines = (lines: string[]): string[] => {
         const result: string[] = [];
         for (const line of lines) {
-          // Check if line contains multiple valid transaction starts
-          const matches = [...line.matchAll(splitDatePattern)];
-          if (matches.length >= 2) {
-            const secondIdx = matches[1].index!;
-            const first = line.slice(0, secondIdx).trim();
-            const second = line.slice(secondIdx).trim();
-            if (first) result.push(first);
-            if (second) result.push(second);
-            continue;
-          }
           if (txStartPattern.test(line)) {
             result.push(line);
             continue;
@@ -495,12 +482,7 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       }
 
       let totalTokensUsed = 0;
-      const totalExpectedTx = batches.reduce((a, b) => a + b.txCount, 0);
-      console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${totalExpectedTx}`);
-      // Log per-page transaction counts for debugging
-      const pageCounts: Record<number, number> = {};
-      for (const b of batches) { pageCounts[b.pageNum] = (pageCounts[b.pageNum] || 0) + b.txCount; }
-      console.log(`[BankExtract] Per-page tx counts:`, pageCounts);
+      console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${batches.reduce((a, b) => a + b.txCount, 0)}`);
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
