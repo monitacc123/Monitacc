@@ -13019,6 +13019,7 @@ export default function App() {
     type: 'record' | 'sale' | 'bulk',
     bulkItems?: { id: number, type: 'record' | 'sale', saleId?: number }[]
   }>({ show: false, id: 0, type: 'record' });
+  const [bulkDeleteProgress, setBulkDeleteProgress] = useState<{ active: boolean; current: number; total: number; failed: number }>({ active: false, current: 0, total: 0, failed: 0 });
   const [selectedLedgerCategory, setSelectedLedgerCategory] = useState('SALES');
   const [selectedLedgerMonth, setSelectedLedgerMonth] = useState<number | undefined>(undefined);
   const [selectedLedgerYear, setSelectedLedgerYear] = useState<number | undefined>(undefined);
@@ -13270,21 +13271,28 @@ export default function App() {
   };
 
   const executeBulkDelete = async (items: { id: number, type: 'record' | 'sale', saleId?: number }[]) => {
-    setIsFetching(true);
+    setBulkDeleteProgress({ active: true, current: 0, total: items.length, failed: 0 });
+    let failed = 0;
     try {
-      for (const item of items) {
-        if (item.type === 'sale' && item.saleId) {
-          await apiDeleteSale(item.saleId, String(user?.id));
-        } else {
-          await apiDeleteRecord(item.id, String(user?.id));
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        try {
+          if (item.type === 'sale' && item.saleId) {
+            await apiDeleteSale(item.saleId, String(user?.id));
+          } else {
+            await apiDeleteRecord(item.id, String(user?.id));
+          }
+        } catch {
+          failed++;
         }
+        setBulkDeleteProgress({ active: true, current: i + 1, total: items.length, failed });
       }
       fetchData();
       setConfirmDelete({ show: false, id: 0, type: 'record' });
     } catch (err) {
       console.error('Error in bulk delete:', err);
     } finally {
-      setIsFetching(false);
+      setBulkDeleteProgress({ active: false, current: 0, total: 0, failed: 0 });
     }
   };
 
@@ -13565,8 +13573,8 @@ export default function App() {
           />
         )}
 
-        {confirmDelete.show && (
-          <DeleteConfirmationModal 
+        {confirmDelete.show && !bulkDeleteProgress.active && (
+          <DeleteConfirmationModal
             type={confirmDelete.type}
             count={confirmDelete.bulkItems?.length}
             onCancel={() => setConfirmDelete({ show: false, id: 0, type: 'record' })}
@@ -13580,6 +13588,40 @@ export default function App() {
               }
             }}
           />
+        )}
+
+        {bulkDeleteProgress.active && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden"
+            >
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Trash2 size={32} className="animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900 mb-2">Memadam Rekod...</h3>
+                <p className="text-slate-500 mb-4 text-sm">
+                  {bulkDeleteProgress.current} / {bulkDeleteProgress.total} rekod telah dipadam
+                  {bulkDeleteProgress.failed > 0 && (
+                    <span className="text-rose-500 block mt-1">{bulkDeleteProgress.failed} gagal</span>
+                  )}
+                </p>
+                <div className="w-full bg-slate-100 rounded-full h-3 mb-3 overflow-hidden">
+                  <motion.div
+                    className="h-full bg-gradient-to-r from-rose-500 to-rose-600 rounded-full"
+                    initial={{ width: 0 }}
+                    animate={{ width: `${(bulkDeleteProgress.current / bulkDeleteProgress.total) * 100}%` }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <p className="text-xs text-slate-400">
+                  {Math.round((bulkDeleteProgress.current / bulkDeleteProgress.total) * 100)}% selesai
+                </p>
+              </div>
+            </motion.div>
+          </div>
         )}
 
         {showCamera && (
