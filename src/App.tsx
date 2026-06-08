@@ -6208,7 +6208,7 @@ const RecordsView = ({
         </div>
       </header>
 
-      <div className="card-premium overflow-hidden bg-white">
+      <div className="card-premium bg-white">
         {/* Mobile Card View */}
         <div className="lg:hidden">
           {filtered.length > 0 && (
