@@ -579,12 +579,68 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       try {
         pdfText = await extractTextFromPdf(base64Data);
       } catch (pdfErr) {
-        console.error("PDF extraction failed:", pdfErr);
-        return null;
+        console.error("PDF extraction failed, will try image-based approach:", pdfErr);
+        pdfText = "";
       }
 
       if (!pdfText || pdfText.trim().length < 50) {
-        return null;
+        // No usable text - fall through to image-based extraction below
+        console.log("[BankExtract] PDF has no extractable text, using image-based approach");
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:application/pdf;base64,${base64Data.split(",")[1] || base64Data}`;
+
+        const genericPrompt = `Extract ALL bank transactions from this bank statement into JSON.
+
+Rules:
+- debit (money OUT) = payments, purchases, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers, sales proceeds
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if available, empty string otherwise
+- type = "credit" or "debit"
+
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
+
+        const messages = [{
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: dataWithPrefix, detail: "high" } },
+            { type: "text", text: genericPrompt },
+          ],
+        }];
+
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
+
+        if (userId && tokensUsed > 0) {
+          apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+        }
+
+        if (!text || text.trim() === "") return null;
+
+        const jsonStr = extractJson(text);
+        let parsed = JSON.parse(jsonStr);
+        if (!Array.isArray(parsed)) {
+          parsed = parsed.transactions || parsed.data || [parsed];
+        }
+
+        allTransactions = parsed.filter((item: any) => {
+          if (!item || !item.date) return false;
+          const amt = parseAmount(item.amount);
+          if (isNaN(amt)) return false;
+          const type = normalizeType(item.type);
+          if (!type) return false;
+          return true;
+        }).map((item: any) => ({
+          date: item.date,
+          description: (item.description || "Transaksi Bank").trim(),
+          amount: parseAmount(item.amount),
+          type: normalizeType(item.type)! as "credit" | "debit",
+          reference: (item.reference || "").trim(),
+        }));
+
+        return allTransactions.length > 0 ? allTransactions : null;
       }
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
@@ -681,6 +737,63 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       let totalTokensUsed = 0;
       const expectedTotalTx = batches.reduce((a, b) => a + b.txCount, 0);
       console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${expectedTotalTx}`);
+
+      // Fallback: if structured parsing found no transactions, use generic AI extraction
+      if (batches.length === 0 && pdfText.trim().length >= 50) {
+        console.log(`[BankExtract] No structured transactions found, using generic AI fallback`);
+        const genericPrompt = `Extract ALL bank transactions from this bank statement text into JSON.
+
+Rules:
+- debit (money OUT) = payments, purchases, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers, sales proceeds
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if available, empty string otherwise
+- type = "credit" or "debit"
+
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]
+
+BANK STATEMENT TEXT:
+${pdfText.slice(0, 15000)}`;
+
+        const { content: genericText, tokensUsed: genericTokens } = await withRetry(
+          () => chatCompletion([{ role: "user", content: genericPrompt }], false, ANALYSIS_MODELS, 32000), 3, 1000
+        );
+        totalTokensUsed += genericTokens;
+
+        if (genericText && genericText.trim()) {
+          const jsonStr = extractJson(genericText);
+          try {
+            let parsed = JSON.parse(jsonStr);
+            if (!Array.isArray(parsed)) {
+              parsed = parsed.transactions || parsed.data || [parsed];
+            }
+            allTransactions = parsed.filter((item: any) => {
+              if (!item || !item.date) return false;
+              const amt = parseAmount(item.amount);
+              if (isNaN(amt)) return false;
+              const type = normalizeType(item.type);
+              if (!type) return false;
+              return true;
+            }).map((item: any) => ({
+              date: item.date,
+              description: (item.description || "Transaksi Bank").trim(),
+              amount: parseAmount(item.amount),
+              type: normalizeType(item.type)! as "credit" | "debit",
+              reference: (item.reference || "").trim(),
+            }));
+            console.log(`[BankExtract] Generic fallback extracted ${allTransactions.length} transactions`);
+          } catch (e) {
+            console.error("[BankExtract] Generic fallback parse error:", e);
+          }
+        }
+
+        if (userId && totalTokensUsed > 0) {
+          apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
+        }
+        return allTransactions.length > 0 ? allTransactions : null;
+      }
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
