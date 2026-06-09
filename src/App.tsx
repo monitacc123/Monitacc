@@ -5454,12 +5454,12 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           });
           const newCount = uniqueData.length;
           if (newCount < data.length) {
-            alert(`Berjaya memuat naik ${newCount} transaksi baru. (${data.length - newCount} rekod bertindih dalam fail telah diabaikan)`);
+            setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${newCount} transaksi baru. (${data.length - newCount} rekod bertindih diabaikan)` });
           } else {
-            alert(`Berjaya memuat naik ${newCount} transaksi baru.`);
+            setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${newCount} transaksi baru.` });
           }
         } catch (err) {
-          alert('Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah');
+          setUploadStatus({ type: 'error', message: 'Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah' });
         } finally {
           setIsUploading(false);
         }
@@ -13232,7 +13232,7 @@ export default function App() {
     }
 
     if (isBulk && skippedCount > 0) {
-      alert(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`);
+      showToast(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`, 'success');
     }
 
     if (justSaved.length > 0) {
