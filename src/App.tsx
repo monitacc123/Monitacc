@@ -5431,19 +5431,32 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           // Deduplicate within the file
           const uniqueData = data.filter((item, index, self) =>
             index === self.findIndex((t) => (
-              t.date === item.date && 
-              Math.abs(t.amount - item.amount) < 0.01 && 
+              t.date === item.date &&
+              Math.abs(t.amount - item.amount) < 0.01 &&
               t.description.toLowerCase() === item.description.toLowerCase() &&
               t.type === item.type
             ))
           );
 
-          setBankTransactions(uniqueData);
-          localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
-          if (uniqueData.length < data.length) {
-            alert(`Berjaya memuat naik ${uniqueData.length} transaksi. (${data.length - uniqueData.length} rekod bertindih dalam fail telah diabaikan)`);
+          // Merge with existing transactions instead of replacing
+          setBankTransactions(prev => {
+            const combined = [...prev, ...uniqueData];
+            const merged = combined.filter((item, index, self) =>
+              index === self.findIndex((t) => (
+                t.date === item.date &&
+                Math.abs(t.amount - item.amount) < 0.01 &&
+                t.description.toLowerCase() === item.description.toLowerCase() &&
+                t.type === item.type
+              ))
+            );
+            localStorage.setItem('monitacc_bank_transactions', JSON.stringify(merged));
+            return merged;
+          });
+          const newCount = uniqueData.length;
+          if (newCount < data.length) {
+            alert(`Berjaya memuat naik ${newCount} transaksi baru. (${data.length - newCount} rekod bertindih dalam fail telah diabaikan)`);
           } else {
-            alert(`Berjaya memuat naik ${uniqueData.length} transaksi.`);
+            alert(`Berjaya memuat naik ${newCount} transaksi baru.`);
           }
         } catch (err) {
           alert('Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah');
@@ -5484,12 +5497,25 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               ))
             );
 
-            setBankTransactions(uniqueData);
-            localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
+            // Merge with existing transactions instead of replacing
+            setBankTransactions(prev => {
+              const combined = [...prev, ...uniqueData];
+              const merged = combined.filter((item, index, self) =>
+                index === self.findIndex((t) => (
+                  t.date === item.date &&
+                  Math.abs(t.amount - item.amount) < 0.01 &&
+                  t.description.toLowerCase() === item.description.toLowerCase() &&
+                  t.type === item.type &&
+                  (t.reference || '') === (item.reference || '')
+                ))
+              );
+              localStorage.setItem('monitacc_bank_transactions', JSON.stringify(merged));
+              return merged;
+            });
             const dupes = data.length - uniqueData.length;
             setUploadStatus({
               type: 'success',
-              message: `Berjaya! ${uniqueData.length} transaksi diekstrak${dupes > 0 ? ` (${dupes} rekod bertindih diabaikan)` : ''}.`
+              message: `Berjaya! ${uniqueData.length} transaksi baru diekstrak${dupes > 0 ? ` (${dupes} rekod bertindih diabaikan)` : ''}.`
             });
           } else {
             setUploadStatus({ type: 'error', message: 'AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.' });
