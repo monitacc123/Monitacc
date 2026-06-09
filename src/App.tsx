@@ -5428,22 +5428,24 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             };
           });
 
-          // Deduplicate within the file
-          const uniqueData = data.filter((item, index, self) =>
+          // Merge with existing transactions and deduplicate
+          const existing = bankTransactions;
+          const merged = [...existing, ...data];
+          const uniqueData = merged.filter((item, index, self) =>
             index === self.findIndex((t) => (
-              t.date === item.date && 
-              Math.abs(t.amount - item.amount) < 0.01 && 
+              t.date === item.date &&
+              Math.abs(t.amount - item.amount) < 0.01 &&
               t.description.toLowerCase() === item.description.toLowerCase() &&
               t.type === item.type
             ))
           );
 
+          const newCount = uniqueData.length - existing.length;
           setBankTransactions(uniqueData);
-          localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
-          if (uniqueData.length < data.length) {
-            alert(`Berjaya memuat naik ${uniqueData.length} transaksi. (${data.length - uniqueData.length} rekod bertindih dalam fail telah diabaikan)`);
+          if (newCount < data.length) {
+            alert(`Berjaya memuat naik ${newCount} transaksi baru. (${data.length - newCount} rekod bertindih telah diabaikan)`);
           } else {
-            alert(`Berjaya memuat naik ${uniqueData.length} transaksi.`);
+            alert(`Berjaya memuat naik ${newCount} transaksi baru.`);
           }
         } catch (err) {
           alert('Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah');
@@ -5474,22 +5476,24 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               remark: item.remark || ''
             }));
 
-            const uniqueData = data.filter((item, index, self) =>
+            // Merge with existing transactions and deduplicate
+            const existing = bankTransactions;
+            const merged = [...existing, ...data];
+            const uniqueData = merged.filter((item, index, self) =>
               index === self.findIndex((t) => (
                 t.date === item.date &&
                 Math.abs(t.amount - item.amount) < 0.01 &&
                 t.description.toLowerCase() === item.description.toLowerCase() &&
                 t.type === item.type &&
-                t.reference === item.reference
+                (t.reference || '') === (item.reference || '')
               ))
             );
 
+            const newCount = uniqueData.length - existing.length;
             setBankTransactions(uniqueData);
-            localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
-            const dupes = data.length - uniqueData.length;
             setUploadStatus({
               type: 'success',
-              message: `Berjaya! ${uniqueData.length} transaksi diekstrak${dupes > 0 ? ` (${dupes} rekod bertindih diabaikan)` : ''}.`
+              message: `Berjaya! ${newCount} transaksi baru ditambah${data.length - newCount > 0 ? ` (${data.length - newCount} rekod bertindih diabaikan)` : ''}.`
             });
           } else {
             setUploadStatus({ type: 'error', message: 'AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.' });
@@ -5639,7 +5643,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           )}
           <label className={`btn-primary flex items-center gap-2 cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {isUploading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
-            {bankTransactions.length > 0 ? 'Muat Semula Penyata' : 'Muat Naik Penyata Bank'}
+            {bankTransactions.length > 0 ? 'Tambah Penyata Lain' : 'Muat Naik Penyata Bank'}
             <input type="file" accept=".csv,.pdf" className="hidden" onChange={handleFileUpload} />
           </label>
         </div>
