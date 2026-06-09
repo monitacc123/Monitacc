@@ -19,6 +19,17 @@
   }
 }
 
+@keyframes toastSlideDown {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
 body {
   @apply bg-[#F1F5F9] text-[#1E293B] font-sans antialiased;
   overflow-x: hidden;
