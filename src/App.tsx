@@ -5270,13 +5270,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const [uploadStatus, setUploadStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
-    if (uploadStatus && uploadStatus.type !== 'info') {
-      const timer = setTimeout(() => setUploadStatus(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [uploadStatus]);
-
-  useEffect(() => {
     localStorage.setItem('monitacc_bank_transactions', JSON.stringify(bankTransactions));
   }, [bankTransactions]);
 
@@ -5314,7 +5307,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const handleQuickAdd = (bt: any) => {
     const match = matches.get(bt.id);
     if (match && match.alreadyReconciled) {
-      setUploadStatus({ type: 'error', message: 'Transaksi ini sudah ada dalam rekod perakaunan anda.' });
+      alert('Transaksi ini sudah ada dalam rekod perakaunan anda.');
       return;
     }
 
@@ -5334,7 +5327,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
     };
     
     onBulkAdd([newRecord]);
-    setUploadStatus({ type: 'success', message: `Rekod berjaya ditambah secara pantas dengan kategori: ${guessedCat}` });
+    alert(`Rekod berjaya ditambah secara pantas dengan kategori: ${guessedCat}`);
   };
 
   const handleBulkAdd = async () => {
@@ -5360,10 +5353,10 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
         });
         
         await onBulkAdd(recordsToSave);
-        setUploadStatus({ type: 'success', message: `Berjaya! ${unmatched.length} rekod baru telah dijana secara automatik.` });
+        alert(`Berjaya! ${unmatched.length} rekod baru telah dijana secara automatik. Sila sahkan padanan di bawah.`);
       } catch (error) {
         console.error("Error bulk adding records:", error);
-        setUploadStatus({ type: 'error', message: 'Gagal menjana rekod. Sila cuba lagi.' });
+        alert("Gagal menjana rekod. Sila cuba lagi.");
       } finally {
         setIsBulkAdding(false);
       }
@@ -5435,27 +5428,25 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             };
           });
 
-          // Merge with existing transactions and deduplicate
-          const existing = bankTransactions;
-          const merged = [...existing, ...data];
-          const uniqueData = merged.filter((item, index, self) =>
+          // Deduplicate within the file
+          const uniqueData = data.filter((item, index, self) =>
             index === self.findIndex((t) => (
-              t.date === item.date &&
-              Math.abs(t.amount - item.amount) < 0.01 &&
+              t.date === item.date && 
+              Math.abs(t.amount - item.amount) < 0.01 && 
               t.description.toLowerCase() === item.description.toLowerCase() &&
               t.type === item.type
             ))
           );
 
-          const newCount = uniqueData.length - existing.length;
           setBankTransactions(uniqueData);
-          if (newCount < data.length) {
-            setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${newCount} transaksi baru. (${data.length - newCount} rekod bertindih telah diabaikan)` });
+          localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
+          if (uniqueData.length < data.length) {
+            alert(`Berjaya memuat naik ${uniqueData.length} transaksi. (${data.length - uniqueData.length} rekod bertindih dalam fail telah diabaikan)`);
           } else {
-            setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${newCount} transaksi baru.` });
+            alert(`Berjaya memuat naik ${uniqueData.length} transaksi.`);
           }
         } catch (err) {
-          setUploadStatus({ type: 'error', message: 'Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah' });
+          alert('Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah');
         } finally {
           setIsUploading(false);
         }
@@ -5483,24 +5474,22 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               remark: item.remark || ''
             }));
 
-            // Merge with existing transactions and deduplicate
-            const existing = bankTransactions;
-            const merged = [...existing, ...data];
-            const uniqueData = merged.filter((item, index, self) =>
+            const uniqueData = data.filter((item, index, self) =>
               index === self.findIndex((t) => (
                 t.date === item.date &&
                 Math.abs(t.amount - item.amount) < 0.01 &&
                 t.description.toLowerCase() === item.description.toLowerCase() &&
                 t.type === item.type &&
-                (t.reference || '') === (item.reference || '')
+                t.reference === item.reference
               ))
             );
 
-            const newCount = uniqueData.length - existing.length;
             setBankTransactions(uniqueData);
+            localStorage.setItem('monitacc_bank_transactions', JSON.stringify(uniqueData));
+            const dupes = data.length - uniqueData.length;
             setUploadStatus({
               type: 'success',
-              message: `Berjaya! ${newCount} transaksi baru ditambah${data.length - newCount > 0 ? ` (${data.length - newCount} rekod bertindih diabaikan)` : ''}.`
+              message: `Berjaya! ${uniqueData.length} transaksi diekstrak${dupes > 0 ? ` (${dupes} rekod bertindih diabaikan)` : ''}.`
             });
           } else {
             setUploadStatus({ type: 'error', message: 'AI tidak dapat mengekstrak transaksi. Sila pastikan dokumen jelas atau gunakan format CSV.' });
@@ -5650,41 +5639,29 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           )}
           <label className={`btn-primary flex items-center gap-2 cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {isUploading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
-            {bankTransactions.length > 0 ? 'Tambah Penyata Lain' : 'Muat Naik Penyata Bank'}
+            {bankTransactions.length > 0 ? 'Muat Semula Penyata' : 'Muat Naik Penyata Bank'}
             <input type="file" accept=".csv,.pdf" className="hidden" onChange={handleFileUpload} />
           </label>
         </div>
       </header>
 
       {uploadStatus && (
-        <div className="fixed top-5 left-1/2 z-[9999]" style={{ animation: 'toastSlideDown 0.3s ease-out forwards' }}>
-          <div className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border backdrop-blur-md ${
-            uploadStatus.type === 'success' ? 'bg-emerald-50/95 border-emerald-200 shadow-emerald-100/50' :
-            uploadStatus.type === 'error' ? 'bg-rose-50/95 border-rose-200 shadow-rose-100/50' :
-            'bg-blue-50/95 border-blue-200 shadow-blue-100/50'
-          }`}>
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-              uploadStatus.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
-              uploadStatus.type === 'error' ? 'bg-rose-100 text-rose-600' :
-              'bg-blue-100 text-blue-600'
-            }`}>
-              {uploadStatus.type === 'info' && <Loader2 size={18} className="animate-spin" />}
-              {uploadStatus.type === 'success' && <CheckCircle2 size={18} strokeWidth={2.5} />}
-              {uploadStatus.type === 'error' && <AlertCircle size={18} strokeWidth={2.5} />}
-            </div>
-            <p className={`text-sm font-bold ${
-              uploadStatus.type === 'success' ? 'text-emerald-800' :
-              uploadStatus.type === 'error' ? 'text-rose-800' :
-              'text-blue-800'
-            }`}>
-              {uploadStatus.message}
-            </p>
-            {uploadStatus.type !== 'info' && (
-              <button onClick={() => setUploadStatus(null)} className="shrink-0 ml-2 opacity-50 hover:opacity-100">
-                <X size={14} />
-              </button>
-            )}
+        <div className={`mb-6 flex items-start gap-3 p-4 rounded-2xl border text-sm font-medium ${
+          uploadStatus.type === 'success' ? 'bg-emerald-50 border-emerald-100 text-emerald-800' :
+          uploadStatus.type === 'error' ? 'bg-rose-50 border-rose-100 text-rose-800' :
+          'bg-blue-50 border-blue-100 text-blue-800'
+        }`}>
+          <div className="shrink-0 mt-0.5">
+            {uploadStatus.type === 'info' && <Loader2 size={16} className="animate-spin" />}
+            {uploadStatus.type === 'success' && <Check size={16} />}
+            {uploadStatus.type === 'error' && <AlertCircle size={16} />}
           </div>
+          <span className="flex-1">{uploadStatus.message}</span>
+          {uploadStatus.type !== 'info' && (
+            <button onClick={() => setUploadStatus(null)} className="shrink-0 opacity-50 hover:opacity-100">
+              <X size={14} />
+            </button>
+          )}
         </div>
       )}
 
@@ -13229,7 +13206,7 @@ export default function App() {
     }
 
     if (isBulk && skippedCount > 0) {
-      showToast(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`);
+      alert(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`);
     }
 
     if (justSaved.length > 0) {
