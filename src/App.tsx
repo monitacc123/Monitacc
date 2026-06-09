@@ -13026,6 +13026,12 @@ export default function App() {
   const [showProfileEdit, setShowProfileEdit] = useState(false);
   const [showBusinessSettings, setShowBusinessSettings] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
+  };
 
   useEffect(() => {
     if (user) {
@@ -13189,6 +13195,10 @@ export default function App() {
       alert(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`);
     }
 
+    if (justSaved.length > 0) {
+      showToast(justSaved.length > 1 ? `${justSaved.length} rekod berjaya disimpan!` : 'Rekod berjaya disimpan!');
+    }
+
     setView('dashboard');
     setPendingImage(null);
     setDuplicateWarning({ show: false, data: null, existing: null });
@@ -13212,9 +13222,11 @@ export default function App() {
   const handleUpdateRecord = async (id: number, data: any) => {
     try {
       await apiUpdateRecord(id, String(user?.id), data);
+      showToast('Rekod berjaya dikemas kini!');
       fetchData();
     } catch (err) {
       console.error('Error updating record:', err);
+      showToast('Gagal mengemas kini rekod.', 'error');
     }
   };
 
@@ -13246,9 +13258,11 @@ export default function App() {
         ...data,
         category: (data.category || 'SALES').trim().toUpperCase(),
       });
+      showToast('Rekod jualan berjaya disimpan!');
       fetchData();
     } catch (err) {
       console.error('Error saving sale:', err);
+      showToast('Gagal menyimpan rekod jualan.', 'error');
     }
   };
 
@@ -13623,6 +13637,33 @@ export default function App() {
             </motion.div>
           </div>
         )}
+
+        <AnimatePresence>
+          {toast.show && (
+            <motion.div
+              initial={{ opacity: 0, y: -20, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -20, scale: 0.95 }}
+              transition={{ duration: 0.25 }}
+              className="fixed top-5 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none"
+            >
+              <div className={`flex items-center gap-3 px-5 py-3.5 rounded-2xl shadow-2xl border backdrop-blur-md pointer-events-auto ${
+                toast.type === 'success'
+                  ? 'bg-emerald-50/95 border-emerald-200 shadow-emerald-100/50'
+                  : 'bg-rose-50/95 border-rose-200 shadow-rose-100/50'
+              }`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                  toast.type === 'success' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'
+                }`}>
+                  {toast.type === 'success' ? <CheckCircle2 size={18} strokeWidth={2.5} /> : <AlertCircle size={18} strokeWidth={2.5} />}
+                </div>
+                <p className={`text-sm font-bold ${toast.type === 'success' ? 'text-emerald-800' : 'text-rose-800'}`}>
+                  {toast.message}
+                </p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {showCamera && (
           <CameraView 
