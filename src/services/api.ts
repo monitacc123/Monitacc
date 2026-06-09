@@ -76,24 +76,44 @@ export async function apiAdminLogin(email: string, password: string): Promise<Us
 }
 
 export async function apiFetchDashboard(userId: string, role: string) {
-  const [recordsRes, salesRes] = await Promise.all([
-    supabase.from('records')
-      .select('id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, origin, sale_id, has_image')
-      .eq('user_id', userId)
-      .order('date', { ascending: false }),
+  // Supabase returns max 1000 rows per query by default.
+  // Use pagination to fetch all records for users with large datasets.
+  async function fetchAllRows(table: string, columns: string, userId: string) {
+    const PAGE_SIZE = 1000;
+    let allData: any[] = [];
+    let from = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(columns)
+        .eq('user_id', userId)
+        .order('date', { ascending: false })
+        .range(from, from + PAGE_SIZE - 1);
+
+      if (error) throw new Error(error.message);
+      const rows = data || [];
+      allData = allData.concat(rows);
+      hasMore = rows.length === PAGE_SIZE;
+      from += PAGE_SIZE;
+    }
+
+    return allData;
+  }
+
+  const recordColumns = 'id, user_id, date, type, category, amount, description, remark, doc_type, doc_number, payment_method, reconciled, created_at, origin, sale_id, has_image';
+  const salesColumns = 'id, user_id, date, product_name, category, quantity, price, total, payment_method, doc_number, customer_name, reconciled, created_at';
+
+  const [recordsData, salesData] = await Promise.all([
+    fetchAllRows('records', recordColumns, userId),
     role === 'upload_only'
-      ? Promise.resolve({ data: [], error: null })
-      : supabase.from('sales')
-          .select('id, user_id, date, product_name, category, quantity, price, total, payment_method, doc_number, customer_name, reconciled, created_at')
-          .eq('user_id', userId)
-          .order('date', { ascending: false }),
+      ? Promise.resolve([])
+      : fetchAllRows('sales', salesColumns, userId),
   ]);
 
-  if (recordsRes.error) throw new Error(recordsRes.error.message);
-  if (salesRes.error) throw new Error(salesRes.error.message);
-
-  const records = (recordsRes.data || []).map(r => ({ ...mapRecord(r), image_url: r.has_image ? '__has_image__' : '' }));
-  const sales = (salesRes.data || []).map(mapSale);
+  const records = recordsData.map(r => ({ ...mapRecord(r), image_url: r.has_image ? '__has_image__' : '' }));
+  const sales = salesData.map(mapSale);
 
   const apiAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
   const total_income = records.filter(r => r.type === 'income' && !apiAssetLiabSet.has((r.category || '').trim().toUpperCase())).reduce((s, r) => s + Number(r.amount), 0);
