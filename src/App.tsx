@@ -13027,6 +13027,7 @@ export default function App() {
   const [showBusinessSettings, setShowBusinessSettings] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
   const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
+  const [fabUsage, setFabUsage] = useState<{ receipt: number; pdf: number }>({ receipt: 0, pdf: 0 });
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ show: true, message, type });
@@ -13036,6 +13037,7 @@ export default function App() {
   useEffect(() => {
     if (user) {
       fetchData();
+      apiGetScanUsageThisMonth(user.id).then(setFabUsage).catch(() => {});
     }
     if (view !== 'sales') {
       setTriggerAddSale(0);
@@ -13733,54 +13735,79 @@ export default function App() {
                   transition={{ duration: 0.15 }}
                   className="flex flex-col items-end gap-2 mb-1"
                 >
-                  {[
-                    {
-                      label: 'Duit Masuk',
-                      icon: TrendingUp,
-                      iconBg: 'bg-emerald-500',
-                      onClick: () => { setShowManualEntry({ show: true, type: 'income' }); setIsFabOpen(false); },
-                    },
-                    {
-                      label: 'Duit Keluar',
-                      icon: TrendingDown,
-                      iconBg: 'bg-rose-500',
-                      onClick: () => { setShowManualEntry({ show: true, type: 'expense' }); setIsFabOpen(false); },
-                    },
-                    {
-                      label: 'Imbas Resit',
-                      icon: Camera,
-                      iconBg: 'bg-slate-700',
-                      onClick: () => { setShowCamera(true); setIsFabOpen(false); },
-                    },
-                  ].map((action, i) => (
-                    <motion.button
-                      key={action.label}
-                      initial={{ opacity: 0, x: 10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: 10 }}
-                      transition={{ delay: i * 0.04 }}
-                      onClick={action.onClick}
-                      className="flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-3 rounded-2xl shadow-xl border border-slate-100/80 active:scale-95 transition-transform"
-                    >
-                      <span className="text-xs font-semibold text-slate-700">{action.label}</span>
-                      <div className={`w-9 h-9 ${action.iconBg} text-white rounded-xl flex items-center justify-center shadow-sm`}>
-                        <action.icon size={18} strokeWidth={2.5} />
-                      </div>
-                    </motion.button>
-                  ))}
-                  <motion.label
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={{ opacity: 0, x: 10 }}
-                    transition={{ delay: 0.12 }}
-                    className="flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-3 rounded-2xl shadow-xl border border-slate-100/80 active:scale-95 transition-transform cursor-pointer"
-                  >
-                    <span className="text-xs font-semibold text-slate-700">Muat Naik</span>
-                    <div className="w-9 h-9 bg-sky-500 text-white rounded-xl flex items-center justify-center shadow-sm">
-                      <FileText size={18} strokeWidth={2.5} />
-                    </div>
-                    <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileSelect} />
-                  </motion.label>
+                  {(() => {
+                    const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
+                    const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
+                    const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
+                    const receiptRemaining = Math.max(0, receiptLimit - fabUsage.receipt);
+                    const pdfRemaining = Math.max(0, pdfLimit - fabUsage.pdf);
+
+                    const actions = [
+                      {
+                        label: 'Duit Masuk',
+                        sub: 'Rekod Manual (Unlimited)',
+                        icon: TrendingUp,
+                        iconBg: 'bg-emerald-500',
+                        onClick: () => { setShowManualEntry({ show: true, type: 'income' }); setIsFabOpen(false); },
+                      },
+                      {
+                        label: 'Duit Keluar',
+                        sub: 'Rekod Manual (Unlimited)',
+                        icon: TrendingDown,
+                        iconBg: 'bg-rose-500',
+                        onClick: () => { setShowManualEntry({ show: true, type: 'expense' }); setIsFabOpen(false); },
+                      },
+                      {
+                        label: 'Imbas Resit',
+                        sub: isFinite(receiptLimit) ? `Baki: ${receiptRemaining}/${receiptLimit} bulan ini` : 'Unlimited',
+                        icon: Camera,
+                        iconBg: 'bg-slate-700',
+                        onClick: () => { setShowCamera(true); setIsFabOpen(false); },
+                      },
+                    ];
+
+                    return (
+                      <>
+                        {actions.map((action, i) => (
+                          <motion.button
+                            key={action.label}
+                            initial={{ opacity: 0, x: 10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: 10 }}
+                            transition={{ delay: i * 0.04 }}
+                            onClick={action.onClick}
+                            className="flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-2.5 rounded-2xl shadow-xl border border-slate-100/80 active:scale-95 transition-transform"
+                          >
+                            <div className="text-right">
+                              <span className="text-xs font-semibold text-slate-700 block">{action.label}</span>
+                              <span className="text-[9px] text-slate-400 font-medium">{action.sub}</span>
+                            </div>
+                            <div className={`w-9 h-9 ${action.iconBg} text-white rounded-xl flex items-center justify-center shadow-sm`}>
+                              <action.icon size={18} strokeWidth={2.5} />
+                            </div>
+                          </motion.button>
+                        ))}
+                        <motion.label
+                          initial={{ opacity: 0, x: 10 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: 10 }}
+                          transition={{ delay: 0.12 }}
+                          className="flex items-center gap-3 bg-white/95 backdrop-blur-sm px-4 py-2.5 rounded-2xl shadow-xl border border-slate-100/80 active:scale-95 transition-transform cursor-pointer"
+                        >
+                          <div className="text-right">
+                            <span className="text-xs font-semibold text-slate-700 block">Muat Naik</span>
+                            <span className="text-[9px] text-slate-400 font-medium">
+                              {isFinite(pdfLimit) ? `PDF: ${pdfRemaining}/${pdfLimit}` : 'Unlimited'} | Resit: {isFinite(receiptLimit) ? `${receiptRemaining}/${receiptLimit}` : 'Unlimited'}
+                            </span>
+                          </div>
+                          <div className="w-9 h-9 bg-sky-500 text-white rounded-xl flex items-center justify-center shadow-sm">
+                            <FileText size={18} strokeWidth={2.5} />
+                          </div>
+                          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={handleFileSelect} />
+                        </motion.label>
+                      </>
+                    );
+                  })()}
                 </motion.div>
               </>
             )}
