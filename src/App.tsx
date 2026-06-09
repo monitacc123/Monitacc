@@ -675,7 +675,19 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
               <User size={16} strokeWidth={2} className={activeView === 'profile' ? 'text-white' : 'text-slate-600'} />
             </div>
             <div className="text-left flex-1 min-w-0">
-              <p className={`text-[11px] font-bold truncate leading-tight ${activeView === 'profile' ? 'text-white' : 'text-slate-800'}`}>{user.name || 'Pengguna'}</p>
+              <div className="flex items-center gap-1.5">
+                <p className={`text-[11px] font-bold truncate leading-tight ${activeView === 'profile' ? 'text-white' : 'text-slate-800'}`}>{user.name || 'Pengguna'}</p>
+                <span className={`shrink-0 text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full leading-none ${
+                  activeView === 'profile'
+                    ? 'bg-white/20 text-white'
+                    : effectivePlan === 'Ultimate' ? 'bg-amber-100 text-amber-700'
+                    : effectivePlan === 'Growth' ? 'bg-blue-100 text-blue-700'
+                    : effectivePlan === 'Starter' ? 'bg-emerald-100 text-emerald-700'
+                    : 'bg-slate-100 text-slate-500'
+                }`}>
+                  {user.plan === 'Special' ? `Special · ${user.special_tier || 'Starter'}` : (effectivePlan === 'free' || effectivePlan === 'Percuma') ? 'Percuma' : effectivePlan}
+                </span>
+              </div>
               <p className={`text-[10px] truncate leading-tight mt-0.5 ${activeView === 'profile' ? 'text-white/70' : 'text-slate-400'}`}>{user.email}</p>
             </div>
             <ChevronRight size={13} className={`shrink-0 transition-transform group-hover:translate-x-0.5 ${activeView === 'profile' ? 'text-white/60' : 'text-slate-300'}`} />
