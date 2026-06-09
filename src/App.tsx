@@ -2096,20 +2096,9 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
             >
               Selamat Kembali, {(user?.name?.split(' ')[0] || 'Ali')}
             </motion.h2>
-            <div className="flex items-center gap-2 mt-1">
-              <p className="text-sm text-slate-500 font-medium tracking-tight">
-                Berikut adalah ringkasan prestasi perniagaan anda.
-              </p>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border ${
-                (user?.plan === 'Ultimate' || user?.plan === 'Special') ? 'bg-amber-50 text-amber-700 border-amber-200' :
-                user?.plan === 'Growth' ? 'bg-sky-50 text-sky-700 border-sky-200' :
-                user?.plan === 'Starter' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
-                'bg-slate-50 text-slate-500 border-slate-200'
-              }`}>
-                <Crown size={10} />
-                {user?.plan === 'Special' ? (user?.special_tier || 'Special') : (user?.plan || 'Percuma')}
-              </span>
-            </div>
+            <p className="text-sm text-slate-500 font-medium tracking-tight">
+              Berikut adalah ringkasan prestasi perniagaan anda.
+            </p>
           </div>
           <div className="flex gap-2 items-center">
             <button
