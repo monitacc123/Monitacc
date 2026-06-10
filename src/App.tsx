@@ -13176,29 +13176,16 @@ export default function App() {
           if (recordData.docNumber && !isBankRecord && recordData.docNumber.trim() !== '') {
             return r.docNumber?.toLowerCase() === recordData.docNumber.toLowerCase();
           }
-          
+
           // Basic match: Date, Amount, and Type
-          const isBasicMatch = r.date === recordData.date && 
-                               Math.abs(r.amount - recordData.amount) < 0.01 && 
+          const isBasicMatch = r.date === recordData.date &&
+                               Math.abs(r.amount - recordData.amount) < 0.01 &&
                                r.type === recordData.type;
-          
+
           if (!isBasicMatch) return false;
 
-          // If description is identical, it's a duplicate
-          if (r.description.toLowerCase().trim() === recordData.description.toLowerCase().trim()) {
-            return true;
-          }
-
-          // If descriptions are different, we only consider it a duplicate if the category matches 
-          // AND it's NOT a bank-related transaction. 
-          // Bank transactions with different descriptions are almost always unique.
-          if (isBankRelated) {
-            // For bank transactions, if descriptions are different, it's NOT a duplicate
-            return false;
-          }
-          
-          // For non-bank records, we still block if category is the same to prevent accidental double entry
-          return r.category.toUpperCase().trim() === recordData.category.toUpperCase().trim();
+          // Only consider it a duplicate if description is also identical
+          return r.description.toLowerCase().trim() === recordData.description.toLowerCase().trim();
         };
 
         const existing = records.find(checkDuplicate);
