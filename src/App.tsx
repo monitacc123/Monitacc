@@ -13167,42 +13167,36 @@ export default function App() {
       // Check for duplicates against existing records AND records just saved in this batch
       if (!force) {
         const isBankRecord = recordData.docNumber?.startsWith('BANK-');
-        const isBankRelated = isBankRecord || 
-                             recordData.payment_method === 'bank' || 
+        const isBankRelated = isBankRecord ||
                              recordData.docType?.toLowerCase().includes('bank');
-        
-        const checkDuplicate = (r: any) => {
-          // If it has a real docNumber (not BANK-), check that
-          if (recordData.docNumber && !isBankRecord && recordData.docNumber.trim() !== '') {
-            return r.docNumber?.toLowerCase() === recordData.docNumber.toLowerCase();
-          }
 
-          // Basic match: Date, Amount, and Type
-          const isBasicMatch = r.date === recordData.date &&
-                               Math.abs(r.amount - recordData.amount) < 0.01 &&
-                               r.type === recordData.type;
+        // Bank records from statement uploads are already deduplicated at the upload stage.
+        // They use unique BANK-{id} doc numbers, so skip duplicate detection entirely.
+        if (!isBankRelated) {
+          const checkDuplicate = (r: any) => {
+            // If it has a real docNumber, check that
+            if (recordData.docNumber && recordData.docNumber.trim() !== '') {
+              return r.docNumber?.toLowerCase() === recordData.docNumber.toLowerCase();
+            }
 
-          if (!isBasicMatch) return false;
+            // Basic match: Date, Amount, Type, and Description must all match
+            return r.date === recordData.date &&
+                   Math.abs(r.amount - recordData.amount) < 0.01 &&
+                   r.type === recordData.type &&
+                   r.description.toLowerCase().trim() === recordData.description.toLowerCase().trim();
+          };
 
-          // Only consider it a duplicate if description is also identical
-          return r.description.toLowerCase().trim() === recordData.description.toLowerCase().trim();
-        };
+          const existing = records.find(checkDuplicate);
+          const duplicateInBatch = justSaved.find(checkDuplicate);
 
-        const existing = records.find(checkDuplicate);
-        
-        // Only check justSaved if it's NOT a bank-related record, 
-        // because bank statements can have legitimate identical transactions
-        const duplicateInBatch = !isBankRelated && justSaved.find(checkDuplicate);
-
-        if (existing || duplicateInBatch) {
-          if (isBulk) {
-            // For bulk adds, we skip duplicates automatically to avoid modal spam
-            skippedCount++;
-            continue;
-          } else {
-            // For single adds, we show the warning
-            setDuplicateWarning({ show: true, data: recordData, existing });
-            return;
+          if (existing || duplicateInBatch) {
+            if (isBulk) {
+              skippedCount++;
+              continue;
+            } else {
+              setDuplicateWarning({ show: true, data: recordData, existing });
+              return;
+            }
           }
         }
       }
