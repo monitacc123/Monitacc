@@ -554,20 +554,21 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
       return Math.abs(Number(cleaned));
     };
 
-    const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this CIMB bank statement section into JSON.
+    const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this bank statement section into JSON.
 
 There are EXACTLY ${txCount} transactions below, each marked with [TX n]. Return EXACTLY ${txCount} items — one per [TX] marker.
 
 Rules:
 - Each [TX] block represents ONE transaction. The amount appears at the end of the first line or in subsequent lines as a number with optional comma separators (e.g. "1,810.00" or "100.00").
-- debit (money OUT) = Withdrawal column: DUITNOW TO ACCOUNT/MOBILE/ID with withdrawal amount, MYDEBIT PURCHASE, POS DEBIT, JOMPAY, and any transaction where money leaves the account
-- credit (money IN) = Deposits column: AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, and DUITNOW TO ACCOUNT with deposit amount (incoming transfers from other people/merchants)
-- IMPORTANT: Most DUITNOW TO ACCOUNT entries in this statement are DEPOSITS (money IN/credit) unless they have a withdrawal amount. Look at the Balance column — if balance increases, it's credit; if it decreases, it's debit.
+- debit (money OUT) = Withdrawal column: DUITNOW TO ACCOUNT/MOBILE/ID with withdrawal amount, MYDEBIT PURCHASE, POS DEBIT, JOMPAY, IBK PAYMENT, INSTANT TRANSFER, and any transaction where money leaves the account
+- credit (money IN) = Deposits column: AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, INSTANT TRANSFER (incoming), and DUITNOW TO ACCOUNT with deposit amount (incoming transfers from other people/merchants)
+- IMPORTANT: Look at the Balance column — if balance increases after the transaction, it's credit; if it decreases, it's debit.
 - amount = positive number, no comma separators
-- date = YYYY-MM-DD (year 2025)
-- description = transaction description text (the main description line, e.g. "DUITNOW TO ACCOUNT Yuran Tusyen SYAMSINAR BINTI MBB")
+- date = YYYY-MM-DD (year from the statement)
+- description = transaction description text (the main description line)
 - reference = the reference/cheque number shown (e.g. "202501010265576915", "157410042", "1248401903")
 - CRITICAL: Two transactions with the SAME amount and description but DIFFERENT reference numbers are SEPARATE entries. Never merge them.
+- CRITICAL: Two transactions on the SAME date with the SAME amount are SEPARATE entries if they appear as separate [TX] blocks. Never merge them.
 - Every [TX] block is a separate transaction — return one JSON item for each
 ${partInfo || ""}
 Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
@@ -656,10 +657,10 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
       //   - "05/01/2025 5542" inside POS DEBIT (date + 4-digit card number)
       //   - "PSS PANDAN J MELAKA" continuation lines
       //   - "OPENING BALANCE", "CLOSING BALANCE" lines
-      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
+      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION";
       const txStartPattern = new RegExp(
         `^\\d{1,2}\\/\\d{1,2}\\/\\d{4}` +
-        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s*$)`
+        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+[A-Z]|\\s*$)`
       );
 
       // Also detect mid-line dates followed by keywords or long reference numbers
@@ -877,18 +878,18 @@ ${pdfText.slice(0, 15000)}`;
         }
       }
 
-      // Deduplicate only true duplicates (same date + reference + amount + type).
-      // Some transactions share a reference number (e.g. AUTOPAY CR uses the same
-      // merchant ref 1248401903 for every payment) but differ in date or amount.
-      // For transactions without a reference, use date + description + amount + type.
+      // Deduplicate only true duplicates from overlapping batches.
+      // Only dedupe when both transactions share the same non-empty reference number,
+      // since the batching system can cause the same transaction to appear in adjacent batches.
+      // Transactions without reference numbers are always kept (they are unique by [TX] marker).
       const seen = new Set<string>();
       const deduped: BankTransaction[] = [];
       for (const tx of allTransactions) {
-        const key = tx.reference
-          ? `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`
-          : `${tx.date}|${tx.description}|${tx.amount}|${tx.type}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
+        if (tx.reference) {
+          const key = `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
         deduped.push(tx);
       }
       const beforeDedup = allTransactions.length;
