@@ -455,21 +455,28 @@ function localParseFallback(pdfText: string, existing: BankTransaction[]): BankT
     existing.map(t => `${t.date}|${t.amount}|${t.type}|${t.reference || ""}`)
   );
 
-  // Pattern: date line followed by content, then amounts and balance
-  const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION";
   const lines = pdfText.split("\n");
 
-  const datePattern = new RegExp(`^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})\\s+\\S`);
+  // Extract statement year
+  let fallbackYear = new Date().getFullYear().toString();
+  const yrMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*\d{1,2}\/\d{1,2}\/(\d{2,4})/i);
+  if (yrMatch) {
+    fallbackYear = yrMatch[1].length === 2 ? `20${yrMatch[1]}` : yrMatch[1];
+  }
+
+  // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
+  const datePattern = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+\S/;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    if (/OPENING BALANCE|CLOSING BALANCE|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE/i.test(line)) continue;
+    if (/OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT/i.test(line)) continue;
     const dateMatch = line.match(datePattern);
     if (!dateMatch) continue;
 
     const day = dateMatch[1].padStart(2, "0");
     const month = dateMatch[2].padStart(2, "0");
-    const year = dateMatch[3];
+    const rawYear = dateMatch[3];
+    const year = rawYear ? (rawYear.length === 2 ? `20${rawYear}` : rawYear) : fallbackYear;
     const date = `${year}-${month}-${day}`;
 
     // Collect the transaction block (up to 8 lines after the date line)
@@ -493,29 +500,29 @@ function localParseFallback(pdfText: string, existing: BankTransaction[]): BankT
     const amount = parseFloat(amountStr.replace(/,/g, ""));
     if (isNaN(amount) || amount === 0) continue;
 
-    // Determine type from keywords
-    const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER.*(?:TO|OUT)/i.test(blockText);
-    const isExplicitCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA|INSTANT TRANSFER.*(?:FROM|IN)|SALARY|GIRO CR/i.test(blockText);
-
-    let type: "credit" | "debit" = isDebit ? "debit" : (isExplicitCredit ? "credit" : "credit");
-
-    // If it's a DUITNOW TO ACCOUNT with withdrawal-related desc
-    if (/DUITNOW TO ACCOUNT/i.test(blockText)) {
-      // Check if it's outgoing (payment, restok, komisen, salery, sewa)
-      if (/Restok|Komisen|Saler|Sewa|Payment|Print|Refund|Insurance|Bill|Advance/i.test(blockText)) {
-        type = "debit";
-      }
+    // Determine type: Maybank uses amount suffixes (- for debit, + for credit)
+    // and keywords TRANSFER FR A/C (debit) vs TRANSFER TO A/C (credit)
+    let type: "credit" | "debit" = "debit";
+    if (/\d+\.\d{2}\+/.test(blockText) || /TRANSFER TO A\/C|INTER-BANK PAYMENT INTO/i.test(blockText)) {
+      type = "credit";
+    } else if (/\d+\.\d{2}-/.test(blockText) || /TRANSFER FR A\/C|PAYMENT FR A\/C/i.test(blockText)) {
+      type = "debit";
+    } else {
+      const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY|IBK PAYMENT/i.test(blockText);
+      const isCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA/i.test(blockText);
+      type = isDebit ? "debit" : (isCredit ? "credit" : "debit");
     }
 
     // Extract reference
-    const refMatch = blockText.match(/(\d{9,})/);
-    const reference = refMatch ? refMatch[1] : "";
+    const refMatch = blockText.match(/(?:IN\d{5,}|In\d{5,}|\d{9,}|[A-Z]{2,}\d{5,})/);
+    const reference = refMatch ? refMatch[0] : "";
 
     const key = `${date}|${amount}|${type}|${reference}`;
     if (existingKeys.has(key)) continue;
 
-    // Description
-    const descMatch = line.match(new RegExp(`\\d{4}\\s+(.*)`));
+    // Description - extract everything after the date
+    const descMatch = line.match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+(.*)/);
+
     const description = descMatch ? descMatch[1].trim() : "Transaksi Bank";
 
     recovered.push({
@@ -559,16 +566,14 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
 There are EXACTLY ${txCount} transactions below, each marked with [TX n]. Return EXACTLY ${txCount} items — one per [TX] marker.
 
 Rules:
-- Each [TX] block represents ONE transaction. The amount appears at the end of the first line or in subsequent lines as a number with optional comma separators (e.g. "1,810.00" or "100.00").
-- debit (money OUT) = Withdrawal column: DUITNOW TO ACCOUNT/MOBILE/ID with withdrawal amount, MYDEBIT PURCHASE, POS DEBIT, JOMPAY, IBK PAYMENT, INSTANT TRANSFER, and any transaction where money leaves the account
-- credit (money IN) = Deposits column: AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, INSTANT TRANSFER (incoming), and DUITNOW TO ACCOUNT with deposit amount (incoming transfers from other people/merchants)
-- IMPORTANT: Look at the Balance column — if balance increases after the transaction, it's credit; if it decreases, it's debit.
+- Each [TX] block represents ONE transaction. The amount appears with +/- sign or in withdrawal/deposit columns (e.g. "1,900.00-" is debit, "3,000.00+" is credit).
+- debit (money OUT) = amount has "-" suffix, or keywords: TRANSFER FR A/C, PAYMENT FR A/C
+- credit (money IN) = amount has "+" suffix, or keywords: TRANSFER TO A/C, INTER-BANK PAYMENT INTO A/C
 - amount = positive number, no comma separators
-- date = YYYY-MM-DD (year from the statement)
-- description = transaction description text (the main description line)
-- reference = the reference/cheque number shown (e.g. "202501010265576915", "157410042", "1248401903")
-- CRITICAL: Two transactions with the SAME amount and description but DIFFERENT reference numbers are SEPARATE entries. Never merge them.
-- CRITICAL: Two transactions on the SAME date with the SAME amount are SEPARATE entries if they appear as separate [TX] blocks. Never merge them.
+- date = YYYY-MM-DD (use year ${statementYear} if only DD/MM is shown)
+- description = transaction description text (e.g. "TRANSFER FR A/C" + recipient name)
+- reference = any reference/invoice number shown (e.g. "IN2601063", "20260101M0007275861", "QR81917339"), empty string if none
+- CRITICAL: Two transactions with the SAME amount and description are SEPARATE entries if they appear as separate [TX] blocks. Never merge them.
 - Every [TX] block is a separate transaction — return one JSON item for each
 ${partInfo || ""}
 Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
@@ -646,30 +651,40 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
       const firstPageLines = pages[0]?.split("\n") || [];
-      const headerContext = firstPageLines.slice(0, 12).join("\n");
+      const headerContext = firstPageLines.slice(0, 15).join("\n");
 
-      // Transaction start detection:
-      // A line starting with DD/MM/YYYY is a transaction start if:
-      //   - Followed by a transaction keyword
-      //   - Followed by a 6+ digit reference number
-      //   - Followed by any word (5+ chars) indicating a description
-      //   - Date alone on line (description on next line)
-      // FALSE positives to avoid:
-      //   - "05/01/2025 5542" inside POS DEBIT (date + 4-digit card number only)
-      //   - "OPENING BALANCE", "CLOSING BALANCE" summary lines
-      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION";
+      // Detect if Maybank (DD/MM without year) vs CIMB (DD/MM/YYYY)
+      const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
+
+      // Extract statement year from header (e.g., "31/01/26" -> 2026, or "31/01/2026")
+      let statementYear = new Date().getFullYear().toString();
+      const yearMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
+      if (yearMatch) {
+        const yr = yearMatch[3];
+        statementYear = yr.length === 2 ? `20${yr}` : yr;
+      }
+
+      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION|TRANSFER FR A\\/C|TRANSFER TO A\\/C|PAYMENT FR A\\/C|INTER-BANK";
+
+      // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
+      const datePrefix = isMaybank
+        ? `\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?`
+        : `\\d{1,2}\\/\\d{1,2}\\/\\d{4}`;
+
       const txStartPattern = new RegExp(
-        `^\\d{1,2}\\/\\d{1,2}\\/\\d{4}` +
+        `^${datePrefix}` +
         `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`
       );
 
-      // Also detect mid-line dates (transactions merged on one line in PDF extraction)
-      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
+      // Detect dates embedded mid-line (e.g., "DUITNOW QR06/01" or "MBB CT22/01")
+      const txMidPattern = new RegExp(`(.+?)(${datePrefix}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
 
-      // Lines that should NOT be treated as transactions even if they match
-      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE/i;
+      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT|PROFIT OUTSTANDING|LEDGER BALANCE/i;
 
-      // Pre-process: split merged lines that have a transaction start mid-line
+      // Split merged lines where description runs into next transaction date
+      // e.g. "DUITNOW QR06/01 TRANSFER FR A/C" or "MBB CT22/01 TRANSFER FR A/C"
+      const noSpaceDatePattern = new RegExp(`^(.*\\S)(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
+
       const preprocessLines = (lines: string[]): string[] => {
         const result: string[] = [];
         for (const line of lines) {
@@ -679,6 +694,13 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
           }
           if (txStartPattern.test(line)) {
             result.push(line);
+            continue;
+          }
+          // Check for no-space merged dates (e.g. "DUITNOW QR06/01 TRANSFER FR A/C")
+          const noSpaceMatch = line.match(noSpaceDatePattern);
+          if (noSpaceMatch && !ignoredLinePattern.test(noSpaceMatch[2])) {
+            if (noSpaceMatch[1].trim()) result.push(noSpaceMatch[1].trim());
+            result.push(noSpaceMatch[2].trim());
             continue;
           }
           const midMatch = line.match(txMidPattern);
@@ -899,24 +921,26 @@ ${pdfText.slice(0, 15000)}`;
 
       // Try to detect expected count from statement summary
       const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
+      let expectedTotal = 0;
       if (summaryMatch) {
         const expectedWithdrawals = parseInt(summaryMatch[1], 10);
         const expectedDeposits = parseInt(summaryMatch[2], 10);
-        const expectedTotal = expectedWithdrawals + expectedDeposits;
-        const actualCredits = allTransactions.filter(t => t.type === "credit").length;
-        const actualDebits = allTransactions.filter(t => t.type === "debit").length;
+        expectedTotal = expectedWithdrawals + expectedDeposits;
+      }
 
-        console.log(`[BankExtract] Expected: ${expectedTotal} (${expectedWithdrawals}W + ${expectedDeposits}D), Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
+      const actualCredits = allTransactions.filter(t => t.type === "credit").length;
+      const actualDebits = allTransactions.filter(t => t.type === "debit").length;
+      console.log(`[BankExtract] Expected: ${expectedTotal || 'unknown'}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
 
+      // Always try local fallback to recover any missed transactions
+      const locallyParsed = localParseFallback(pdfText, allTransactions);
+      if (locallyParsed.length > 0) {
+        allTransactions.push(...locallyParsed);
+        console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
+      }
+
+      if (expectedTotal > 0 && allTransactions.length < expectedTotal) {
         if (allTransactions.length < expectedTotal) {
-          const missing = expectedTotal - allTransactions.length;
-          // Try to find missing transactions from the raw text using a direct local parse
-          const locallyParsed = localParseFallback(pdfText, allTransactions);
-          if (locallyParsed.length > 0) {
-            allTransactions.push(...locallyParsed);
-            console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
-          }
-
           // If still missing, add stubs with remark for manual check
           const stillMissing = expectedTotal - allTransactions.length;
           if (stillMissing > 0) {
