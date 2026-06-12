@@ -671,20 +671,26 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
         ? `\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?`
         : `\\d{1,2}\\/\\d{1,2}\\/\\d{4}`;
 
-      const txStartPattern = new RegExp(
-        `^${datePrefix}` +
-        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`
-      );
+      // For Maybank: only match DD/MM followed by content (not date-only lines like "31/01/26")
+      const txStartPattern = isMaybank
+        ? new RegExp(`^\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+[A-Za-z]\\S*)`)
+        : new RegExp(`^${datePrefix}(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`);
 
       // Detect dates embedded mid-line (e.g., "DUITNOW QR06/01" or "MBB CT22/01")
       const txMidPattern = new RegExp(`(.+?)(${datePrefix}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
 
-      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT|PROFIT OUTSTANDING|LEDGER BALANCE/i;
+      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|STATEMENT DATE|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT|PROFIT OUTSTANDING|LEDGER BALANCE|MUKA.*PAGE|ENTRY DATE|VALUE DATE|TRANSACTION DESCRIPTION|TRANSACTION AMOUNT|STATEMENT BALANCE|TARIKH MASUK|TARIKH NILAI|BUTIR URUSNIAGA|JUMLAH URUSNIAGA|BAKI PENYATA|PROTECTED BY PIDM|Perhatian.*Note|Please notify|Sila beritahu|Wang yang keluar|denoted by DR|ACCOUNT NUMBER|NOMBOR AKAUN|Maybank Islamic Berhad|IBS TMN|JALAN TUN|KAMPUNG BAKAR|進支日期|結單存餘|進支項說明|銀碼|ACCOUNT TRANSACTIONS|SME FIRST ACCOUNT/i;
+
+      // Standalone date with 2-digit year (statement date in header, e.g. "31/01/26")
+      const standaloneDatePattern = /^\d{1,2}\/\d{1,2}\/\d{2}$/;
 
       // Split merged lines where description runs into next transaction date
       // e.g. "DUITNOW QR06/01 TRANSFER FR A/C" or "MBB CT22/01 TRANSFER FR A/C"
       // Key: the character BEFORE the date must be a non-digit (letter or symbol)
       const noSpaceDatePattern = new RegExp(`^(.*[^\\d])(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
+
+      // Pattern to find a SECOND date embedded after the initial transaction start
+      const embeddedDatePattern = new RegExp(`^(${datePrefix}\\s+.+?[^\\d])(${datePrefix}\\s+(?:${TX_KEYWORDS}).*)$`);
 
       const preprocessLines = (lines: string[]): string[] => {
         const result: string[] = [];
@@ -694,7 +700,21 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
             continue;
           }
           if (txStartPattern.test(line)) {
-            result.push(line);
+            // Even if line starts with a date, check if ANOTHER transaction is embedded later
+            const embeddedMatch = line.match(embeddedDatePattern);
+            if (embeddedMatch && !ignoredLinePattern.test(embeddedMatch[2])) {
+              result.push(embeddedMatch[1].trim());
+              result.push(embeddedMatch[2].trim());
+            } else {
+              // Also check noSpaceDatePattern for lines like "06/01 ...content... QR10/01 PAYMENT..."
+              const noSpaceCheck = line.match(noSpaceDatePattern);
+              if (noSpaceCheck && noSpaceCheck[1].length > 5 && !ignoredLinePattern.test(noSpaceCheck[2])) {
+                result.push(noSpaceCheck[1].trim());
+                result.push(noSpaceCheck[2].trim());
+              } else {
+                result.push(line);
+              }
+            }
             continue;
           }
           // Check for no-space merged dates (e.g. "DUITNOW QR06/01 TRANSFER FR A/C")
@@ -726,12 +746,13 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
 
         const pageLines = preprocessLines(rawLines);
 
-        // Group lines into transactions (each starts with date + uppercase)
+        // Group lines into transactions (each starts with a date)
         const transactions: string[][] = [];
         let currentTx: string[] | null = null;
 
         for (const line of pageLines) {
           if (ignoredLinePattern.test(line)) continue;
+          if (standaloneDatePattern.test(line.trim())) continue;
           if (txStartPattern.test(line)) {
             if (currentTx !== null) {
               transactions.push(currentTx);
@@ -744,6 +765,8 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
         if (currentTx !== null && currentTx.length > 0) {
           transactions.push(currentTx);
         }
+
+        console.log(`[BankExtract] Page ${i + 1}: ${rawLines.length} raw lines -> ${pageLines.length} processed lines -> ${transactions.length} transactions`);
 
         if (transactions.length === 0) continue;
 
