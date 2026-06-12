@@ -456,14 +456,14 @@ function localParseFallback(pdfText: string, existing: BankTransaction[]): BankT
   );
 
   // Pattern: date line followed by content, then amounts and balance
-  // Each transaction has: date, description lines, reference, withdrawal OR deposit, balance
-  const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY";
+  const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION";
   const lines = pdfText.split("\n");
 
-  const datePattern = new RegExp(`^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})\\s*(?:${TX_KEYWORDS})`);
+  const datePattern = new RegExp(`^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})\\s+\\S`);
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
+    if (/OPENING BALANCE|CLOSING BALANCE|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE/i.test(line)) continue;
     const dateMatch = line.match(datePattern);
     if (!dateMatch) continue;
 
@@ -494,8 +494,8 @@ function localParseFallback(pdfText: string, existing: BankTransaction[]): BankT
     if (isNaN(amount) || amount === 0) continue;
 
     // Determine type from keywords
-    const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY/i.test(blockText);
-    const isExplicitCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA/i.test(blockText);
+    const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER.*(?:TO|OUT)/i.test(blockText);
+    const isExplicitCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA|INSTANT TRANSFER.*(?:FROM|IN)|SALARY|GIRO CR/i.test(blockText);
 
     let type: "credit" | "debit" = isDebit ? "debit" : (isExplicitCredit ? "credit" : "credit");
 
@@ -649,25 +649,25 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
       const headerContext = firstPageLines.slice(0, 12).join("\n");
 
       // Transaction start detection:
-      // A real transaction line starts with DD/MM/YYYY followed by:
-      //   - A transaction keyword (DUITNOW, AUTOPAY, MYDEBIT, POS DEBIT, etc.)
-      //   - A long reference number (6+ digits)
-      //   - End of line (date alone, description on next line)
+      // A line starting with DD/MM/YYYY is a transaction start if:
+      //   - Followed by a transaction keyword
+      //   - Followed by a 6+ digit reference number
+      //   - Followed by any word (5+ chars) indicating a description
+      //   - Date alone on line (description on next line)
       // FALSE positives to avoid:
-      //   - "05/01/2025 5542" inside POS DEBIT (date + 4-digit card number)
-      //   - "PSS PANDAN J MELAKA" continuation lines
-      //   - "OPENING BALANCE", "CLOSING BALANCE" lines
+      //   - "05/01/2025 5542" inside POS DEBIT (date + 4-digit card number only)
+      //   - "OPENING BALANCE", "CLOSING BALANCE" summary lines
       const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION";
       const txStartPattern = new RegExp(
         `^\\d{1,2}\\/\\d{1,2}\\/\\d{4}` +
-        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+[A-Z]|\\s*$)`
+        `(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`
       );
 
-      // Also detect mid-line dates followed by keywords or long reference numbers
-      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}).*)`);
+      // Also detect mid-line dates (transactions merged on one line in PDF extraction)
+      const txMidPattern = new RegExp(`(.+?)(\\d{1,2}\\/\\d{1,2}\\/\\d{4}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
 
       // Lines that should NOT be treated as transactions even if they match
-      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits/i;
+      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE/i;
 
       // Pre-process: split merged lines that have a transaction start mid-line
       const preprocessLines = (lines: string[]): string[] => {
