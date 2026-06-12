@@ -683,7 +683,8 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
 
       // Split merged lines where description runs into next transaction date
       // e.g. "DUITNOW QR06/01 TRANSFER FR A/C" or "MBB CT22/01 TRANSFER FR A/C"
-      const noSpaceDatePattern = new RegExp(`^(.*\\S)(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
+      // Key: the character BEFORE the date must be a non-digit (letter or symbol)
+      const noSpaceDatePattern = new RegExp(`^(.*[^\\d])(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
 
       const preprocessLines = (lines: string[]): string[] => {
         const result: string[] = [];
