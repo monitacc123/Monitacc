@@ -856,15 +856,17 @@ ${pdfText.slice(0, 15000)}`;
 
             console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
 
-            // Retry if fewer results than expected (even 1 missing matters)
+            // If AI returned fewer than expected, try to fill from raw text
             if (valid.length < batch.txCount) {
+              // Try retry first
               const retryMessages = [{
                 role: "user",
-                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with a DD/MM/YYYY date). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions may have the same description and amount but different reference numbers — they are SEPARATE transactions. Do NOT merge them.\n\nDATA:\n${batch.text}`,
+                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with [TX n]). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions CAN have IDENTICAL amounts, dates, and descriptions — they are still SEPARATE transactions if they have separate [TX] markers. NEVER MERGE transactions. Return one JSON item PER [TX] marker.\n\nDATA:\n${batch.text}`,
               }];
               const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
               totalTokensUsed += retryTokens;
 
+              let usedRetry = false;
               if (retryText && retryText.trim()) {
                 const retryJson = extractJson(retryText);
                 try {
@@ -890,13 +892,67 @@ ${pdfText.slice(0, 15000)}`;
                   if (retryValid.length > valid.length) {
                     console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
                     allTransactions.push(...retryValid);
-                    continue;
+                    usedRetry = true;
                   }
                 } catch {}
               }
-            }
 
-            allTransactions.push(...valid);
+              if (!usedRetry) {
+                // Still missing - fill from raw [TX] blocks using local extraction
+                allTransactions.push(...valid);
+                const txBlocks = batch.text.split(/\[TX \d+\]/).filter(b => b.trim());
+                const dateRe = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/;
+                const amountRe = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
+
+                if (txBlocks.length > valid.length) {
+                  const needed = txBlocks.length - valid.length;
+                  let added = 0;
+                  for (const block of txBlocks) {
+                    if (added >= needed) break;
+                    const dm = block.match(dateRe);
+                    if (!dm) continue;
+                    const day = dm[1].padStart(2, "0");
+                    const month = dm[2].padStart(2, "0");
+                    const yr = dm[3] ? (dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : statementYear;
+                    const blockDate = `${yr}-${month}-${day}`;
+
+                    const amounts: string[] = [];
+                    let am;
+                    const amRe2 = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
+                    while ((am = amRe2.exec(block)) !== null) amounts.push(am[1]);
+                    if (amounts.length === 0) continue;
+                    const txAmount = parseFloat(amounts[0].replace(/,/g, ""));
+                    if (isNaN(txAmount) || txAmount === 0) continue;
+
+                    const isCredit = /\.\d{2}\+|TRANSFER TO A\/C|INTER-BANK PAYMENT INTO/i.test(block);
+                    const txType: "credit" | "debit" = isCredit ? "credit" : "debit";
+
+                    // Check if this exact TX is already in valid results
+                    const alreadyExists = valid.some(v =>
+                      v.date === blockDate &&
+                      Math.abs(v.amount - txAmount) < 0.01 &&
+                      v.type === txType
+                    );
+                    if (!alreadyExists) {
+                      const descMatch = block.match(/(?:TRANSFER (?:FR|TO) A\/C|PAYMENT FR A\/C|INTER-BANK PAYMENT INTO A\/C)/);
+                      allTransactions.push({
+                        date: blockDate,
+                        description: descMatch ? descMatch[0] : "Transaksi Bank",
+                        amount: txAmount,
+                        type: txType,
+                        reference: "",
+                      });
+                      added++;
+                    }
+                  }
+                  if (added > 0) {
+                    console.log(`[BankExtract] Batch ${i + 1}: locally recovered ${added} missing transactions`);
+                  }
+                }
+              }
+            } else {
+              allTransactions.push(...valid);
+            }
           } catch {}
         }
       }
