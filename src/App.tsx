@@ -1970,9 +1970,6 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
   const dashAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
   const income = filteredRecords.filter(r => r.type === 'income' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
   const expense = filteredRecords.filter(r => r.type === 'expense' && !dashAssetLiabSet.has(r.category.trim().toUpperCase())).reduce((sum, r) => sum + r.amount, 0);
-  const assetLiabRecords = filteredRecords.filter(r => dashAssetLiabSet.has(r.category.trim().toUpperCase()));
-  const totalAssets = assetLiabRecords.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
-  const totalLiabilities = assetLiabRecords.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
 
   const timeSeriesChartData = useMemo(() => {
     const nonAssetRecords = filteredRecords.filter(r => !dashAssetLiabSet.has(r.category.trim().toUpperCase()));
@@ -2167,13 +2164,6 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
             </>
           )}
         </div>
-
-        {user?.role !== 'upload_only' && (totalAssets > 0 || totalLiabilities > 0) && (
-          <div className="grid grid-cols-2 gap-2.5 md:gap-6 mb-5 md:mb-10">
-            <StatCard label="Aset / Deposit" value={totalAssets} icon={Landmark} color="sky" />
-            <StatCard label="Liabiliti" value={totalLiabilities} icon={Wallet} color="amber" />
-          </div>
-        )}
 
         {user?.role !== 'upload_only' && (
           <div className="mb-5 md:mb-10">
@@ -2399,8 +2389,6 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: n
     emerald: 'bg-emerald-50 text-emerald-600 border-emerald-100',
     rose: 'bg-rose-50 text-rose-600 border-rose-100',
     slate: 'bg-slate-50 text-slate-600 border-slate-100',
-    sky: 'bg-sky-50 text-sky-600 border-sky-100',
-    amber: 'bg-amber-50 text-amber-600 border-amber-100',
   };
   
   const isEmerald = color === 'emerald';
