@@ -2801,16 +2801,18 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       for (let i = 0; i < tasksToSave.length; i++) {
         const task = tasksToSave[i];
         setSaveProgress({ current: i + 1, total: tasksToSave.length });
-        let storedImageUrl = task.image;
+        let storedImageUrl = '';
         if (task.image && user?.id) {
           const isPdf = task.mimeType === 'application/pdf';
           try {
             storedImageUrl = await apiUploadReceiptFile(user.id, task.image, isPdf ? 'pdf' : 'receipt');
           } catch {
-            storedImageUrl = task.image;
+            // If upload fails, store empty string instead of raw base64
+            // to avoid payload size issues when saving records
+            storedImageUrl = '';
           }
         }
-        const recordsWithImage = task.results.map(r => ({ ...r, image_url: storedImageUrl }));
+        const recordsWithImage = task.results.map(r => ({ ...r, image_url: storedImageUrl, origin: 'scan' }));
         allRecords.push(...recordsWithImage);
       }
       await onSave(allRecords);
@@ -13136,25 +13138,21 @@ export default function App() {
     const recordsToSave = Array.isArray(data) ? data : [data];
     const isBulk = recordsToSave.length > 1;
     let skippedCount = 0;
+    let failedCount = 0;
     const justSaved: any[] = [];
-    
+
     for (const recordData of recordsToSave) {
-      // Check for duplicates against existing records AND records just saved in this batch
       if (!force) {
         const isBankRecord = recordData.docNumber?.startsWith('BANK-');
         const isBankRelated = isBankRecord ||
                              recordData.docType?.toLowerCase().includes('bank');
 
-        // Bank records from statement uploads are already deduplicated at the upload stage.
-        // They use unique BANK-{id} doc numbers, so skip duplicate detection entirely.
         if (!isBankRelated) {
           const checkDuplicate = (r: any) => {
-            // If it has a real docNumber, check that
             if (recordData.docNumber && recordData.docNumber.trim() !== '') {
               return r.docNumber?.toLowerCase() === recordData.docNumber.toLowerCase();
             }
 
-            // Basic match: Date, Amount, Type, and Description must all match
             return r.date === recordData.date &&
                    Math.abs(r.amount - recordData.amount) < 0.01 &&
                    r.type === recordData.type &&
@@ -13177,18 +13175,28 @@ export default function App() {
       }
 
       try {
-        await apiSaveRecord(String(user?.id), {
+        const saveData = {
           ...recordData,
           category: recordData.category.trim().toUpperCase(),
-        });
+        };
+        // Strip oversized image_url to prevent payload failures
+        if (saveData.image_url && saveData.image_url.length > 500000) {
+          saveData.image_url = '';
+        }
+        await apiSaveRecord(String(user?.id), saveData);
         justSaved.push(recordData);
       } catch (err) {
         console.error('Error saving record:', err);
+        failedCount++;
       }
     }
 
     if (isBulk && skippedCount > 0) {
       showToast(`${skippedCount} rekod bertindih telah diabaikan secara automatik.`, 'success');
+    }
+
+    if (isBulk && failedCount > 0) {
+      showToast(`${failedCount} rekod gagal disimpan.`, 'error');
     }
 
     if (justSaved.length > 0) {
