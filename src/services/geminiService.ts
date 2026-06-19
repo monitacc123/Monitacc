@@ -206,6 +206,8 @@ CRITICAL RULES:
 3. If you can see ANY amount, date, or store name — create an entry for it
 4. NEVER refuse to extract — always attempt extraction
 5. If truly nothing can be read, return exactly: []
+6. If the document contains MULTIPLE receipts, invoices, or transactions, extract ALL of them as separate items in the array
+7. Each distinct receipt/invoice/transaction = one separate JSON object in the array
 
 Transaction rules:
 - Receipt/Resit from shop, restaurant, petrol = expense (type: "expense")
@@ -222,7 +224,7 @@ Required JSON fields per item:
 Example output:
 [{"type":"expense","docType":"Resit","docNumber":"INV-001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"${currentYear}-01-15","description":"Shell Petrol Station","payment_method":"cash"}]
 
-Extract from the document now:`;
+Extract ALL transactions from the document now:`;
 
     let messages: { role: string; content: any }[];
     let isBankStatement = false;
@@ -338,7 +340,7 @@ Return ONLY JSON: [{"type":"income"|"expense","docType":"Penyata Bank","docNumbe
       } else {
         messages = [{
           role: "user",
-          content: `${prompt}\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
+          content: `${prompt}\n\nIMPORTANT: This is a PDF document that may contain MULTIPLE receipts, invoices, or transactions across multiple pages. Extract EVERY transaction found — do NOT merge them into one. Each page may have a separate receipt/invoice.\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
         }];
       }
     } else {
@@ -365,7 +367,7 @@ Return ONLY JSON: [{"type":"income"|"expense","docType":"Penyata Bank","docNumbe
 
     let result: ChatResult;
     try {
-      result = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, 4096), 3, 1000);
+      result = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, isPdf ? 16384 : 4096), 3, 1000);
     } catch (apiErr: any) {
       console.error("AI API call failed:", apiErr?.message);
       throw new Error("AI tidak dapat memproses imej. Sila cuba lagi.");
