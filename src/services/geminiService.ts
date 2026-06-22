@@ -54,11 +54,26 @@ async function trySingleModel(
     body.response_format = { type: "json_object" };
   }
 
-  const res = await fetch(modelEntry.url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-    body: JSON.stringify(body),
-  });
+  const controller = new AbortController();
+  const timeoutMs = hasImage ? 90000 : 60000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(modelEntry.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error(`Timeout: Model ${modelEntry.model} tidak bertindak balas dalam ${timeoutMs / 1000}s`);
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
 
   if (!res.ok) {
     const text = await res.text();

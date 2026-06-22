@@ -2622,14 +2622,18 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
     const scanType = isPdf ? 'pdf' : 'receipt';
     const isAdminUser = user?.role === 'admin';
     if (!isAdminUser && user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
-      const usage = await apiGetScanUsageThisMonth(user.id);
-      const used = isPdf ? usage.pdf : usage.receipt;
-      const limit = isPdf ? pdfLimit : receiptLimit;
-      if (used >= limit) {
-        setShowUpgradeModal({ type: scanType, used, limit });
-        return false;
+      try {
+        const usage = await apiGetScanUsageThisMonth(user.id);
+        const used = isPdf ? usage.pdf : usage.receipt;
+        const limit = isPdf ? pdfLimit : receiptLimit;
+        if (used >= limit) {
+          setShowUpgradeModal({ type: scanType, used, limit });
+          return false;
+        }
+        await apiLogScanUsage(user.id, scanType);
+      } catch (err) {
+        console.error('Error checking scan limits:', err);
       }
-      await apiLogScanUsage(user.id, scanType);
     }
     return true;
   };
@@ -2640,19 +2644,19 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
     setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'analyzing', error: '' } : t));
 
-    const allowed = await checkLimitAndAnalyze(task);
-    if (!allowed) {
-      setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: 'Had imbasan telah dicapai. Sila naik taraf pakej.' } : t));
-      return;
-    }
-
-    let finalMimeType = task.mimeType;
-    if (!finalMimeType && task.image.startsWith('data:')) {
-      const match = task.image.match(/^data:([^;]+);/);
-      if (match) finalMimeType = match[1];
-    }
-
     try {
+      const allowed = await checkLimitAndAnalyze(task);
+      if (!allowed) {
+        setQueue(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', error: 'Had imbasan telah dicapai. Sila naik taraf pakej.' } : t));
+        return;
+      }
+
+      let finalMimeType = task.mimeType;
+      if (!finalMimeType && task.image.startsWith('data:')) {
+        const match = task.image.match(/^data:([^;]+);/);
+        if (match) finalMimeType = match[1];
+      }
+
       const data = await analyzeDocument(task.image, finalMimeType || "image/jpeg", user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
       if (data && Array.isArray(data) && data.length > 0) {
         const uniqueData = data.filter((item, index, self) =>
@@ -2685,8 +2689,13 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
       const nextPending = queue.find(t => t.status === 'pending');
       if (!nextPending) return;
       processingRef.current = true;
-      await analyzeTask(nextPending.id);
-      processingRef.current = false;
+      try {
+        await analyzeTask(nextPending.id);
+      } catch (err) {
+        console.error('Unexpected error in analyzeTask:', err);
+      } finally {
+        processingRef.current = false;
+      }
     };
     processNext();
   }, [queue]);
