@@ -23,6 +23,14 @@ import {
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
 import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
+
+function safeParseDate(dateStr: string): Date {
+  if (!dateStr) return new Date(0);
+  const d = parseISO(dateStr);
+  if (!isNaN(d.getTime())) return d;
+  const fallback = new Date(dateStr);
+  return isNaN(fallback.getTime()) ? new Date(0) : fallback;
+}
 import {
   apiLogin,
   apiAdminLogin,
@@ -489,9 +497,9 @@ const generatePDFReport = (
   doc.setTextColor(15, 23, 42);
   doc.text('Perincian Transaksi', 14, finalY + 15);
 
-  const sortedRecords = [...records].sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime());
+  const sortedRecords = [...records].sort((a, b) => safeParseDate(a.date).getTime() - safeParseDate(b.date).getTime());
   const tableData = sortedRecords.map(r => [
-    format(parseISO(r.date), 'dd/MM/yyyy'),
+    format(safeParseDate(r.date), 'dd/MM/yyyy'),
     CHART_OF_ACCOUNTS[r.category] || '-',
     r.category,
     r.description,
@@ -1959,7 +1967,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
   const now = new Date();
 
   const filteredRecords = records.filter(r => {
-    const date = parseISO(r.date);
+    const date = safeParseDate(r.date);
     if (timeFilter === 'daily') return isSameDay(date, now);
     if (timeFilter === 'weekly') return isSameWeek(date, now);
     if (timeFilter === 'monthly') return isSameMonth(date, now);
@@ -1985,8 +1993,8 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
       const days = eachDayOfInterval({ start: startOfWeek(now, { weekStartsOn: 1 }), end: endOfWeek(now, { weekStartsOn: 1 }) });
       return days.map(day => {
         const label = format(day, 'EEE');
-        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
-        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(safeParseDate(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(safeParseDate(r.date), day)).reduce((s, r) => s + r.amount, 0);
         return { name: label, masuk, keluar };
       });
     }
@@ -1995,8 +2003,8 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
       const days = eachDayOfInterval({ start: startOfMonth(now), end: endOfMonth(now) });
       return days.map(day => {
         const label = format(day, 'd');
-        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
-        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(parseISO(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameDay(safeParseDate(r.date), day)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameDay(safeParseDate(r.date), day)).reduce((s, r) => s + r.amount, 0);
         return { name: label, masuk, keluar };
       });
     }
@@ -2005,8 +2013,8 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
       const months = eachMonthOfInterval({ start: startOfYear(now), end: endOfYear(now) });
       return months.map(month => {
         const label = format(month, 'MMM');
-        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameMonth(parseISO(r.date), month)).reduce((s, r) => s + r.amount, 0);
-        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameMonth(parseISO(r.date), month)).reduce((s, r) => s + r.amount, 0);
+        const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameMonth(safeParseDate(r.date), month)).reduce((s, r) => s + r.amount, 0);
+        const keluar = nonAssetRecords.filter(r => r.type === 'expense' && isSameMonth(safeParseDate(r.date), month)).reduce((s, r) => s + r.amount, 0);
         return { name: label, masuk, keluar };
       });
     }
@@ -2264,7 +2272,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                       </div>
                       <div className="min-w-0">
                         <p className="text-xs md:text-sm font-bold text-slate-900 truncate max-w-[100px] md:max-w-[140px] leading-tight">{record.category}</p>
-                        <p className="text-[9px] md:text-[10px] font-medium text-slate-400 mt-0.5">{format(parseISO(record.date), 'dd MMM')}</p>
+                        <p className="text-[9px] md:text-[10px] font-medium text-slate-400 mt-0.5">{format(safeParseDate(record.date), 'dd MMM')}</p>
                       </div>
                     </div>
                     <div className="text-right shrink-0 ml-2">
@@ -4024,7 +4032,7 @@ const InvoiceTemplate = ({ sale, user }: { sale: any, user: UserType | null }) =
               </tr>
               <tr>
                 <td className="py-1 font-bold uppercase">Tarikh:</td>
-                <td className="py-1 text-right">{format(parseISO(sale.date), 'dd/MM/yyyy')}</td>
+                <td className="py-1 text-right">{format(safeParseDate(sale.date), 'dd/MM/yyyy')}</td>
               </tr>
               <tr>
                 <td className="py-1 font-bold uppercase">Terma:</td>
@@ -4149,7 +4157,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   const now = new Date();
 
   const filteredSales = sales.filter(sale => {
-    const saleDate = parseISO(sale.date);
+    const saleDate = safeParseDate(sale.date);
     if (timeFilter === 'daily') return isSameDay(saleDate, now);
     if (timeFilter === 'weekly') return isSameWeek(saleDate, now);
     if (timeFilter === 'monthly') {
@@ -4159,8 +4167,8 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
       return saleDate.getFullYear() === selectedYear;
     }
     if (timeFilter === 'custom') {
-      const start = parseISO(startDate);
-      const end = parseISO(endDate);
+      const start = safeParseDate(startDate);
+      const end = safeParseDate(endDate);
       const d = new Date(saleDate.getFullYear(), saleDate.getMonth(), saleDate.getDate());
       const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -4319,7 +4327,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                       {!!sale.reconciled && <Check size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <span className="text-[11px] text-slate-400 font-medium">{format(parseISO(sale.date), 'dd MMM yyyy')}</span>
+                      <span className="text-[11px] text-slate-400 font-medium">{format(safeParseDate(sale.date), 'dd MMM yyyy')}</span>
                       {sale.docNumber && (
                         <span className="text-[10px] font-mono text-slate-400">#{sale.docNumber}</span>
                       )}
@@ -4389,7 +4397,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-slate-700">
                     <div className="flex items-center gap-3">
-                      {format(parseISO(sale.date), 'dd MMM yyyy')}
+                      {format(safeParseDate(sale.date), 'dd MMM yyyy')}
                       {!!sale.reconciled && (
                         <span className="text-emerald-500 ml-2" title="Telah Dipadankan dengan Bank">
                           <Check size={14} strokeWidth={3} />
@@ -4644,9 +4652,9 @@ const TransactionReportTemplate = ({ records, user }: { records: any[], user: Us
             </tr>
           </thead>
           <tbody>
-            {[...records].sort((a, b) => parseISO(a.date).getTime() - parseISO(b.date).getTime()).map((record, idx) => (
+            {[...records].sort((a, b) => safeParseDate(a.date).getTime() - safeParseDate(b.date).getTime()).map((record, idx) => (
               <tr key={idx} className="border-b border-gray-200">
-                <td className="py-2 px-2 border-r border-black">{format(parseISO(record.date), 'dd/MM/yyyy')}</td>
+                <td className="py-2 px-2 border-r border-black">{format(safeParseDate(record.date), 'dd/MM/yyyy')}</td>
                 <td className="py-2 px-2 border-r border-black uppercase">{record.type === 'income' ? 'MASUK' : 'KELUAR'}</td>
                 <td className="py-2 px-2 border-r border-black">{record.category}</td>
                 <td className="py-2 px-2 border-r border-black truncate max-w-[150px]">{record.description}</td>
@@ -4804,7 +4812,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       return cat === sel;
     })
     .filter(r => {
-      const date = parseISO(r.date);
+      const date = safeParseDate(r.date);
       if (timeFilter === 'monthly') {
         return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
       }
@@ -4821,7 +4829,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         return d >= s && d <= e;
       }
       return true;
-    }).sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+    }).sort((a, b) => safeParseDate(b.date).getTime() - safeParseDate(a.date).getTime());
 
   const totalIncome = filtered.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
   const totalExpense = filtered.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
@@ -4981,7 +4989,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                       {!!record.reconciled && <Check size={11} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                     </div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-[10px] text-slate-400 font-medium">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                      <span className="text-[10px] text-slate-400 font-medium">{format(safeParseDate(record.date), 'dd MMM yyyy')}</span>
                       {record.docNumber && (
                         <span className="text-[9px] font-mono font-semibold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">
                           {record.docNumber}
@@ -5044,7 +5052,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                             <Icon size={12} strokeWidth={2} />
                           </div>
                           <div>
-                            <p className="text-xs font-bold text-slate-700">{format(parseISO(record.date), 'dd MMM yyyy')}</p>
+                            <p className="text-xs font-bold text-slate-700">{format(safeParseDate(record.date), 'dd MMM yyyy')}</p>
                             {!!record.reconciled && (
                               <span className="text-[9px] font-bold text-emerald-500 flex items-center gap-0.5">
                                 <Check size={9} strokeWidth={3} /> Dipadankan
@@ -5776,7 +5784,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                         <p className="text-sm font-bold text-slate-900 truncate">{bt.description}</p>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
                           <span className="text-[10px] font-bold text-slate-400">
-                            {bt.date.includes('-') ? format(parseISO(bt.date), 'dd MMM yyyy') : bt.date}
+                            {bt.date.includes('-') ? format(safeParseDate(bt.date), 'dd MMM yyyy') : bt.date}
                           </span>
                           <span className="text-[9px] font-bold text-slate-400 uppercase">{bt.type === 'credit' ? 'Duit Masuk' : 'Duit Keluar'}</span>
                         </div>
@@ -5863,7 +5871,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                     return (
                       <tr key={bt.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap">
-                          {bt.date.includes('-') ? format(parseISO(bt.date), 'dd MMM yyyy') : bt.date}
+                          {bt.date.includes('-') ? format(safeParseDate(bt.date), 'dd MMM yyyy') : bt.date}
                         </td>
                         <td className="px-6 py-4">
                           <p className="text-xs font-bold text-slate-900">{bt.description}</p>
@@ -5996,7 +6004,7 @@ const RecordsView = ({
 
   // Use records directly since sales are now mirrored in the records table
   const mergedRecords = records.map(r => ({ ...r, origin: (r.origin || 'manual') as 'manual' | 'scan' | 'sale' }))
-    .sort((a, b) => parseISO(b.date).getTime() - parseISO(a.date).getTime());
+    .sort((a, b) => safeParseDate(b.date).getTime() - safeParseDate(a.date).getTime());
 
   const filtered = mergedRecords.filter(r => {
     // Type filter
@@ -6007,14 +6015,14 @@ const RecordsView = ({
     }
 
     // Time filter
-    const date = parseISO(r.date);
+    const date = safeParseDate(r.date);
     if (timeFilter === 'monthly') {
       if (date.getMonth() !== selectedMonth || date.getFullYear() !== selectedYear) return false;
     } else if (timeFilter === 'yearly') {
       if (date.getFullYear() !== selectedYear) return false;
     } else if (timeFilter === 'custom') {
-      const start = parseISO(startDate);
-      const end = parseISO(endDate);
+      const start = safeParseDate(startDate);
+      const end = safeParseDate(endDate);
       const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       const s = new Date(start.getFullYear(), start.getMonth(), start.getDate());
       const e = new Date(end.getFullYear(), end.getMonth(), end.getDate());
@@ -6284,7 +6292,7 @@ const RecordsView = ({
                             {!!record.reconciled && <Check size={10} strokeWidth={3} className="text-emerald-500 shrink-0" />}
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
-                            <span className="text-[11px] text-slate-400 font-medium">{format(parseISO(record.date), 'dd MMM yyyy')}</span>
+                            <span className="text-[11px] text-slate-400 font-medium">{format(safeParseDate(record.date), 'dd MMM yyyy')}</span>
                             <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
                               record.payment_method === 'cash' ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'
                             }`}>
@@ -6377,7 +6385,7 @@ const RecordsView = ({
                     </td>
                     <td className="px-2 py-4 text-[11px] font-medium text-slate-600 whitespace-nowrap">
                       <div className="flex items-center gap-3 truncate">
-                        {format(parseISO(record.date), 'dd MMM yyyy')}
+                        {format(safeParseDate(record.date), 'dd MMM yyyy')}
                         {!!record.reconciled && (
                           <span className="text-emerald-500 shrink-0 ml-2" title="Telah Dipadankan dengan Bank">
                             <Check size={12} strokeWidth={3} />
@@ -6638,7 +6646,7 @@ const ProfitLossReport = ({
     sales.forEach(s => {
       const sCat = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
       if (assetLiabSet.has(sCat)) return;
-      const date = parseISO(s.date);
+      const date = safeParseDate(s.date);
       const month = months[date.getMonth()];
       if (data[month]) {
         data[month].sales += s.total;
@@ -6656,7 +6664,7 @@ const ProfitLossReport = ({
       // Skip Asset/Liability categories in P&L
       if (assetLiabSet.has(category) || type === 'ASSET_LIABILITY') return;
 
-      const date = parseISO(r.date);
+      const date = safeParseDate(r.date);
       const month = months[date.getMonth()];
       if (!data[month]) return;
 
@@ -6860,10 +6868,10 @@ const ProfitLossReport = ({
                 const md: any = {};
                 sm.forEach(m => { md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 }; });
                 sales.filter(s => {
-                  const d = parseISO(s.date);
+                  const d = safeParseDate(s.date);
                   return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
                 }).forEach(s => {
-                  const mi = sm[parseISO(s.date).getMonth()];
+                  const mi = sm[safeParseDate(s.date).getMonth()];
                   md[mi].sales += s.total;
                   const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
                   md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
@@ -6871,10 +6879,10 @@ const ProfitLossReport = ({
                 const pdfAssetLiabSet = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
                 records.filter(r => {
                   if (r.sale_id) return false;
-                  const d = parseISO(r.date);
+                  const d = safeParseDate(r.date);
                   return reportType === 'yearly' ? d.getFullYear() === currentYear : reportType === 'monthly' ? d.getMonth() === (selectedMonth ?? 0) && d.getFullYear() === currentYear : true;
                 }).forEach(r => {
-                  const mi = sm[parseISO(r.date).getMonth()];
+                  const mi = sm[safeParseDate(r.date).getMonth()];
                   const cat = r.category.trim().toUpperCase();
                   const type = categoryMappings[cat] || 'EXPENSE';
                   if (pdfAssetLiabSet.has(cat) || type === 'ASSET_LIABILITY') return;
@@ -7807,8 +7815,8 @@ const ReportsView = ({
   useEffect(() => {
     if (records.length > 0 || sales.length > 0) {
       const allDates = [
-        ...records.map(r => parseISO(r.date)), 
-        ...sales.map(s => parseISO(s.date))
+        ...records.map(r => safeParseDate(r.date)), 
+        ...sales.map(s => safeParseDate(s.date))
       ].filter(d => !isNaN(d.getTime()));
       
       if (allDates.length > 0) {
@@ -7825,7 +7833,7 @@ const ReportsView = ({
 
   // Filter records and sales based on selected month/year or custom range
   const filteredRecords = records.filter(r => {
-    const date = parseISO(r.date);
+    const date = safeParseDate(r.date);
     if (reportType === 'monthly') {
       return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
     } else if (reportType === 'yearly') {
@@ -7842,7 +7850,7 @@ const ReportsView = ({
   });
 
   const filteredSales = sales.filter(s => {
-    const date = parseISO(s.date);
+    const date = safeParseDate(s.date);
     if (reportType === 'monthly') {
       return date.getMonth() === selectedMonth && date.getFullYear() === selectedYear;
     } else if (reportType === 'yearly') {
@@ -7939,15 +7947,15 @@ const ReportsView = ({
       sm.forEach(m => {
         md[m] = { sales: 0, salesByCategory: {}, salesAdjustments: 0, cogs: {}, otherIncome: {}, expenses: {}, taxation: 0 };
       });
-      sales.filter(s => parseISO(s.date).getFullYear() === selectedYear).forEach(s => {
-        const mi = sm[parseISO(s.date).getMonth()];
+      sales.filter(s => safeParseDate(s.date).getFullYear() === selectedYear).forEach(s => {
+        const mi = sm[safeParseDate(s.date).getMonth()];
         md[mi].sales += s.total;
         const sc = (s.category || 'JUALAN (REKOD)').trim().toUpperCase();
         md[mi].salesByCategory[sc] = (md[mi].salesByCategory[sc] || 0) + s.total;
       });
       const pdfAssetLiabSet2 = new Set(ASSET_LIABILITY_CATEGORIES.map(c => c.toUpperCase()));
-      records.filter(r => !r.sale_id && parseISO(r.date).getFullYear() === selectedYear).forEach(r => {
-        const mi = sm[parseISO(r.date).getMonth()];
+      records.filter(r => !r.sale_id && safeParseDate(r.date).getFullYear() === selectedYear).forEach(r => {
+        const mi = sm[safeParseDate(r.date).getMonth()];
         const cat = r.category.trim().toUpperCase();
         const type = categoryMappings[cat] || 'EXPENSE';
         if (pdfAssetLiabSet2.has(cat) || type === 'ASSET_LIABILITY') return;
@@ -8411,17 +8419,17 @@ const BalanceSheetReport = ({
   effectiveEndOfPeriod.setHours(23, 59, 59, 999);
 
   // Prior Period Data
-  const priorRecords = records.filter(r => parseISO(r.date) < startOfPeriod);
-  const priorSales = sales.filter(s => parseISO(s.date) < startOfPeriod);
+  const priorRecords = records.filter(r => safeParseDate(r.date) < startOfPeriod);
+  const priorSales = sales.filter(s => safeParseDate(s.date) < startOfPeriod);
   const priorProfit = calculateProfitForPeriod(priorRecords, priorSales);
 
   // Current Period Data (Matches P&L)
   const currentRecords = records.filter(r => {
-    const d = parseISO(r.date);
+    const d = safeParseDate(r.date);
     return d >= startOfPeriod && d <= effectiveEndOfPeriod;
   });
   const currentSales = sales.filter(s => {
-    const d = parseISO(s.date);
+    const d = safeParseDate(s.date);
     return d >= startOfPeriod && d <= effectiveEndOfPeriod;
   });
   const currentPeriodProfit = calculateProfitForPeriod(currentRecords, currentSales);
@@ -8430,8 +8438,8 @@ const BalanceSheetReport = ({
   const netProfit = priorProfit + currentPeriodProfit;
 
   // Balance Sheet is cumulative. We filter all data up to the effectiveEndOfPeriod.
-  const filteredRecords = records.filter(r => parseISO(r.date) <= effectiveEndOfPeriod);
-  const filteredSales = sales.filter(s => parseISO(s.date) <= effectiveEndOfPeriod);
+  const filteredRecords = records.filter(r => safeParseDate(r.date) <= effectiveEndOfPeriod);
+  const filteredSales = sales.filter(s => safeParseDate(s.date) <= effectiveEndOfPeriod);
 
   // Asset Categories
   const fixedAssetCats = [
