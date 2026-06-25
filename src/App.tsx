@@ -31,6 +31,18 @@ function safeParseDate(dateStr: string): Date {
   const fallback = new Date(dateStr);
   return isNaN(fallback.getTime()) ? new Date(0) : fallback;
 }
+
+const _accCodeCache: Record<string, string> = {};
+let _nextAutoCode = 9900;
+function getAccCode(category: string): string {
+  if (!category) return '-';
+  const mapped = CHART_OF_ACCOUNTS[category] || CHART_OF_ACCOUNTS[category.toUpperCase()];
+  if (mapped) return mapped;
+  if (!_accCodeCache[category]) {
+    _accCodeCache[category] = `${_nextAutoCode++}/000`;
+  }
+  return _accCodeCache[category];
+}
 import {
   apiLogin,
   apiAdminLogin,
@@ -479,8 +491,8 @@ const generatePDFReport = (
   doc.text('Ringkasan Kategori', 14, 110);
 
   const breakdownData = [
-    ...incomeByCategory.map(item => [CHART_OF_ACCOUNTS[item.category] || '-', item.category, 'Duit Masuk', `RM ${fmt2(item.total)}`]),
-    ...expenseByCategory.map(item => [CHART_OF_ACCOUNTS[item.category] || '-', item.category, 'Duit Keluar', `RM ${fmt2(item.total)}`])
+    ...incomeByCategory.map(item => [getAccCode(item.category), item.category, 'Duit Masuk', `RM ${fmt2(item.total)}`]),
+    ...expenseByCategory.map(item => [getAccCode(item.category), item.category, 'Duit Keluar', `RM ${fmt2(item.total)}`])
   ];
 
   autoTable(doc, {
@@ -500,7 +512,7 @@ const generatePDFReport = (
   const sortedRecords = [...records].sort((a, b) => safeParseDate(a.date).getTime() - safeParseDate(b.date).getTime());
   const tableData = sortedRecords.map(r => [
     format(safeParseDate(r.date), 'dd/MM/yyyy'),
-    CHART_OF_ACCOUNTS[r.category] || '-',
+    getAccCode(r.category),
     r.category,
     r.description,
     r.type === 'income' ? `+RM ${r.amount.toFixed(2)}` : `-RM ${r.amount.toFixed(2)}`
@@ -3744,7 +3756,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               <div>
                 <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Butiran Rekod</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
-                  ACC: {CHART_OF_ACCOUNTS[formData.category] || 'N/A'}
+                  ACC: {getAccCode(formData.category)}
                 </p>
               </div>
             </div>
@@ -4386,7 +4398,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="inline-flex items-center px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold font-mono border border-slate-200 w-fit">
-                        {CHART_OF_ACCOUNTS[sale.category] || CHART_OF_ACCOUNTS['SALES'] || `#${sale.id}`}
+                        {getAccCode(sale.category || 'SALES')}
                       </span>
                       {sale.docNumber && (
                         <span className="text-[9px] font-mono font-bold text-slate-400 mt-1 flex items-center gap-1">
@@ -4869,7 +4881,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
-              {CHART_OF_ACCOUNTS[selectedCategory] || 'N/A'}
+              {getAccCode(selectedCategory)}
             </span>
           </div>
         </header>
@@ -4952,7 +4964,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
             <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bil. Rekod</p>
             <p className="text-lg md:text-2xl font-bold text-slate-800 font-display leading-tight">{filtered.length}</p>
-            <p className="text-[9px] text-slate-400 mt-1 font-medium font-mono">{CHART_OF_ACCOUNTS[selectedCategory] || 'N/A'}</p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium font-mono">{getAccCode(selectedCategory)}</p>
           </div>
         </div>
 
@@ -6260,7 +6272,7 @@ const RecordsView = ({
           <div className="divide-y divide-slate-50">
             {filtered.map((record) => {
               const CategoryIcon = getCategoryIcon(record.category);
-              const accNo = CHART_OF_ACCOUNTS[record.category] || (record.origin === 'sale' ? CHART_OF_ACCOUNTS['SALES'] : null) || `#${record.id}`;
+              const accNo = getAccCode(record.category || (record.origin === 'sale' ? 'SALES' : ''));
               return (
                 <div key={record.id} className={`px-4 py-3 ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/40' : ''}`}>
                   <div className="flex items-center gap-3">
@@ -6367,7 +6379,7 @@ const RecordsView = ({
             <tbody className="divide-y divide-slate-100">
               {filtered.map((record) => {
                 const CategoryIcon = getCategoryIcon(record.category);
-                const accNo = CHART_OF_ACCOUNTS[record.category] || (record.origin === 'sale' ? CHART_OF_ACCOUNTS['SALES'] : null) || `#${record.id}`;
+                const accNo = getAccCode(record.category || (record.origin === 'sale' ? 'SALES' : ''));
                 return (
                   <tr key={record.id} className={`hover:bg-slate-50 transition-colors group ${selectedIds.has(`${record.origin}-${record.id}`) ? 'bg-emerald-50/30' : ''}`}>
                     <td className="px-2 py-4">
@@ -7031,7 +7043,7 @@ const ProfitLossReport = ({
                 // SALES
                 if (seg === 'all' || seg === 'sales') {
                   drawSectionLabel('A. Jualan / Sales');
-                  salesCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`salesByCategory.${cat}`), { indent: true }));
+                  salesCats.forEach(cat => drawRow(getAccCode(cat), cat, calcTotal(`salesByCategory.${cat}`), { indent: true }));
                   const adj = calcTotal('salesAdjustments');
                   if (adj !== 0) drawRow('-', 'Sales Adjustments', adj, { indent: true });
                   drawSeparator();
@@ -7044,7 +7056,7 @@ const ProfitLossReport = ({
                 if (seg === 'all' || seg === 'cogs') {
                   drawSectionLabel('B. Kos Jualan / Cost of Goods Sold');
                   if (cogsCats.length > 0) {
-                    cogsCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`cogs.${cat}`), { indent: true }));
+                    cogsCats.forEach(cat => drawRow(getAccCode(cat), cat, calcTotal(`cogs.${cat}`), { indent: true }));
                     drawSeparator();
                   }
                   drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, { bold: true, totalRow: true });
@@ -7064,7 +7076,7 @@ const ProfitLossReport = ({
                 if (seg === 'all' || seg === 'other_income') {
                   drawSectionLabel('C. Pendapatan Lain / Other Income');
                   if (otherIncomeCats.length > 0) {
-                    otherIncomeCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`otherIncome.${cat}`), { indent: true }));
+                    otherIncomeCats.forEach(cat => drawRow(getAccCode(cat), cat, calcTotal(`otherIncome.${cat}`), { indent: true }));
                     drawSeparator();
                   }
                   drawRow('', 'JUMLAH DUIT MASUK LAIN (TOTAL)', totalOtherIncome, { bold: true, totalRow: true });
@@ -7075,7 +7087,7 @@ const ProfitLossReport = ({
                 // EXPENSES
                 if (seg === 'all' || seg === 'expenses') {
                   drawSectionLabel('D. Perbelanjaan / Expenses');
-                  expenseCats.forEach(cat => drawRow(CHART_OF_ACCOUNTS[cat] || '-', cat, calcTotal(`expenses.${cat}`), { indent: true }));
+                  expenseCats.forEach(cat => drawRow(getAccCode(cat), cat, calcTotal(`expenses.${cat}`), { indent: true }));
                   if (taxation !== 0) {
                     drawSeparator();
                     drawRow(CHART_OF_ACCOUNTS['PROVISION FOR TAXATION'] || '4080/000', 'Provision for Taxation', taxation, { indent: true });
@@ -7218,7 +7230,7 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'salesByCategory'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode(cat)}</td>
                 <CategoryName name={cat} type="SALES" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
@@ -7343,7 +7355,7 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'cogs'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode(cat)}</td>
                 <CategoryName name={cat} type="COGS" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
@@ -7469,7 +7481,7 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'otherIncome'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode(cat)}</td>
                 <CategoryName name={cat} type="OTHER_INCOME" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
@@ -7574,7 +7586,7 @@ const ProfitLossReport = ({
               .filter(cat => shouldShowCategory(cat, 'expenses'))
               .map(cat => (
               <tr key={cat}>
-                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{CHART_OF_ACCOUNTS[cat] || '-'}</td>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode(cat)}</td>
                 <CategoryName name={cat} type="EXPENSE" />
                 {!isAnnual && months.map((m, idx) => (
                   <td 
