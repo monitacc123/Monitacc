@@ -13056,6 +13056,7 @@ export default function App() {
   const [showCamera, setShowCamera] = useState(false);
   const [triggerAddSale, setTriggerAddSale] = useState(0);
   const [showManualEntry, setShowManualEntry] = useState<{ show: boolean, type: 'income' | 'expense', initialData?: any }>({ show: false, type: 'income' });
+  const [showDailyLimitModal, setShowDailyLimitModal] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<{ show: boolean, data: any, existing: TransactionRecord | Sale | null }>({ show: false, data: null, existing: null });
   const [confirmDelete, setConfirmDelete] = useState<{ 
     show: boolean, 
@@ -13163,9 +13164,42 @@ export default function App() {
     }
   };
 
+  const FREE_DAILY_ENTRY_LIMIT = 10;
+  const isFreePlan = !user?.plan || user.plan === 'free' || user.plan === 'Percuma';
+
+  const getTodayEntryCount = (): number => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecords = records.filter(r => r.created_at && r.created_at.startsWith(today));
+    const todaySales = sales.filter(s => s.created_at && s.created_at.startsWith(today));
+    return todayRecords.length + todaySales.length;
+  };
+
+  const checkDailyLimit = (extraCount = 1): boolean => {
+    if (!isFreePlan || user?.role === 'admin') return true;
+    const todayCount = getTodayEntryCount();
+    if (todayCount + extraCount > FREE_DAILY_ENTRY_LIMIT) {
+      setShowDailyLimitModal(true);
+      return false;
+    }
+    return true;
+  };
+
   const handleSaveRecord = async (data: any | any[], force = false) => {
     const recordsToSave = Array.isArray(data) ? data : [data];
     const isBulk = recordsToSave.length > 1;
+
+    if (isFreePlan && user?.role !== 'admin') {
+      const todayCount = getTodayEntryCount();
+      const remaining = Math.max(0, FREE_DAILY_ENTRY_LIMIT - todayCount);
+      if (remaining <= 0) {
+        setShowDailyLimitModal(true);
+        return;
+      }
+      if (isBulk && recordsToSave.length > remaining) {
+        showToast(`Hanya ${remaining} rekod boleh disimpan hari ini (had harian: ${FREE_DAILY_ENTRY_LIMIT}).`, 'error');
+        recordsToSave.splice(remaining);
+      }
+    }
     let skippedCount = 0;
     let failedCount = 0;
     const justSaved: any[] = [];
@@ -13273,10 +13307,12 @@ export default function App() {
   };
 
   const handleSaveSale = async (data: any, force = false) => {
+    if (!checkDailyLimit()) return;
+
     if (!force) {
-      const existing = sales.find(s => 
-        s.date === data.date && 
-        Math.abs(s.total - data.total) < 0.01 && 
+      const existing = sales.find(s =>
+        s.date === data.date &&
+        Math.abs(s.total - data.total) < 0.01 &&
         s.product_name.toLowerCase() === data.product_name.toLowerCase() &&
         (s.customer_name || '').toLowerCase() === (data.customer_name || '').toLowerCase()
       );
@@ -13723,8 +13759,70 @@ export default function App() {
           />
         )}
 
+        {showDailyLimitModal && (
+          <div className="fixed inset-0 z-[9999] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden"
+            >
+              <div className="bg-gradient-to-br from-amber-500 to-orange-600 p-8 text-white text-center relative overflow-hidden">
+                <div className="absolute inset-0 opacity-10">
+                  <AlertTriangle size={200} className="absolute -top-10 -right-10 rotate-12" />
+                </div>
+                <div className="relative z-10">
+                  <div className="w-16 h-16 bg-white/15 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle size={28} className="text-white" />
+                  </div>
+                  <h3 className="text-xl font-black tracking-tight font-display mb-2">Had Harian Dicapai</h3>
+                  <p className="text-white/80 text-sm font-medium">
+                    Anda telah mencapai had {FREE_DAILY_ENTRY_LIMIT} kemasukan data sehari untuk akaun Percuma.
+                  </p>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl p-4 text-center">
+                  <p className="text-sm text-amber-800 font-semibold">
+                    Had harian akan reset semula pada 12:00 tengah malam.
+                  </p>
+                </div>
+                <div className="bg-slate-50 rounded-2xl p-4">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Naik Taraf Untuk Unlimited</p>
+                  <div className="space-y-2">
+                    {[
+                      { plan: 'Starter', desc: 'Unlimited kemasukan', price: 'RM 50/bln' },
+                      { plan: 'Growth', desc: 'Unlimited kemasukan', price: 'RM 100/bln' },
+                      { plan: 'Ultimate', desc: 'Unlimited kemasukan', price: 'RM 150/bln' },
+                    ].map(p => (
+                      <div key={p.plan} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
+                        <div>
+                          <span className="text-sm font-bold text-slate-800">{p.plan}</span>
+                          <span className="text-xs text-slate-400 ml-2">{p.desc}</span>
+                        </div>
+                        <span className="text-xs font-bold text-emerald-600">{p.price}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setShowDailyLimitModal(false); setView('plans'); }}
+                  className="w-full py-4 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-black text-sm rounded-2xl hover:from-emerald-600 hover:to-emerald-700 transition-all shadow-lg shadow-emerald-100 flex items-center justify-center gap-2"
+                >
+                  <TrendingUp size={16} /> Naik Taraf Sekarang
+                </button>
+                <button
+                  onClick={() => setShowDailyLimitModal(false)}
+                  className="w-full py-3 text-slate-400 text-sm font-bold hover:text-slate-600 transition-colors"
+                >
+                  Tutup
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
         {showProfileEdit && (
-          <ProfileEditModal 
+          <ProfileEditModal
             user={user}
             onClose={() => setShowProfileEdit(false)}
             onSave={(updatedUser) => {
@@ -13773,20 +13871,32 @@ export default function App() {
                     const receiptRemaining = Math.max(0, receiptLimit - fabUsage.receipt);
                     const pdfRemaining = Math.max(0, pdfLimit - fabUsage.pdf);
 
+                    const dailyUsed = getTodayEntryCount();
+                    const dailyRemaining = isFreePlan ? Math.max(0, FREE_DAILY_ENTRY_LIMIT - dailyUsed) : Infinity;
+                    const dailySub = isFreePlan ? `Baki: ${dailyRemaining}/${FREE_DAILY_ENTRY_LIMIT} hari ini` : 'Rekod Manual (Unlimited)';
+
                     const actions = [
                       {
                         label: 'Duit Masuk',
-                        sub: 'Rekod Manual (Unlimited)',
+                        sub: dailySub,
                         icon: TrendingUp,
                         iconBg: 'bg-emerald-500',
-                        onClick: () => { setShowManualEntry({ show: true, type: 'income' }); setIsFabOpen(false); },
+                        onClick: () => {
+                          setIsFabOpen(false);
+                          if (!checkDailyLimit()) return;
+                          setShowManualEntry({ show: true, type: 'income' });
+                        },
                       },
                       {
                         label: 'Duit Keluar',
-                        sub: 'Rekod Manual (Unlimited)',
+                        sub: dailySub,
                         icon: TrendingDown,
                         iconBg: 'bg-rose-500',
-                        onClick: () => { setShowManualEntry({ show: true, type: 'expense' }); setIsFabOpen(false); },
+                        onClick: () => {
+                          setIsFabOpen(false);
+                          if (!checkDailyLimit()) return;
+                          setShowManualEntry({ show: true, type: 'expense' });
+                        },
                       },
                       {
                         label: 'Imbas Resit',
