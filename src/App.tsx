@@ -13164,20 +13164,30 @@ export default function App() {
     }
   };
 
-  const FREE_DAILY_ENTRY_LIMIT = 10;
+  const FREE_DAILY_LIMIT_PER_TYPE = 10;
   const isFreePlan = !user?.plan || user.plan === 'free' || user.plan === 'Percuma';
 
-  const getTodayEntryCount = (): number => {
+  const getTodayEntryCounts = (): { income: number; expense: number } => {
     const today = new Date().toISOString().split('T')[0];
     const todayRecords = records.filter(r => r.created_at && r.created_at.startsWith(today));
     const todaySales = sales.filter(s => s.created_at && s.created_at.startsWith(today));
-    return todayRecords.length + todaySales.length;
+    const income = todayRecords.filter(r => r.type === 'income').length + todaySales.length;
+    const expense = todayRecords.filter(r => r.type === 'expense').length;
+    return { income, expense };
   };
 
-  const checkDailyLimit = (extraCount = 1): boolean => {
+  const checkDailyLimit = (type?: 'income' | 'expense'): boolean => {
     if (!isFreePlan || user?.role === 'admin') return true;
-    const todayCount = getTodayEntryCount();
-    if (todayCount + extraCount > FREE_DAILY_ENTRY_LIMIT) {
+    const counts = getTodayEntryCounts();
+    if (type === 'income' && counts.income >= FREE_DAILY_LIMIT_PER_TYPE) {
+      setShowDailyLimitModal(true);
+      return false;
+    }
+    if (type === 'expense' && counts.expense >= FREE_DAILY_LIMIT_PER_TYPE) {
+      setShowDailyLimitModal(true);
+      return false;
+    }
+    if (!type && counts.income >= FREE_DAILY_LIMIT_PER_TYPE && counts.expense >= FREE_DAILY_LIMIT_PER_TYPE) {
       setShowDailyLimitModal(true);
       return false;
     }
@@ -13189,14 +13199,15 @@ export default function App() {
     const isBulk = recordsToSave.length > 1;
 
     if (isFreePlan && user?.role !== 'admin') {
-      const todayCount = getTodayEntryCount();
-      const remaining = Math.max(0, FREE_DAILY_ENTRY_LIMIT - todayCount);
+      const counts = getTodayEntryCounts();
+      const firstType = recordsToSave[0]?.type as 'income' | 'expense';
+      const remaining = Math.max(0, FREE_DAILY_LIMIT_PER_TYPE - (firstType === 'income' ? counts.income : counts.expense));
       if (remaining <= 0) {
         setShowDailyLimitModal(true);
         return;
       }
       if (isBulk && recordsToSave.length > remaining) {
-        showToast(`Hanya ${remaining} rekod boleh disimpan hari ini (had harian: ${FREE_DAILY_ENTRY_LIMIT}).`, 'error');
+        showToast(`Hanya ${remaining} rekod ${firstType === 'income' ? 'duit masuk' : 'duit keluar'} boleh disimpan hari ini (had: ${FREE_DAILY_LIMIT_PER_TYPE}).`, 'error');
         recordsToSave.splice(remaining);
       }
     }
@@ -13307,7 +13318,7 @@ export default function App() {
   };
 
   const handleSaveSale = async (data: any, force = false) => {
-    if (!checkDailyLimit()) return;
+    if (!checkDailyLimit('income')) return;
 
     if (!force) {
       const existing = sales.find(s =>
@@ -13776,7 +13787,7 @@ export default function App() {
                   </div>
                   <h3 className="text-xl font-black tracking-tight font-display mb-2">Had Harian Dicapai</h3>
                   <p className="text-white/80 text-sm font-medium">
-                    Anda telah mencapai had {FREE_DAILY_ENTRY_LIMIT} kemasukan data sehari untuk akaun Percuma.
+                    Anda telah mencapai had {FREE_DAILY_LIMIT_PER_TYPE} duit masuk dan {FREE_DAILY_LIMIT_PER_TYPE} duit keluar sehari untuk akaun Percuma.
                   </p>
                 </div>
               </div>
@@ -13871,30 +13882,32 @@ export default function App() {
                     const receiptRemaining = Math.max(0, receiptLimit - fabUsage.receipt);
                     const pdfRemaining = Math.max(0, pdfLimit - fabUsage.pdf);
 
-                    const dailyUsed = getTodayEntryCount();
-                    const dailyRemaining = isFreePlan ? Math.max(0, FREE_DAILY_ENTRY_LIMIT - dailyUsed) : Infinity;
-                    const dailySub = isFreePlan ? `Baki: ${dailyRemaining}/${FREE_DAILY_ENTRY_LIMIT} hari ini` : 'Rekod Manual (Unlimited)';
+                    const dailyCounts = getTodayEntryCounts();
+                    const incomeRemaining = isFreePlan ? Math.max(0, FREE_DAILY_LIMIT_PER_TYPE - dailyCounts.income) : Infinity;
+                    const expenseRemaining = isFreePlan ? Math.max(0, FREE_DAILY_LIMIT_PER_TYPE - dailyCounts.expense) : Infinity;
+                    const incomeSub = isFreePlan ? `Baki: ${incomeRemaining}/${FREE_DAILY_LIMIT_PER_TYPE} hari ini` : 'Rekod Manual (Unlimited)';
+                    const expenseSub = isFreePlan ? `Baki: ${expenseRemaining}/${FREE_DAILY_LIMIT_PER_TYPE} hari ini` : 'Rekod Manual (Unlimited)';
 
                     const actions = [
                       {
                         label: 'Duit Masuk',
-                        sub: dailySub,
+                        sub: incomeSub,
                         icon: TrendingUp,
                         iconBg: 'bg-emerald-500',
                         onClick: () => {
                           setIsFabOpen(false);
-                          if (!checkDailyLimit()) return;
+                          if (!checkDailyLimit('income')) return;
                           setShowManualEntry({ show: true, type: 'income' });
                         },
                       },
                       {
                         label: 'Duit Keluar',
-                        sub: dailySub,
+                        sub: expenseSub,
                         icon: TrendingDown,
                         iconBg: 'bg-rose-500',
                         onClick: () => {
                           setIsFabOpen(false);
-                          if (!checkDailyLimit()) return;
+                          if (!checkDailyLimit('expense')) return;
                           setShowManualEntry({ show: true, type: 'expense' });
                         },
                       },
