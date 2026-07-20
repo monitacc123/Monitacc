@@ -770,9 +770,8 @@ const LANDING_PLANS = [
     name: 'Percuma',
     price: '0',
     features: [
-      '5 Imbasan Transaksi / bulan',
-      'Unlimited Rekod Manual',
-      '1× Imbasan Bank Statement',
+      '10 Rekod Transaksi Manual / hari',
+      'Tiada Imbasan Bank Statement',
       'Monitacc Assistant',
     ],
     cta: 'Mula Percuma',
@@ -1257,7 +1256,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
 };
 
 const AUTH_PLANS = [
-  { name: 'Percuma', price: '0', period: null, desc: '5 Imbasan / bln' },
+  { name: 'Percuma', price: '0', period: null, desc: '10 Rekod Manual / hari' },
   { name: 'Starter', price: '50', period: '/bln', desc: '100 Imbasan / bln' },
   { name: 'Growth', price: '100', period: '/bln', desc: '250 Imbasan / bln' },
   { name: 'Ultimate', price: '150', period: '/bln', desc: 'Unlimited Imbasan' },
