@@ -1569,7 +1569,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
       name: 'Percuma',
       price: '0',
       period: undefined as string | undefined,
-      features: ['10 Rekod Transaksi Manual / hari', 'Tiada Imbasan Bank Statement', 'Monitacc Assistant'],
+      features: ['10 Rekod Transaksi Manual / hari', '5 Imbasan Transaksi / bulan', 'Tiada Imbasan Bank Statement', 'Monitacc Assistant'],
       popular: false,
       cta: 'Mula Percuma',
     },
@@ -10348,6 +10348,7 @@ const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; perio
     badgeText: 'text-slate-700',
     features: [
       { text: '10 Rekod Transaksi Manual / hari', included: true },
+      { text: '5 Imbasan Transaksi / bulan', included: true },
       { text: 'Tiada Imbasan Bank Statement', included: true },
       { text: 'Monitacc Assistant', included: true },
       { text: 'Smart Analysis', included: false },
@@ -10364,6 +10365,7 @@ const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; perio
     badgeText: 'text-slate-700',
     features: [
       { text: '10 Rekod Transaksi Manual / hari', included: true },
+      { text: '5 Imbasan Transaksi / bulan', included: true },
       { text: 'Tiada Imbasan Bank Statement', included: true },
       { text: 'Monitacc Assistant', included: true },
       { text: 'Smart Analysis', included: false },
@@ -10882,7 +10884,7 @@ const TermsView = ({ onBack }: { onBack: () => void }) => {
 };
 
 const PLAN_CONFIG: { name: string; price: number; color: string; features: string[] }[] = [
-  { name: 'free', price: 0, color: 'slate', features: ['10 Rekod Manual / hari', 'Tiada Bank Statement'] },
+  { name: 'free', price: 0, color: 'slate', features: ['10 Rekod Manual / hari', '5 Imbasan / bulan', 'Tiada Bank Statement'] },
   { name: 'Starter', price: 50, color: 'emerald', features: ['100 Imbasan / bulan', '3x Bank Statement', '1x Smart Analysis'] },
   { name: 'Growth', price: 100, color: 'emerald', features: ['250 Imbasan / bulan', '9x Bank Statement', '4x Smart Analysis'] },
   { name: 'Ultimate', price: 150, color: 'emerald', features: ['Unlimited Imbasan', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L + Balance Sheet'] },
@@ -11321,6 +11323,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
       period: undefined as string | undefined,
       features: [
         '10 Rekod Transaksi Manual / hari',
+        '5 Imbasan Transaksi / bulan',
         'Tiada Imbasan Bank Statement',
         'Monitacc Assistant',
       ],
