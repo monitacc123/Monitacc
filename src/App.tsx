@@ -5298,11 +5298,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [manualMatchTransaction, setManualMatchTransaction] = useState<any | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
-  const [showUpgradeModal, setShowUpgradeModal] = useState(false);
-
-  const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
-  const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
-  const isFreeUser = planKey === 'free' || planKey === 'Percuma';
 
   useEffect(() => {
     localStorage.setItem('monitacc_bank_transactions', JSON.stringify(bankTransactions));
@@ -5487,30 +5482,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
       };
       reader.readAsText(file);
     } else {
-      // Block free plan users
-      if (isFreeUser) {
-        setIsUploading(false);
-        setUploadStatus({ type: 'error', message: 'Imbasan penyata bank tidak tersedia untuk pelan Percuma. Sila naik taraf ke Starter atau lebih tinggi.' });
-        setShowUpgradeModal(true);
-        return;
-      }
-
-      // Check PDF scan limit
-      if (user?.id && pdfLimit !== Infinity) {
-        try {
-          const usage = await apiGetScanUsageThisMonth(user.id);
-          const bankUsed = usage.bank_statement || 0;
-          if (bankUsed >= pdfLimit) {
-            setIsUploading(false);
-            setUploadStatus({ type: 'error', message: `Had imbasan penyata bank (${pdfLimit}×/bulan) untuk pelan ${planKey} anda telah habis. Sila naik taraf pelan.` });
-            setShowUpgradeModal(true);
-            return;
-          }
-        } catch (e) {
-          // Continue if usage check fails - the AI layer will also check
-        }
-      }
-
       // PDF or Image processing with Gemini
       reader.onload = async (event) => {
         try {
@@ -5522,11 +5493,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           const extracted = await extractBankTransactions(base64Data, mimeType, user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
 
           if (extracted && extracted.length > 0) {
-            // Log successful bank statement scan usage
-            if (user?.id) {
-              apiLogScanUsage(user.id, 'bank_statement').catch(() => {});
-            }
-
             const data = extracted.map((item, i) => ({
               id: `bt-ai-${Date.now()}-${i}`,
               date: item.date || format(new Date(), 'yyyy-MM-dd'),
@@ -6002,42 +5968,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               setManualMatchTransaction(null);
             }}
           />
-        )}
-        {showUpgradeModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
-            onClick={() => setShowUpgradeModal(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-xl"
-              onClick={e => e.stopPropagation()}
-            >
-              <div className="text-center">
-                <div className="w-12 h-12 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <AlertTriangle className="w-6 h-6 text-amber-600" />
-                </div>
-                <h3 className="text-lg font-bold text-slate-900 mb-2">Had Imbasan Penyata Bank</h3>
-                <p className="text-sm text-slate-600 mb-4">
-                  {isFreeUser 
-                    ? 'Pelan Percuma tidak termasuk imbasan penyata bank. Naik taraf ke Starter atau lebih tinggi untuk menggunakan ciri ini.'
-                    : `Had imbasan penyata bank (${pdfLimit}×/bulan) untuk pelan ${planKey} telah habis bulan ini.`
-                  }
-                </p>
-                <button
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-semibold hover:bg-emerald-700 transition-colors"
-                >
-                  Faham
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
         )}
       </AnimatePresence>
     </div>
