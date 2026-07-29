@@ -578,8 +578,6 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
       return Math.abs(Number(cleaned));
     };
 
-    let statementYear = new Date().getFullYear().toString();
-
     const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this bank statement section into JSON.
 
 There are EXACTLY ${txCount} transactions below, each marked with [TX n]. Return EXACTLY ${txCount} items — one per [TX] marker.
@@ -676,6 +674,7 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
       const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
 
       // Extract statement year from header (e.g., "31/01/26" -> 2026, or "31/01/2026")
+      let statementYear = new Date().getFullYear().toString();
       const yearMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
       if (yearMatch) {
         const yr = yearMatch[3];
