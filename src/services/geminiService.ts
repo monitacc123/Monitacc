@@ -1119,6 +1119,117 @@ ${pdfText.slice(0, 15000)}`;
   }
 }
 
+export interface AIReconcileMatch {
+  bankTransactionId: string;
+  matchType: "record" | "sale" | "none";
+  recordId?: number;
+  saleId?: number;
+  confidence: number;
+  reason: string;
+}
+
+export async function reconcileWithAI(
+  bankTransactions: { id: string; date: string; description: string; amount: number; type: string }[],
+  records: { id: number; type: string; category: string; amount: number; date: string; description: string; reconciled?: boolean }[],
+  sales: { id: number; product_name: string; total: number; date: string; reconciled?: boolean }[],
+  userId?: string,
+  plan?: string,
+): Promise<AIReconcileMatch[]> {
+  try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
+
+    const bankData = bankTransactions.map(bt => ({
+      id: bt.id,
+      date: bt.date,
+      description: bt.description,
+      amount: bt.amount,
+      direction: bt.type === "credit" ? "income" : "expense",
+    }));
+
+    const recordData = records.map(r => ({
+      id: r.id,
+      type: r.type,
+      category: r.category,
+      amount: r.amount,
+      date: r.date,
+      description: r.description,
+      reconciled: r.reconciled || false,
+    }));
+
+    const saleData = sales.map(s => ({
+      id: s.id,
+      product_name: s.product_name,
+      total: s.total,
+      date: s.date,
+      reconciled: s.reconciled || false,
+    }));
+
+    const prompt = `You are an expert accountant performing bank reconciliation. Match each bank transaction to the most likely accounting record or sale.
+
+Rules:
+- A bank "credit" (income) should match records with type "income" or sales.
+- A bank "debit" (expense) should match records with type "expense".
+- Consider amount similarity (small differences like 0.01 are OK), date proximity (within 7 days), and description similarity.
+- Each bank transaction can match at most ONE record or sale. Each record/sale can be matched at most ONCE.
+- Already-reconciled records (reconciled=true) should be noted but can still be matched to flag duplicates.
+- If no good match exists, return matchType "none".
+- confidence: 0.0 to 1.0 (how confident the match is)
+- reason: short explanation in Bahasa Melayu
+
+Return ONLY a JSON array:
+[{"bankTransactionId":"...","matchType":"record"|"sale"|"none","recordId":number|null,"saleId":number|null,"confidence":number,"reason":"..."}]
+
+BANK TRANSACTIONS:
+${JSON.stringify(bankData)}
+
+ACCOUNTING RECORDS:
+${JSON.stringify(recordData)}
+
+SALES:
+${JSON.stringify(saleData)}`;
+
+    const { content: text, tokensUsed } = await withRetry(
+      () => chatCompletion([{ role: "user", content: prompt }], true, ANALYSIS_MODELS, 16384),
+      3, 1000,
+    );
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "reconcile").catch(() => {});
+    }
+
+    if (!text || text.trim() === "") return [];
+
+    const jsonStr = extractJson(text);
+    let parsed: any;
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      return [];
+    }
+
+    if (!Array.isArray(parsed)) {
+      parsed = parsed.matches || parsed.data || [parsed];
+    }
+
+    return parsed
+      .filter((m: any) => m && m.bankTransactionId)
+      .map((m: any) => ({
+        bankTransactionId: String(m.bankTransactionId),
+        matchType: m.matchType === "sale" ? "sale" : m.matchType === "record" ? "record" : "none",
+        recordId: m.recordId != null ? Number(m.recordId) : undefined,
+        saleId: m.saleId != null ? Number(m.saleId) : undefined,
+        confidence: Number(m.confidence) || 0,
+        reason: String(m.reason || ""),
+      }));
+  } catch (error: any) {
+    console.error("Error in AI reconciliation:", error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) throw error;
+    throw new Error(error?.message || "AI tidak dapat memproses padanan bank. Sila cuba lagi.");
+  }
+}
+
 export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string, plan?: string): Promise<string> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
