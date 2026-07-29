@@ -21,7 +21,7 @@ import {
   Legend,
 } from 'recharts';
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
-import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, reconcileWithAI, type AIReconcileMatch, type DashboardInsight } from './services/geminiService';
+import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
 
 function safeParseDate(dateStr: string): Date {
@@ -5298,8 +5298,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [manualMatchTransaction, setManualMatchTransaction] = useState<any | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
-  const [aiMatches, setAiMatches] = useState<Map<string, { type: 'record' | 'sale'; item: TransactionRecord | Sale; alreadyReconciled: boolean; confidence: number; reason: string }>>(new Map());
-  const [isAiMatching, setIsAiMatching] = useState(false);
 
   useEffect(() => {
     localStorage.setItem('monitacc_bank_transactions', JSON.stringify(bankTransactions));
@@ -5531,12 +5529,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           console.error('Error processing with AI:', err);
           if (err?.message?.startsWith("KUOTA_HABIS:")) {
             setUploadStatus({ type: 'error', message: err.message.replace("KUOTA_HABIS:", "") });
-          } else if (err?.message?.includes("Timeout")) {
-            setUploadStatus({ type: 'error', message: 'AI mengambil masa terlalu lama. Sila cuba fail yang lebih kecil atau cuba lagi.' });
-          } else if (err?.message?.includes("429")) {
-            setUploadStatus({ type: 'error', message: 'AI sedang sibuk. Sila tunggu beberapa saat dan cuba lagi.' });
           } else {
-            setUploadStatus({ type: 'error', message: 'AI tidak dapat memproses dokumen ini. Sila pastikan dokumen jelas dan cuba lagi.' });
+            setUploadStatus({ type: 'error', message: 'Ralat semasa memproses dokumen dengan AI. Sila cuba lagi.' });
           }
         } finally {
           setIsUploading(false);
@@ -5546,86 +5540,10 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
     }
   };
 
-  const handleAiMatch = async () => {
-    if (bankTransactions.length === 0) return;
-    setIsAiMatching(true);
-    setUploadStatus({ type: 'info', message: 'AI sedang menganalisis padanan bank anda...' });
-    try {
-      const btData = bankTransactions.map(bt => ({
-        id: bt.id,
-        date: bt.date,
-        description: bt.description,
-        amount: bt.amount,
-        type: bt.type,
-      }));
-      const recordData = records.map(r => ({
-        id: r.id,
-        type: r.type,
-        category: r.category,
-        amount: r.amount,
-        date: r.date,
-        description: r.description,
-        reconciled: r.reconciled || false,
-      }));
-      const saleData = sales.map(s => ({
-        id: s.id,
-        product_name: s.product_name,
-        total: s.total,
-        date: s.date,
-        reconciled: s.reconciled || false,
-      }));
-
-      const aiResults = await reconcileWithAI(
-        btData,
-        recordData,
-        saleData,
-        user?.id,
-        user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan,
-      );
-
-      const aiMap = new Map<string, { type: 'record' | 'sale'; item: TransactionRecord | Sale; alreadyReconciled: boolean; confidence: number; reason: string }>();
-      aiResults.forEach((m: AIReconcileMatch) => {
-        if (m.matchType === 'record' && m.recordId != null) {
-          const rec = records.find(r => r.id === m.recordId);
-          if (rec) {
-            aiMap.set(m.bankTransactionId, { type: 'record', item: rec, alreadyReconciled: rec.reconciled || false, confidence: m.confidence, reason: m.reason });
-          }
-        } else if (m.matchType === 'sale' && m.saleId != null) {
-          const sale = sales.find(s => s.id === m.saleId);
-          if (sale) {
-            aiMap.set(m.bankTransactionId, { type: 'sale', item: sale, alreadyReconciled: sale.reconciled || false, confidence: m.confidence, reason: m.reason });
-          }
-        }
-      });
-      setAiMatches(aiMap);
-      const matchedCount = aiResults.filter(r => r.matchType !== 'none').length;
-      setUploadStatus({ type: 'success', message: `AI berjaya memadan ${matchedCount} daripada ${bankTransactions.length} transaksi bank.` });
-    } catch (error: any) {
-      console.error('Error in AI matching:', error);
-      if (error?.message?.startsWith('KUOTA_HABIS:')) {
-        setUploadStatus({ type: 'error', message: error.message.replace('KUOTA_HABIS:', '') });
-      } else {
-        setUploadStatus({ type: 'error', message: error?.message || 'AI tidak dapat memproses padanan. Sila cuba lagi.' });
-      }
-    } finally {
-      setIsAiMatching(false);
-    }
-  };
-
   const matches = useMemo(() => {
     const matchMap = new Map();
     const usedRecordIds = new Set<number>();
     const usedSaleIds = new Set<number>();
-
-    // AI matches take priority
-    aiMatches.forEach((aiMatch, btId) => {
-      if (aiMatch.type === 'record') {
-        usedRecordIds.add((aiMatch.item as TransactionRecord).id);
-      } else {
-        usedSaleIds.add((aiMatch.item as Sale).id);
-      }
-      matchMap.set(btId, { ...aiMatch, isAi: true });
-    });
 
     bankTransactions.forEach(bt => {
       const amount = bt.amount;
@@ -5731,15 +5649,6 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
         <div className="flex items-center gap-3">
           {bankTransactions.length > 0 && (
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleAiMatch}
-                disabled={isAiMatching}
-                className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-xs font-bold rounded-xl hover:from-violet-700 hover:to-indigo-700 transition-all flex items-center gap-2 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Padan dengan AI"
-              >
-                {isAiMatching ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                {isAiMatching ? 'Memadan...' : 'Padan dengan AI'}
-              </button>
               <button 
                 onClick={onRefresh}
                 className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all border border-slate-200"
@@ -5900,16 +5809,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                     </div>
                     <div>
                       {match ? (
-                        <div className="space-y-1">
-                          <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${match.alreadyReconciled ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                            {match.alreadyReconciled ? <Check size={12} strokeWidth={3} className="text-blue-600" /> : <Check size={12} strokeWidth={3} />}
-                            {match.alreadyReconciled ? 'Sudah Dipadankan' : `Padanan Ditemui${match.isAi ? ' (AI)' : ''}`}
-                          </div>
-                          {match.isAi && (
-                            <p className="text-[10px] text-slate-500 leading-relaxed">
-                              <span className="font-bold text-violet-600">{Math.round((match as any).confidence * 100)}%</span> — {(match as any).reason}
-                            </p>
-                          )}
+                        <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${match.alreadyReconciled ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                          {match.alreadyReconciled ? <Check size={12} strokeWidth={3} className="text-blue-600" /> : <Check size={12} strokeWidth={3} />}
+                          {match.alreadyReconciled ? 'Sudah Dipadankan' : `Padanan Ditemui`}
                         </div>
                       ) : (
                         <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold border border-amber-100">
@@ -5992,16 +5894,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                         </td>
                         <td className="px-6 py-4 text-center">
                           {match ? (
-                            <div className="space-y-1">
-                              <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${match.alreadyReconciled ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
-                                {match.alreadyReconciled ? <Check size={12} strokeWidth={3} className="text-blue-600" /> : <Check size={12} strokeWidth={3} />}
-                                {match.alreadyReconciled ? 'Sudah Dipadankan' : `Padanan Ditemui: ${match.type === 'record' ? (match.item as TransactionRecord).category : (match.item as Sale).product_name}${match.isAi ? ' (AI)' : ''}`}
-                              </div>
-                              {match.isAi && (
-                                <p className="text-[10px] text-slate-500 leading-relaxed">
-                                  <span className="font-bold text-violet-600">{Math.round((match as any).confidence * 100)}%</span> — {(match as any).reason}
-                                </p>
-                              )}
+                            <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold border ${match.alreadyReconciled ? 'bg-blue-50 text-blue-700 border-blue-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100'}`}>
+                              {match.alreadyReconciled ? <Check size={12} strokeWidth={3} className="text-blue-600" /> : <Check size={12} strokeWidth={3} />}
+                              {match.alreadyReconciled ? 'Sudah Dipadankan' : `Padanan Ditemui: ${match.type === 'record' ? (match.item as TransactionRecord).category : (match.item as Sale).product_name}`}
                             </div>
                           ) : (
                             <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 text-amber-700 rounded-full text-[10px] font-bold border border-amber-100">
