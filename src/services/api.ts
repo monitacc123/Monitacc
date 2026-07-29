@@ -734,7 +734,7 @@ function getCurrentYearMonth(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
-export async function apiGetScanUsageThisMonth(userId: string): Promise<{ receipt: number; pdf: number }> {
+export async function apiGetScanUsageThisMonth(userId: string): Promise<{ receipt: number; pdf: number; bank_statement: number }> {
   const yearMonth = getCurrentYearMonth();
   const { data, error } = await supabase
     .from('scan_usage')
@@ -743,14 +743,15 @@ export async function apiGetScanUsageThisMonth(userId: string): Promise<{ receip
     .eq('year_month', yearMonth);
   if (error) {
     console.error('Failed to get scan usage:', error.message);
-    return { receipt: 0, pdf: 0 };
+    return { receipt: 0, pdf: 0, bank_statement: 0 };
   }
   const receipt = (data || []).filter(r => r.scan_type === 'receipt').length;
   const pdf = (data || []).filter(r => r.scan_type === 'pdf').length;
-  return { receipt, pdf };
+  const bank_statement = (data || []).filter(r => r.scan_type === 'bank_statement').length;
+  return { receipt, pdf, bank_statement };
 }
 
-export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf'): Promise<void> {
+export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf' | 'bank_statement'): Promise<void> {
   const yearMonth = getCurrentYearMonth();
   const { error } = await supabase
     .from('scan_usage')
