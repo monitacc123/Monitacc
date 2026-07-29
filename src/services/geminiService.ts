@@ -668,179 +668,68 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
         return allTransactions.length > 0 ? allTransactions : null;
       }
 
-      const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
-      const firstPageLines = pages[0]?.split("\n") || [];
-      const headerContext = firstPageLines.slice(0, 15).join("\n");
-
-      // Detect if Maybank (DD/MM without year) vs CIMB (DD/MM/YYYY)
-      const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
-
-      // Extract statement year from header (e.g., "31/01/26" -> 2026, or "31/01/2026")
-      const yearMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
-      if (yearMatch) {
-        const yr = yearMatch[3];
-        statementYear = yr.length === 2 ? `20${yr}` : yr;
-      }
-
-      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION|TRANSFER FR A\\/C|TRANSFER TO A\\/C|PAYMENT FR A\\/C|INTER-BANK";
-
-      // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
-      const datePrefix = isMaybank
-        ? `\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?`
-        : `\\d{1,2}\\/\\d{1,2}\\/\\d{4}`;
-
-      // For Maybank: only match DD/MM followed by content (not date-only lines like "31/01/26")
-      const txStartPattern = isMaybank
-        ? new RegExp(`^\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+[A-Za-z]\\S*)`)
-        : new RegExp(`^${datePrefix}(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`);
-
-      // Detect dates embedded mid-line (e.g., "DUITNOW QR06/01" or "MBB CT22/01")
-      const txMidPattern = new RegExp(`(.+?)(${datePrefix}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
-
-      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|STATEMENT DATE|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT|PROFIT OUTSTANDING|LEDGER BALANCE|MUKA.*PAGE|ENTRY DATE|VALUE DATE|TRANSACTION DESCRIPTION|TRANSACTION AMOUNT|STATEMENT BALANCE|TARIKH MASUK|TARIKH NILAI|BUTIR URUSNIAGA|JUMLAH URUSNIAGA|BAKI PENYATA|PROTECTED BY PIDM|Perhatian.*Note|Please notify|Sila beritahu|Wang yang keluar|denoted by DR|ACCOUNT NUMBER|NOMBOR AKAUN|Maybank Islamic Berhad|IBS TMN|JALAN TUN|KAMPUNG BAKAR|進支日期|結單存餘|進支項說明|銀碼|ACCOUNT TRANSACTIONS|SME FIRST ACCOUNT/i;
-
-      // Standalone date with 2-digit year (statement date in header, e.g. "31/01/26")
-      const standaloneDatePattern = /^\d{1,2}\/\d{1,2}\/\d{2}$/;
-
-      // Split merged lines where description runs into next transaction date
-      // e.g. "DUITNOW QR06/01 TRANSFER FR A/C" or "MBB CT22/01 TRANSFER FR A/C"
-      // Key: the character BEFORE the date must be a non-digit (letter or symbol)
-      const noSpaceDatePattern = new RegExp(`^(.*[^\\d])(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
-
-      // Pattern to find a SECOND date embedded after the initial transaction start
-      const embeddedDatePattern = new RegExp(`^(${datePrefix}\\s+.+?[^\\d])(${datePrefix}\\s+(?:${TX_KEYWORDS}).*)$`);
-
-      const preprocessLines = (lines: string[]): string[] => {
-        const result: string[] = [];
-        for (const line of lines) {
-          if (ignoredLinePattern.test(line)) {
-            result.push(line);
-            continue;
-          }
-          if (txStartPattern.test(line)) {
-            // Even if line starts with a date, check if ANOTHER transaction is embedded later
-            const embeddedMatch = line.match(embeddedDatePattern);
-            if (embeddedMatch && !ignoredLinePattern.test(embeddedMatch[2])) {
-              result.push(embeddedMatch[1].trim());
-              result.push(embeddedMatch[2].trim());
-            } else {
-              // Also check noSpaceDatePattern for lines like "06/01 ...content... QR10/01 PAYMENT..."
-              const noSpaceCheck = line.match(noSpaceDatePattern);
-              if (noSpaceCheck && noSpaceCheck[1].length > 5 && !ignoredLinePattern.test(noSpaceCheck[2])) {
-                result.push(noSpaceCheck[1].trim());
-                result.push(noSpaceCheck[2].trim());
-              } else {
-                result.push(line);
-              }
-            }
-            continue;
-          }
-          // Check for no-space merged dates (e.g. "DUITNOW QR06/01 TRANSFER FR A/C")
-          const noSpaceMatch = line.match(noSpaceDatePattern);
-          if (noSpaceMatch && !ignoredLinePattern.test(noSpaceMatch[2])) {
-            if (noSpaceMatch[1].trim()) result.push(noSpaceMatch[1].trim());
-            result.push(noSpaceMatch[2].trim());
-            continue;
-          }
-          const midMatch = line.match(txMidPattern);
-          if (midMatch && !ignoredLinePattern.test(midMatch[2])) {
-            if (midMatch[1].trim()) result.push(midMatch[1].trim());
-            result.push(midMatch[2].trim());
-          } else {
-            result.push(line);
-          }
-        }
-        return result;
-      };
-
-      // Collect all transaction groups across all pages
-      const MAX_TX_PER_BATCH = 15;
-      const batches: { text: string; txCount: number; pageNum: number }[] = [];
-
-      for (let i = 0; i < pages.length; i++) {
-        const page = pages[i];
-        const rawLines = page.split("\n").filter(l => l.trim());
-        if (rawLines.length < 2) continue;
-
-        const pageLines = preprocessLines(rawLines);
-
-        // Group lines into transactions (each starts with a date)
-        const transactions: string[][] = [];
-        let currentTx: string[] | null = null;
-
-        for (const line of pageLines) {
-          if (ignoredLinePattern.test(line)) continue;
-          if (standaloneDatePattern.test(line.trim())) continue;
-          if (txStartPattern.test(line)) {
-            if (currentTx !== null) {
-              transactions.push(currentTx);
-            }
-            currentTx = [line];
-          } else if (currentTx !== null) {
-            currentTx.push(line);
-          }
-        }
-        if (currentTx !== null && currentTx.length > 0) {
-          transactions.push(currentTx);
-        }
-
-        console.log(`[BankExtract] Page ${i + 1}: ${rawLines.length} raw lines -> ${pageLines.length} processed lines -> ${transactions.length} transactions`);
-
-        if (transactions.length === 0) continue;
-
-        for (let start = 0; start < transactions.length; start += MAX_TX_PER_BATCH) {
-          const batchTxs = transactions.slice(start, start + MAX_TX_PER_BATCH);
-          const batchText = batchTxs.map((tx, idx) => `[TX ${idx + 1}]\n${tx.join("\n")}`).join("\n\n");
-          batches.push({
-            text: batchText,
-            txCount: batchTxs.length,
-            pageNum: i + 1,
-          });
-        }
-      }
-
-      let totalTokensUsed = 0;
-      const expectedTotalTx = batches.reduce((a, b) => a + b.txCount, 0);
-      console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${expectedTotalTx}`);
-
-      // Fallback: if structured parsing found no transactions, use generic AI extraction
-      if (batches.length === 0 && pdfText.trim().length >= 50) {
-        console.log(`[BankExtract] No structured transactions found, using generic AI fallback`);
-        const genericPrompt = `Extract ALL bank transactions from this bank statement text into JSON.
+      // --- PRIMARY PATH: send full text directly to AI ---
+      const primaryPrompt = `Extract ALL bank transactions from this bank statement text into JSON.
 
 Rules:
-- debit (money OUT) = payments, purchases, withdrawals, transfers out
-- credit (money IN) = deposits, incoming transfers, sales proceeds
+- debit (money OUT) = payments, purchases, withdrawals, transfers out. Keywords: TRANSFER FR A/C, PAYMENT FR A/C, MYDEBIT, JOMPAY, POS DEBIT
+- credit (money IN) = deposits, incoming transfers. Keywords: TRANSFER TO A/C, INTER-BANK PAYMENT INTO, AUTOPAY CR, IBG CREDIT, CDM CASH
 - amount = positive number (no commas)
-- date = YYYY-MM-DD format
-- description = transaction description
-- reference = reference number if available, empty string otherwise
+- date = YYYY-MM-DD format (if only DD/MM shown, use year ${statementYear})
+- description = full transaction description text
+- reference = reference/cheque number if shown, empty string otherwise
 - type = "credit" or "debit"
 
 Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]
 
 BANK STATEMENT TEXT:
-${pdfText.slice(0, 15000)}`;
+${pdfText.slice(0, 20000)}`;
 
-        const { content: genericText, tokensUsed: genericTokens } = await withRetry(
-          () => chatCompletion([{ role: "user", content: genericPrompt }], false, ANALYSIS_MODELS, 32000), 3, 1000
+      let totalTokensUsed = 0;
+      try {
+        const { content: primaryText, tokensUsed: primaryTokens } = await withRetry(
+          () => chatCompletion([{ role: "user", content: primaryPrompt }], false, ANALYSIS_MODELS, 32000), 3, 1000
         );
-        totalTokensUsed += genericTokens;
+        totalTokensUsed += primaryTokens;
+        if (primaryText && primaryText.trim()) {
+          const jsonStr = extractJson(primaryText);
+          let parsed = JSON.parse(jsonStr);
+          if (!Array.isArray(parsed)) parsed = parsed.transactions || parsed.data || [parsed];
+          allTransactions = parsed.filter((item: any) => {
+            if (!item || !item.date) return false;
+            const amt = parseAmount(item.amount);
+            if (isNaN(amt)) return false;
+            return normalizeType(item.type) !== null;
+          }).map((item: any) => ({
+            date: item.date,
+            description: (item.description || "Transaksi Bank").trim(),
+            amount: parseAmount(item.amount),
+            type: normalizeType(item.type)! as "credit" | "debit",
+            reference: (item.reference || "").trim(),
+          }));
+          console.log(`[BankExtract] Primary AI extraction: ${allTransactions.length} transactions`);
+        }
+      } catch (e) {
+        console.error("[BankExtract] Primary AI extraction failed:", e);
+      }
 
-        if (genericText && genericText.trim()) {
-          const jsonStr = extractJson(genericText);
-          try {
+      // If text was truncated (>20000 chars), process remaining pages
+      if (pdfText.length > 20000) {
+        const remainingText = pdfText.slice(20000);
+        try {
+          const { content: extraText, tokensUsed: extraTokens } = await withRetry(
+            () => chatCompletion([{ role: "user", content: primaryPrompt.replace(pdfText.slice(0, 20000), remainingText.slice(0, 20000)) }], false, ANALYSIS_MODELS, 32000), 2, 1000
+          );
+          totalTokensUsed += extraTokens;
+          if (extraText && extraText.trim()) {
+            const jsonStr = extractJson(extraText);
             let parsed = JSON.parse(jsonStr);
-            if (!Array.isArray(parsed)) {
-              parsed = parsed.transactions || parsed.data || [parsed];
-            }
-            allTransactions = parsed.filter((item: any) => {
+            if (!Array.isArray(parsed)) parsed = parsed.transactions || parsed.data || [parsed];
+            const extra = parsed.filter((item: any) => {
               if (!item || !item.date) return false;
               const amt = parseAmount(item.amount);
               if (isNaN(amt)) return false;
-              const type = normalizeType(item.type);
-              if (!type) return false;
-              return true;
+              return normalizeType(item.type) !== null;
             }).map((item: any) => ({
               date: item.date,
               description: (item.description || "Transaksi Bank").trim(),
@@ -848,218 +737,28 @@ ${pdfText.slice(0, 15000)}`;
               type: normalizeType(item.type)! as "credit" | "debit",
               reference: (item.reference || "").trim(),
             }));
-            console.log(`[BankExtract] Generic fallback extracted ${allTransactions.length} transactions`);
-          } catch (e) {
-            console.error("[BankExtract] Generic fallback parse error:", e);
+            allTransactions.push(...extra);
+            console.log(`[BankExtract] Extra page extraction: +${extra.length} transactions`);
           }
-        }
-
-        if (userId && totalTokensUsed > 0) {
-          apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
-        }
-        return allTransactions.length > 0 ? allTransactions : null;
-      }
-
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
-        const partInfo = `\nBatch ${i + 1}/${batches.length} (page ${batch.pageNum}).${i > 0 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
-        const prompt = buildPrompt(batch.txCount, partInfo);
-
-        const messages = [{
-          role: "user",
-          content: `${prompt}\n\nDATA:\n${batch.text}`,
-        }];
-
-        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
-        totalTokensUsed += tokensUsed;
-
-        if (text && text.trim()) {
-          const jsonStr = extractJson(text);
-          try {
-            let parsed = JSON.parse(jsonStr);
-            if (!Array.isArray(parsed)) {
-              parsed = parsed.transactions || parsed.data || [parsed];
-            }
-            const valid = parsed.filter((item: any) => {
-              if (!item || !item.date) return false;
-              const amt = parseAmount(item.amount);
-              if (isNaN(amt)) return false;
-              const type = normalizeType(item.type);
-              if (!type) return false;
-              return true;
-            }).map((item: any) => ({
-              date: item.date,
-              description: (item.description || "Transaksi Bank").trim(),
-              amount: parseAmount(item.amount),
-              type: normalizeType(item.type)! as "credit" | "debit",
-              reference: (item.reference || "").trim(),
-            }));
-
-            console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
-
-            // If AI returned fewer than expected, try to fill from raw text
-            if (valid.length < batch.txCount) {
-              // Try retry first
-              const retryMessages = [{
-                role: "user",
-                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with [TX n]). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions CAN have IDENTICAL amounts, dates, and descriptions — they are still SEPARATE transactions if they have separate [TX] markers. NEVER MERGE transactions. Return one JSON item PER [TX] marker.\n\nDATA:\n${batch.text}`,
-              }];
-              const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
-              totalTokensUsed += retryTokens;
-
-              let usedRetry = false;
-              if (retryText && retryText.trim()) {
-                const retryJson = extractJson(retryText);
-                try {
-                  let retryParsed = JSON.parse(retryJson);
-                  if (!Array.isArray(retryParsed)) {
-                    retryParsed = retryParsed.transactions || retryParsed.data || [retryParsed];
-                  }
-                  const retryValid = retryParsed.filter((item: any) => {
-                    if (!item || !item.date) return false;
-                    const amt = parseAmount(item.amount);
-                    if (isNaN(amt)) return false;
-                    const type = normalizeType(item.type);
-                    if (!type) return false;
-                    return true;
-                  }).map((item: any) => ({
-                    date: item.date,
-                    description: (item.description || "Transaksi Bank").trim(),
-                    amount: parseAmount(item.amount),
-                    type: normalizeType(item.type)! as "credit" | "debit",
-                    reference: (item.reference || "").trim(),
-                  }));
-
-                  if (retryValid.length > valid.length) {
-                    console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
-                    allTransactions.push(...retryValid);
-                    usedRetry = true;
-                  }
-                } catch {}
-              }
-
-              if (!usedRetry) {
-                // Still missing - fill from raw [TX] blocks using local extraction
-                allTransactions.push(...valid);
-                const txBlocks = batch.text.split(/\[TX \d+\]/).filter(b => b.trim());
-                const dateRe = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/;
-                const amountRe = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
-
-                if (txBlocks.length > valid.length) {
-                  const needed = txBlocks.length - valid.length;
-                  let added = 0;
-                  for (const block of txBlocks) {
-                    if (added >= needed) break;
-                    const dm = block.match(dateRe);
-                    if (!dm) continue;
-                    const day = dm[1].padStart(2, "0");
-                    const month = dm[2].padStart(2, "0");
-                    const yr = dm[3] ? (dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : statementYear;
-                    const blockDate = `${yr}-${month}-${day}`;
-
-                    const amounts: string[] = [];
-                    let am;
-                    const amRe2 = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
-                    while ((am = amRe2.exec(block)) !== null) amounts.push(am[1]);
-                    if (amounts.length === 0) continue;
-                    const txAmount = parseFloat(amounts[0].replace(/,/g, ""));
-                    if (isNaN(txAmount) || txAmount === 0) continue;
-
-                    const isCredit = /\.\d{2}\+|TRANSFER TO A\/C|INTER-BANK PAYMENT INTO/i.test(block);
-                    const txType: "credit" | "debit" = isCredit ? "credit" : "debit";
-
-                    // Check if this exact TX is already in valid results
-                    const alreadyExists = valid.some(v =>
-                      v.date === blockDate &&
-                      Math.abs(v.amount - txAmount) < 0.01 &&
-                      v.type === txType
-                    );
-                    if (!alreadyExists) {
-                      const descMatch = block.match(/(?:TRANSFER (?:FR|TO) A\/C|PAYMENT FR A\/C|INTER-BANK PAYMENT INTO A\/C)/);
-                      allTransactions.push({
-                        date: blockDate,
-                        description: descMatch ? descMatch[0] : "Transaksi Bank",
-                        amount: txAmount,
-                        type: txType,
-                        reference: "",
-                      });
-                      added++;
-                    }
-                  }
-                  if (added > 0) {
-                    console.log(`[BankExtract] Batch ${i + 1}: locally recovered ${added} missing transactions`);
-                  }
-                }
-              }
-            } else {
-              allTransactions.push(...valid);
-            }
-          } catch {}
-        }
-      }
-
-      // Deduplicate only true duplicates from overlapping batches.
-      // Only dedupe when both transactions share the same non-empty reference number,
-      // since the batching system can cause the same transaction to appear in adjacent batches.
-      // Transactions without reference numbers are always kept (they are unique by [TX] marker).
-      const seen = new Set<string>();
-      const deduped: BankTransaction[] = [];
-      for (const tx of allTransactions) {
-        if (tx.reference) {
-          const key = `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-        }
-        deduped.push(tx);
-      }
-      const beforeDedup = allTransactions.length;
-      allTransactions = deduped;
-
-      console.log(`[BankExtract] Final total: ${allTransactions.length} (removed ${beforeDedup - allTransactions.length} duplicates)`);
-
-      // Try to detect expected count from statement summary
-      const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
-      let expectedTotal = 0;
-      if (summaryMatch) {
-        const expectedWithdrawals = parseInt(summaryMatch[1], 10);
-        const expectedDeposits = parseInt(summaryMatch[2], 10);
-        expectedTotal = expectedWithdrawals + expectedDeposits;
-      }
-
-      const actualCredits = allTransactions.filter(t => t.type === "credit").length;
-      const actualDebits = allTransactions.filter(t => t.type === "debit").length;
-      console.log(`[BankExtract] Expected: ${expectedTotal || 'unknown'}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
-
-      // Always try local fallback to recover any missed transactions
-      const locallyParsed = localParseFallback(pdfText, allTransactions);
-      if (locallyParsed.length > 0) {
-        allTransactions.push(...locallyParsed);
-        console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
-      }
-
-      if (expectedTotal > 0 && allTransactions.length < expectedTotal) {
-        if (allTransactions.length < expectedTotal) {
-          // If still missing, add stubs with remark for manual check
-          const stillMissing = expectedTotal - allTransactions.length;
-          if (stillMissing > 0) {
-            for (let i = 0; i < stillMissing; i++) {
-              allTransactions.push({
-                date: "2025-01-01",
-                description: `Transaksi tidak dapat dikesan (#${i + 1})`,
-                amount: 0,
-                type: "credit",
-                remark: "Sila semak penyata bank secara manual - transaksi ini tidak dapat diekstrak oleh AI",
-              });
-            }
-            console.log(`[BankExtract] Added ${stillMissing} stub entries for manual review`);
-          }
+        } catch (e) {
+          console.error("[BankExtract] Extra page extraction failed:", e);
         }
       }
 
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
       }
+
+      // Augment with local fallback to catch any missed transactions
+      const locallyParsed = localParseFallback(pdfText, allTransactions);
+      if (locallyParsed.length > 0) {
+        allTransactions.push(...locallyParsed);
+        console.log(`[BankExtract] Local fallback recovered ${locallyParsed.length} additional transactions`);
+      }
+
+      return allTransactions.length > 0 ? allTransactions : null;
     } else {
+      // Image file
       const isUrl = base64Data.startsWith("http");
       let imageUrl: string;
       if (isUrl) {
@@ -1072,12 +771,22 @@ ${pdfText.slice(0, 15000)}`;
         imageUrl = compressed;
       }
 
-      const prompt = buildPrompt(50);
+      const imagePrompt = `Extract ALL bank transactions from this bank statement image into JSON.
+Rules:
+- debit (money OUT) = payments, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if shown, empty string otherwise
+- type = "credit" or "debit"
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
+
       const messages = [{
         role: "user",
         content: [
           { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-          { type: "text", text: prompt },
+          { type: "text", text: imagePrompt },
         ],
       }];
 
@@ -1091,18 +800,13 @@ ${pdfText.slice(0, 15000)}`;
 
       const jsonStr = extractJson(text);
       let parsed = JSON.parse(jsonStr);
-
-      if (!Array.isArray(parsed)) {
-        parsed = parsed.transactions || parsed.data || [parsed];
-      }
+      if (!Array.isArray(parsed)) parsed = parsed.transactions || parsed.data || [parsed];
 
       allTransactions = parsed.filter((item: any) => {
         if (!item || !item.date) return false;
         const amt = parseAmount(item.amount);
         if (isNaN(amt)) return false;
-        const type = normalizeType(item.type);
-        if (!type) return false;
-        return true;
+        return normalizeType(item.type) !== null;
       }).map((item: any) => ({
         date: item.date,
         description: (item.description || "Transaksi Bank").trim(),
