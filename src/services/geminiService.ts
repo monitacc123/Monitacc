@@ -1115,13 +1115,7 @@ ${pdfText.slice(0, 15000)}`;
   } catch (error) {
     console.error("Error extracting bank transactions:", error);
     if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
-    if ((error as any)?.message?.includes("API error")) {
-      throw new Error("Ralat sambungan ke AI. Sila cuba lagi sebentar.");
-    }
-    if ((error as any)?.message?.includes("Timeout")) {
-      throw new Error("AI mengambil masa terlalu lama. Sila cuba lagi atau gunakan format CSV.");
-    }
-    throw new Error("AI tidak dapat mengekstrak transaksi dari dokumen ini. Sila pastikan dokumen jelas atau gunakan format CSV.");
+    return null;
   }
 }
 
