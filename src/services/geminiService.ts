@@ -1115,7 +1115,7 @@ ${pdfText.slice(0, 15000)}`;
   } catch (error) {
     console.error("Error extracting bank transactions:", error);
     if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
-    return null;
+    throw new Error((error as any)?.message || "AI tidak dapat memproses penyata bank. Sila cuba lagi.");
   }
 }
 
