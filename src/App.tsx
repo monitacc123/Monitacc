@@ -5529,6 +5529,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           console.error('Error processing with AI:', err);
           if (err?.message?.startsWith("KUOTA_HABIS:")) {
             setUploadStatus({ type: 'error', message: err.message.replace("KUOTA_HABIS:", "") });
+          } else if (err?.message?.startsWith("PDF_NO_TEXT:")) {
+            setUploadStatus({ type: 'error', message: err.message.replace("PDF_NO_TEXT:", "") });
           } else if (err?.message?.includes("Timeout")) {
             setUploadStatus({ type: 'error', message: 'AI mengambil masa terlalu lama. Sila cuba fail yang lebih kecil atau cuba lagi.' });
           } else if (err?.message?.includes("429")) {
