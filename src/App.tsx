@@ -5404,59 +5404,164 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
       reader.onload = (event) => {
         try {
           const text = event.target?.result as string;
-          const lines = text.split('\n').filter(l => l.trim());
-          if (lines.length === 0) return;
+          if (!text || !text.trim()) {
+            setUploadStatus({ type: 'error', message: 'Fail CSV kosong.' });
+            setIsUploading(false);
+            return;
+          }
+
+          // Detect delimiter (comma or semicolon)
+          const firstLines = text.split('\n').slice(0, 3).join('\n');
+          const delimiter = (firstLines.split(';').length > firstLines.split(',').length) ? ';' : ',';
+
+          // Smart CSV split that respects quoted fields
+          const splitCsvLine = (line: string, delim: string): string[] => {
+            const result: string[] = [];
+            let current = '';
+            let inQuotes = false;
+            for (let i = 0; i < line.length; i++) {
+              const ch = line[i];
+              if (ch === '"' || ch === "'") {
+                inQuotes = !inQuotes;
+              } else if (ch === delim && !inQuotes) {
+                result.push(current.trim().replace(/^["']|["']$/g, ''));
+                current = '';
+              } else {
+                current += ch;
+              }
+            }
+            result.push(current.trim().replace(/^["']|["']$/g, ''));
+            return result;
+          };
+
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length < 2) {
+            setUploadStatus({ type: 'error', message: 'Fail CSV tiada data. Pastikan ada sekurang-kurangnya header dan satu baris data.' });
+            setIsUploading(false);
+            return;
+          }
 
           // Detect headers
-          const header = lines[0].toLowerCase();
+          const headerCols = splitCsvLine(lines[0], delimiter).map(c => c.toLowerCase());
           let dateIdx = 0;
           let descIdx = 1;
           let amountIdx = 2;
+          let debitIdx = -1;
+          let creditIdx = -1;
+          let hasHeader = false;
 
-          if (header.includes('transaction date')) {
-            const cols = lines[0].split(',').map(c => c.trim().toLowerCase());
-            dateIdx = cols.indexOf('transaction date');
-            descIdx = cols.indexOf('transaction description');
-            amountIdx = cols.indexOf('amount');
-            if (amountIdx === -1) amountIdx = cols.indexOf('transaction amount');
-          } else if (header.includes('date') && header.includes('description') && header.includes('amount')) {
-            const cols = lines[0].split(',').map(c => c.trim().toLowerCase());
-            dateIdx = cols.indexOf('date');
-            descIdx = cols.indexOf('description');
-            amountIdx = cols.indexOf('amount');
+          // Check for known header patterns
+          const findCol = (keywords: string[]) => headerCols.findIndex(c => keywords.some(k => c.includes(k)));
+
+          const detectedDateIdx = findCol(['transaction date', 'tarikh', 'date', 'posting date', 'value date']);
+          const detectedDescIdx = findCol(['transaction description', 'description', 'penerangan', 'keterangan', 'particulars', 'narrative', 'detail']);
+          const detectedAmountIdx = findCol(['amount', 'jumlah', 'transaction amount']);
+          const detectedDebitIdx = findCol(['debit', 'withdrawal', 'pengeluaran', 'keluar']);
+          const detectedCreditIdx = findCol(['credit', 'deposit', 'masuk', 'kemasukan']);
+
+          if (detectedDateIdx !== -1) {
+            hasHeader = true;
+            dateIdx = detectedDateIdx;
+            descIdx = detectedDescIdx !== -1 ? detectedDescIdx : 1;
+            if (detectedDebitIdx !== -1 && detectedCreditIdx !== -1) {
+              debitIdx = detectedDebitIdx;
+              creditIdx = detectedCreditIdx;
+              amountIdx = -1;
+            } else {
+              amountIdx = detectedAmountIdx !== -1 ? detectedAmountIdx : 2;
+            }
+          } else if (headerCols.some(c => /date|tarikh|amount|jumlah|debit|credit/i.test(c))) {
+            hasHeader = true;
+            if (detectedAmountIdx !== -1) amountIdx = detectedAmountIdx;
+            if (detectedDebitIdx !== -1 && detectedCreditIdx !== -1) {
+              debitIdx = detectedDebitIdx;
+              creditIdx = detectedCreditIdx;
+              amountIdx = -1;
+            }
           }
 
-          const data = lines.slice(1).map((line, i) => {
-            const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-            const amountStr = cols[amountIdx] || '0';
-            const amount = parseFloat(amountStr.replace(/,/g, ''));
-            
-            // Handle Maybank date format (DD-MMM-YYYY or DD/MM/YYYY)
-            let rawDate = cols[dateIdx] || '';
-            let formattedDate = rawDate;
-            if (rawDate.includes('-') && isNaN(Date.parse(rawDate))) {
-              // Try to convert DD-MMM-YYYY to YYYY-MM-DD
-              const parts = rawDate.split('-');
-              if (parts.length === 3) {
-                const months: {[key: string]: string} = {
-                  'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-                  'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-                };
-                const day = parts[0].padStart(2, '0');
-                const month = months[parts[1].toUpperCase()] || '01';
-                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-                formattedDate = `${year}-${month}-${day}`;
-              }
+          const dataLines = hasHeader ? lines.slice(1) : lines;
+
+          // Parse date helper
+          const parseDate = (rawDate: string): string => {
+            if (!rawDate) return format(new Date(), 'yyyy-MM-dd');
+            const cleaned = rawDate.trim();
+
+            // YYYY-MM-DD (already correct)
+            if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) return cleaned;
+
+            // DD/MM/YYYY or DD-MM-YYYY
+            const slashMatch = cleaned.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+            if (slashMatch) {
+              const day = slashMatch[1].padStart(2, '0');
+              const month = slashMatch[2].padStart(2, '0');
+              const year = slashMatch[3].length === 2 ? `20${slashMatch[3]}` : slashMatch[3];
+              return `${year}-${month}-${day}`;
             }
+
+            // DD-MMM-YYYY or DD MMM YYYY (e.g. 15-Jan-2025)
+            const monthNameMatch = cleaned.match(/^(\d{1,2})[\s\-.]([A-Za-z]{3,})[\s\-.](\d{2,4})$/);
+            if (monthNameMatch) {
+              const months: {[key: string]: string} = {
+                'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
+                'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
+              };
+              const day = monthNameMatch[1].padStart(2, '0');
+              const month = months[monthNameMatch[2].toUpperCase().slice(0, 3)] || '01';
+              const year = monthNameMatch[3].length === 2 ? `20${monthNameMatch[3]}` : monthNameMatch[3];
+              return `${year}-${month}-${day}`;
+            }
+
+            // Fallback: try native Date parsing
+            const parsed = new Date(cleaned);
+            if (!isNaN(parsed.getTime())) return format(parsed, 'yyyy-MM-dd');
+
+            return format(new Date(), 'yyyy-MM-dd');
+          };
+
+          const data = dataLines.map((line, i) => {
+            const cols = splitCsvLine(line, delimiter);
+            
+            let amount = 0;
+            let type: 'credit' | 'debit' = 'debit';
+
+            if (debitIdx !== -1 && creditIdx !== -1) {
+              // Separate debit/credit columns
+              const debitStr = (cols[debitIdx] || '').replace(/[,\s]/g, '');
+              const creditStr = (cols[creditIdx] || '').replace(/[,\s]/g, '');
+              const debitAmt = parseFloat(debitStr) || 0;
+              const creditAmt = parseFloat(creditStr) || 0;
+              if (creditAmt > 0) {
+                amount = creditAmt;
+                type = 'credit';
+              } else {
+                amount = debitAmt;
+                type = 'debit';
+              }
+            } else {
+              const amountStr = (cols[amountIdx] || '0').replace(/[,\s]/g, '');
+              const parsedAmount = parseFloat(amountStr);
+              amount = Math.abs(parsedAmount || 0);
+              type = parsedAmount >= 0 ? 'credit' : 'debit';
+            }
+
+            const rawDate = cols[dateIdx] || '';
+            const formattedDate = parseDate(rawDate);
 
             return {
               id: `bt-${Date.now()}-${i}`,
-              date: formattedDate || format(new Date(), 'yyyy-MM-dd'),
+              date: formattedDate,
               description: cols[descIdx] || 'Transaksi Bank',
-              amount: Math.abs(amount),
-              type: amount >= 0 ? 'credit' : 'debit'
+              amount,
+              type
             };
-          });
+          }).filter(item => item.amount > 0 && item.description.trim() !== '');
+
+          if (data.length === 0) {
+            setUploadStatus({ type: 'error', message: 'Tiada transaksi sah ditemui dalam fail CSV. Pastikan fail mengandungi lajur Tarikh, Penerangan, dan Jumlah.' });
+            setIsUploading(false);
+            return;
+          }
 
           // Merge with existing transactions, only dedup against already-loaded ones
           setBankTransactions(prev => {
@@ -5472,10 +5577,10 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             localStorage.setItem('monitacc_bank_transactions', JSON.stringify(combined));
             return combined;
           });
-          const newCount = data.length;
-          setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${newCount} transaksi baru.` });
+          setUploadStatus({ type: 'success', message: `Berjaya memuat naik ${data.length} transaksi dari CSV.` });
         } catch (err) {
-          setUploadStatus({ type: 'error', message: 'Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah' });
+          console.error('CSV parse error:', err);
+          setUploadStatus({ type: 'error', message: 'Ralat membaca fail CSV. Sila pastikan format betul: Tarikh, Penerangan, Jumlah.' });
         } finally {
           setIsUploading(false);
         }
@@ -5529,6 +5634,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           console.error('Error processing with AI:', err);
           if (err?.message?.startsWith("KUOTA_HABIS:")) {
             setUploadStatus({ type: 'error', message: err.message.replace("KUOTA_HABIS:", "") });
+          } else if (err?.message) {
+            setUploadStatus({ type: 'error', message: err.message });
           } else {
             setUploadStatus({ type: 'error', message: 'Ralat semasa memproses dokumen dengan AI. Sila cuba lagi.' });
           }
