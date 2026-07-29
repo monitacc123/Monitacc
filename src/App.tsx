@@ -5671,7 +5671,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           <label className={`btn-primary flex items-center gap-2 cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {isUploading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
             {bankTransactions.length > 0 ? 'Muat Semula Penyata' : 'Muat Naik Penyata Bank'}
-            <input type="file" accept=".csv,.pdf" className="hidden" onChange={handleFileUpload} />
+            <input type="file" accept=".csv,.pdf,image/*" className="hidden" onChange={handleFileUpload} />
           </label>
         </div>
       </header>
@@ -5714,9 +5714,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             </div>
             <h3 className="text-xl font-bold text-slate-900 font-display">Mula Padanan Bank</h3>
             <p className="text-slate-500 text-sm leading-relaxed">
-              Muat naik penyata bank anda (CSV/PDF) untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda.
+              Muat naik penyata bank anda (CSV/PDF/Gambar) untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda. AI akan mengekstrak semua transaksi secara automatik.
             </p>
-            <p className="text-[10px] text-slate-400 font-medium">Format CSV: Tarikh, Penerangan, Jumlah (Negatif untuk Belanja)</p>
+            <p className="text-[10px] text-slate-400 font-medium">Sokongan: PDF penyata bank, gambar tangkap skrin penyata, atau CSV (Tarikh, Penerangan, Jumlah)</p>
             <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full">
               <button 
                 onClick={generateMockBankData}
@@ -5726,8 +5726,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               </button>
               <label className="flex-1 px-8 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all cursor-pointer flex items-center justify-center gap-2">
                 <FileText size={18} />
-                Muat Naik CSV / PDF
-                <input type="file" accept=".csv,.pdf" className="hidden" onChange={handleFileUpload} />
+                Muat Naik Penyata
+                <input type="file" accept=".csv,.pdf,image/*" className="hidden" onChange={handleFileUpload} />
               </label>
             </div>
           </div>
