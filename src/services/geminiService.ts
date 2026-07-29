@@ -607,9 +607,63 @@ Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":numbe
       }
 
       if (!pdfText || pdfText.trim().length < 50) {
-        // No usable text - PDF might be image-based/scanned
-        console.log("[BankExtract] PDF has no extractable text");
-        throw new Error("PDF_NO_TEXT:PDF ini tidak mengandungi teks yang boleh dibaca. Sila muat naik gambar (screenshot) penyata bank anda atau gunakan format CSV.");
+        // No usable text - fall through to image-based extraction below
+        console.log("[BankExtract] PDF has no extractable text, using image-based approach");
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:application/pdf;base64,${base64Data.split(",")[1] || base64Data}`;
+
+        const genericPrompt = `Extract ALL bank transactions from this bank statement into JSON.
+
+Rules:
+- debit (money OUT) = payments, purchases, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers, sales proceeds
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if available, empty string otherwise
+- type = "credit" or "debit"
+
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
+
+        const messages = [{
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: dataWithPrefix, detail: "high" } },
+            { type: "text", text: genericPrompt },
+          ],
+        }];
+
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
+
+        if (userId && tokensUsed > 0) {
+          apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+        }
+
+        if (!text || text.trim() === "") return null;
+
+        const jsonStr = extractJson(text);
+        let parsed = JSON.parse(jsonStr);
+        if (!Array.isArray(parsed)) {
+          parsed = parsed.transactions || parsed.data || [parsed];
+        }
+
+        allTransactions = parsed.filter((item: any) => {
+          if (!item || !item.date) return false;
+          const amt = parseAmount(item.amount);
+          if (isNaN(amt)) return false;
+          const type = normalizeType(item.type);
+          if (!type) return false;
+          return true;
+        }).map((item: any) => ({
+          date: item.date,
+          description: (item.description || "Transaksi Bank").trim(),
+          amount: parseAmount(item.amount),
+          type: normalizeType(item.type)! as "credit" | "debit",
+          reference: (item.reference || "").trim(),
+        }));
+
+        return allTransactions.length > 0 ? allTransactions : null;
       }
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
@@ -1017,25 +1071,12 @@ ${pdfText.slice(0, 15000)}`;
         imageUrl = compressed;
       }
 
-      const imagePrompt = `Extract ALL bank transactions from this bank statement image into JSON.
-
-Rules:
-- debit (money OUT) = payments, purchases, withdrawals, transfers out
-- credit (money IN) = deposits, incoming transfers, salary
-- amount = positive number (no commas)
-- date = YYYY-MM-DD format
-- description = transaction description
-- reference = reference number if available, empty string otherwise
-- type = "credit" or "debit"
-- Extract EVERY transaction visible in the image — do not skip any
-
-Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
-
+      const prompt = buildPrompt(50);
       const messages = [{
         role: "user",
         content: [
           { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
-          { type: "text", text: imagePrompt },
+          { type: "text", text: prompt },
         ],
       }];
 
@@ -1045,9 +1086,7 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
         apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
       }
 
-      if (!text || text.trim() === "") {
-        throw new Error("AI tidak mengembalikan sebarang jawapan. Sila cuba lagi.");
-      }
+      if (!text || text.trim() === "") return null;
 
       const jsonStr = extractJson(text);
       let parsed = JSON.parse(jsonStr);
