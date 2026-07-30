@@ -594,6 +594,8 @@ Rules:
 - reference = any reference/invoice number shown (e.g. "IN2601063", "20260101M0007275861", "QR81917339"), empty string if none
 - CRITICAL: Two transactions with the SAME amount and description are SEPARATE entries if they appear as separate [TX] blocks. Never merge them.
 - Every [TX] block is a separate transaction — return one JSON item for each
+- DO NOT invent, fabricate, or add any transaction that is not explicitly present in the text. Only extract what you can see.
+- DO NOT duplicate any transaction. Each [TX] marker should produce exactly one JSON item.
 ${partInfo || ""}
 Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
 
@@ -998,18 +1000,14 @@ ${pdfText.slice(0, 15000)}`;
         }
       }
 
-      // Deduplicate only true duplicates from overlapping batches.
-      // Only dedupe when both transactions share the same non-empty reference number,
-      // since the batching system can cause the same transaction to appear in adjacent batches.
-      // Transactions without reference numbers are always kept (they are unique by [TX] marker).
-      const seen = new Set<string>();
+      // Deduplicate: remove exact duplicates based on date+amount+type+description+reference.
+      // Allow same date+amount+type only when description or reference differ (genuinely distinct transactions).
+      const seen = new Map<string, number>();
       const deduped: BankTransaction[] = [];
       for (const tx of allTransactions) {
-        if (tx.reference) {
-          const key = `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`;
-          if (seen.has(key)) continue;
-          seen.add(key);
-        }
+        const key = `${tx.date}|${tx.amount}|${tx.type}|${(tx.description || "").trim()}|${(tx.reference || "").trim()}`;
+        if (seen.has(key)) continue;
+        seen.set(key, 1);
         deduped.push(tx);
       }
       const beforeDedup = allTransactions.length;
@@ -1030,18 +1028,11 @@ ${pdfText.slice(0, 15000)}`;
       const actualDebits = allTransactions.filter(t => t.type === "debit").length;
       console.log(`[BankExtract] Expected: ${expectedTotal || 'unknown'}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
 
-      // Only use local fallback when AI clearly missed transactions
-      if (expectedTotal > 0 && allTransactions.length < expectedTotal) {
-        const locallyParsed = localParseFallback(pdfText, allTransactions);
-        if (locallyParsed.length > 0) {
-          allTransactions.push(...locallyParsed);
-          console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
-        }
-      }
-
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
       }
+
+      return allTransactions.length > 0 ? allTransactions : null;
     } else {
       const isUrl = base64Data.startsWith("http");
       let imageUrl: string;
