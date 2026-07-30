@@ -1030,29 +1030,12 @@ ${pdfText.slice(0, 15000)}`;
       const actualDebits = allTransactions.filter(t => t.type === "debit").length;
       console.log(`[BankExtract] Expected: ${expectedTotal || 'unknown'}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
 
-      // Always try local fallback to recover any missed transactions
-      const locallyParsed = localParseFallback(pdfText, allTransactions);
-      if (locallyParsed.length > 0) {
-        allTransactions.push(...locallyParsed);
-        console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
-      }
-
+      // Only use local fallback when AI clearly missed transactions
       if (expectedTotal > 0 && allTransactions.length < expectedTotal) {
-        if (allTransactions.length < expectedTotal) {
-          // If still missing, add stubs with remark for manual check
-          const stillMissing = expectedTotal - allTransactions.length;
-          if (stillMissing > 0) {
-            for (let i = 0; i < stillMissing; i++) {
-              allTransactions.push({
-                date: "2025-01-01",
-                description: `Transaksi tidak dapat dikesan (#${i + 1})`,
-                amount: 0,
-                type: "credit",
-                remark: "Sila semak penyata bank secara manual - transaksi ini tidak dapat diekstrak oleh AI",
-              });
-            }
-            console.log(`[BankExtract] Added ${stillMissing} stub entries for manual review`);
-          }
+        const locallyParsed = localParseFallback(pdfText, allTransactions);
+        if (locallyParsed.length > 0) {
+          allTransactions.push(...locallyParsed);
+          console.log(`[BankExtract] Recovered ${locallyParsed.length} missing transactions via local parse`);
         }
       }
 
