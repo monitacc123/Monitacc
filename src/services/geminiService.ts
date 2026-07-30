@@ -563,6 +563,8 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
+    let statementYear = new Date().getFullYear().toString();
+
     const normalizeType = (type: any): "credit" | "debit" | null => {
       if (!type) return null;
       const t = String(type).toLowerCase().trim();
@@ -674,7 +676,6 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
       const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
 
       // Extract statement year from header (e.g., "31/01/26" -> 2026, or "31/01/2026")
-      let statementYear = new Date().getFullYear().toString();
       const yearMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
       if (yearMatch) {
         const yr = yearMatch[3];
