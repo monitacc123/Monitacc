@@ -1,6 +1,11 @@
 import { supabase } from '../lib/supabase';
-import type { User as UserType } from '../types';
+import type { User as UserType, OpeningBalance, StockTake } from '../types';
 import { ASSET_LIABILITY_CATEGORIES } from '../constants/categories';
+import {
+  type PaymentMethod,
+  methodCodeFromLabel,
+  methodCategoryFromLabel,
+} from '../constants/paymentMethods';
 
 function mapRecord(r: any) {
   return {
@@ -484,6 +489,15 @@ export async function apiGetUsers(): Promise<UserType[]> {
   return (data || []) as unknown as UserType[];
 }
 
+// Tukar nama rujukan (affiliate) seorang pengguna — supaya admin boleh betulkan padanan ejen
+export async function apiUpdateUserReferral(userId: string, referredBy: string): Promise<void> {
+  const { error } = await supabase
+    .from('users')
+    .update({ referred_by: referredBy.trim() || 'Tiada Rujukan' })
+    .eq('id', userId);
+  if (error) throw new Error(error.message);
+}
+
 export async function apiUpdateUserPlan(userId: string, plan: string, planEnd?: string, specialTier?: string): Promise<void> {
   const updates: any = { plan, plan_start: new Date().toISOString() };
   if (planEnd) updates.plan_end = planEnd;
@@ -588,6 +602,17 @@ export async function apiResetUserPassword(userId: string, newPassword: string):
   if (!res.ok) throw new Error(json.error || text || 'Gagal reset kata laluan');
 }
 
+// Harga bulanan setiap pakej (RM). Digunakan untuk hasil bulanan & kiraan komisen affiliate.
+export const PLAN_PRICES: Record<string, number> = {
+  free: 0, Free: 0, Percuma: 0,
+  Starter: 50,
+  Growth: 100,
+  Ultimate: 150,
+};
+
+// Kadar komisen affiliate: 10% daripada langganan berbayar
+export const AFFILIATE_COMMISSION_RATE = 0.10;
+
 export async function apiGetAdminDashboardStats() {
   const { data: users, error: usersError } = await supabase
     .from('users')
@@ -600,10 +625,9 @@ export async function apiGetAdminDashboardStats() {
   const cancelledUsers = allUsers.filter(u => u.status === 'cancelled').length;
   const totalAffiliated = allUsers.filter(u => u.referred_by && u.referred_by !== '').length;
 
-  const planPrices: Record<string, number> = { free: 0, Starter: 50, Growth: 100, Ultimate: 150 };
   const monthlyRevenue = allUsers
     .filter(u => (u.status || 'active') === 'active')
-    .reduce((sum, u) => sum + (planPrices[u.plan || 'free'] || 0), 0);
+    .reduce((sum, u) => sum + (PLAN_PRICES[u.plan || 'free'] || 0), 0);
 
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
@@ -720,14 +744,31 @@ export const PLAN_SCAN_LIMITS: Record<string, number> = {
   Special: Infinity,
 };
 
+// Had muat naik PDF RESIT sebulan, sebagai baldi BERASINGAN daripada imbasan resit.
+// (Ini BUKAN penyata bank — lihat canScanBankStatement di bawah untuk itu.)
+//
+// Starter & Growth sengaja TIADA dalam senarai ini: mereka tidak mempunyai baldi
+// PDF sendiri. Imbasan resit dan muat naik PDF resit mereka ditolak daripada
+// SATU kuota yang sama (PLAN_SCAN_LIMITS) — 100 dan 250 sebulan.
 export const PLAN_PDF_LIMITS: Record<string, number> = {
   free: 1,
   Percuma: 1,
-  Starter: 3,
-  Growth: 9,
   Ultimate: Infinity,
   Special: Infinity,
 };
+
+// True jika pakej berkongsi satu kuota untuk imbasan resit + muat naik PDF resit.
+export function usesSharedScanPool(planKey: string): boolean {
+  return PLAN_PDF_LIMITS[planKey] === undefined;
+}
+
+// Imbasan PENYATA BANK dengan AI — eksklusif Ultimate sahaja.
+// Pakej lain masih boleh import penyata bank secara manual melalui fail CSV.
+const BANK_STATEMENT_PLANS = new Set(['Ultimate']);
+
+export function canScanBankStatement(planKey: string): boolean {
+  return BANK_STATEMENT_PLANS.has(planKey);
+}
 
 function getCurrentYearMonth(): string {
   const now = new Date();
@@ -761,6 +802,7 @@ export async function apiLogScanUsage(userId: string, scanType: 'receipt' | 'pdf
 export interface Affiliate {
   id: string;
   name: string;
+  ref_code?: string;   // kod rujukan unik untuk link affiliate (dijana automatik oleh pangkalan data)
   email: string;
   phone: string;
   bank: string;
@@ -771,6 +813,312 @@ export interface Affiliate {
   is_paid: boolean;
   joined_date: string;
   created_at: string;
+}
+
+// ── Baki Awal (Opening Balances) ────────────────────────────────────────────
+
+export async function apiGetOpeningBalances(userId: string): Promise<OpeningBalance[]> {
+  const { data, error } = await supabase
+    .from('opening_balances')
+    .select('id, category, amount, as_at_date')
+    .eq('user_id', userId);
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    category: r.category,
+    amount: Number(r.amount) || 0,
+    as_at_date: r.as_at_date,
+  }));
+}
+
+// Simpan keseluruhan set baki awal sekali gus. Kategori bernilai 0 dibuang
+// supaya jadual hanya menyimpan baris yang benar-benar bermakna.
+export async function apiSaveOpeningBalances(
+  userId: string,
+  asAtDate: string,
+  entries: { category: string; amount: number }[],
+): Promise<void> {
+  const keep = entries.filter(e => Number(e.amount) !== 0);
+  const keepCats = new Set(keep.map(e => e.category.trim().toUpperCase()));
+
+  // Buang baris yang telah dikosongkan pengguna. Padam ikut id (bukan nama
+  // kategori) kerana nama mengandungi '&', '.' dan '-' yang perlu dilepaskan
+  // dalam penapis PostgREST.
+  const { data: existing, error: readError } = await supabase
+    .from('opening_balances')
+    .select('id, category')
+    .eq('user_id', userId);
+  if (readError) throw new Error(readError.message);
+
+  const staleIds = (existing || [])
+    .filter((r: any) => !keepCats.has(String(r.category || '').trim().toUpperCase()))
+    .map((r: any) => r.id);
+
+  if (staleIds.length > 0) {
+    const { error: delError } = await supabase
+      .from('opening_balances')
+      .delete()
+      .eq('user_id', userId)
+      .in('id', staleIds);
+    if (delError) throw new Error(delError.message);
+  }
+
+  if (keep.length === 0) return;
+
+  const { error } = await supabase
+    .from('opening_balances')
+    .upsert(
+      keep.map(e => ({
+        user_id: userId,
+        category: e.category,
+        amount: Number(e.amount) || 0,
+        as_at_date: asAtDate,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: 'user_id,category' },
+    );
+
+  if (error) throw new Error(error.message);
+}
+
+// ── Kaedah Bayaran Tersuai (Custom Payment Methods) ─────────────────────────
+
+export async function apiGetPaymentMethods(userId: string): Promise<PaymentMethod[]> {
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .select('id, code, label, bs_category')
+    .eq('user_id', userId)
+    .order('id', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    code: r.code,
+    label: r.label,
+    bs_category: r.bs_category,
+  }));
+}
+
+export async function apiAddPaymentMethod(userId: string, label: string): Promise<PaymentMethod> {
+  const trimmed = label.trim().replace(/\s+/g, ' ');
+  const row = {
+    user_id: userId,
+    code: methodCodeFromLabel(trimmed),
+    label: trimmed,
+    bs_category: methodCategoryFromLabel(trimmed),
+  };
+
+  const { data, error } = await supabase
+    .from('payment_methods')
+    .insert([row])
+    .select('id, code, label, bs_category')
+    .single();
+
+  if (error) {
+    // 23505 = unique violation (kod yang sama sudah wujud untuk pengguna ini)
+    if ((error as any).code === '23505') throw new Error('Kaedah bayaran ini sudah wujud');
+    throw new Error(error.message);
+  }
+  return data as PaymentMethod;
+}
+
+// Memadam kaedah TIDAK menyentuh transaksi lama. Transaksi tersebut kekal
+// menyimpan kodnya dan bakinya jatuh semula ke baris Bank dalam Kunci Kira-Kira.
+export async function apiDeletePaymentMethod(userId: string, id: number): Promise<void> {
+  const { error } = await supabase
+    .from('payment_methods')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+// ── Stock Take (Stok Akhir) ─────────────────────────────────────────────────
+
+export async function apiGetStockTakes(userId: string): Promise<StockTake[]> {
+  const { data, error } = await supabase
+    .from('stock_takes')
+    .select('id, as_at_date, amount, note')
+    .eq('user_id', userId)
+    .order('as_at_date', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data || []).map((r: any) => ({
+    id: r.id,
+    as_at_date: r.as_at_date,
+    amount: Number(r.amount) || 0,
+    note: r.note || '',
+  }));
+}
+
+export async function apiSaveStockTake(
+  userId: string,
+  asAtDate: string,
+  amount: number,
+  note = '',
+): Promise<void> {
+  const { error } = await supabase
+    .from('stock_takes')
+    .upsert(
+      [{ user_id: userId, as_at_date: asAtDate, amount: Number(amount) || 0, note, updated_at: new Date().toISOString() }],
+      { onConflict: 'user_id,as_at_date' },
+    );
+
+  if (error) throw new Error(error.message);
+}
+
+export async function apiDeleteStockTake(userId: string, id: number): Promise<void> {
+  const { error } = await supabase
+    .from('stock_takes')
+    .delete()
+    .eq('user_id', userId)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
+}
+
+export interface ReferredUser {
+  id: string;
+  name: string;
+  email: string;
+  plan: string;
+  status: string;
+  referred_by: string;
+  created_at: string;      // tarikh akaun dibuka
+  plan_start?: string | null;  // tarikh mula langganan
+  plan_end?: string | null;    // tarikh tamat langganan
+}
+
+// Ambil semua pengguna yang mempunyai nama rujukan (untuk kiraan komisen automatik)
+export async function apiGetReferredUsers(): Promise<ReferredUser[]> {
+  const { data, error } = await supabase
+    .from('users')
+    .select('id, name, email, plan, status, referred_by, created_at, plan_start, plan_end')
+    .order('created_at', { ascending: false });
+  if (error) throw new Error(error.message);
+  return (data || []).filter((u: any) => !isDirectReferral(u.referred_by)) as ReferredUser[];
+}
+
+// Nama rujukan yang bermaksud "tiada ejen" — pengguna daftar terus
+export function isDirectReferral(ref?: string | null): boolean {
+  const v = (ref || '').trim().toLowerCase();
+  return !v || v === 'tiada rujukan' || v === 'terus' || v === 'direct' || v === '-';
+}
+
+// Samakan format nama supaya padanan tidak terjejas oleh huruf besar/kecil atau ruang berlebihan
+export function normalizeReferralName(value?: string | null): string {
+  return (value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+export interface AffiliateEarning {
+  referrals: ReferredUser[];       // semua pengguna yang merujuk ejen ini
+  totalReferrals: number;          // jumlah rujukan
+  newReferrals: number;            // rujukan yang mendaftar dalam bulan dipilih
+  payingReferrals: number;         // rujukan berbayar yang layak komisen bulan itu
+  payingUsers: ReferredUser[];     // senarai rujukan yang layak komisen bulan itu
+  monthlyCommission: number;       // komisen bagi bulan itu (RM)
+  monthlyRevenue: number;          // jumlah langganan bulanan yang dirujuk (RM)
+}
+
+// Adakah langganan pengguna ini aktif dalam bulan yang dipilih ('YYYY-MM')?
+// Guna plan_start & plan_end kerana status semasa tidak merekod sejarah.
+function isSubscribedDuringMonth(u: ReferredUser, monthKey: string): boolean {
+  const [y, m] = monthKey.split('-').map(Number);
+  const monthStart = new Date(y, m - 1, 1).getTime();
+  const monthEnd = new Date(y, m, 0, 23, 59, 59, 999).getTime();
+  if (!u.plan_start) return false;
+  const start = new Date(u.plan_start).getTime();
+  if (isNaN(start) || start > monthEnd) return false;
+  if (u.plan_end) {
+    const end = new Date(u.plan_end).getTime();
+    if (!isNaN(end) && end < monthStart) return false;
+  }
+  return true;
+}
+
+// Kira rujukan & komisen bagi seorang ejen berdasarkan nama ejen.
+// monthKey ('YYYY-MM') pilihan — jika diberi, kira untuk bulan itu sahaja.
+export function calcAffiliateEarning(agentName: string, referredUsers: ReferredUser[], monthKey?: string): AffiliateEarning {
+  const key = normalizeReferralName(agentName);
+  const referrals = key ? referredUsers.filter(u => normalizeReferralName(u.referred_by) === key) : [];
+
+  const isPaidPlan = (u: ReferredUser) => (PLAN_PRICES[u.plan || 'free'] || 0) > 0;
+
+  const paying = monthKey
+    ? referrals.filter(u => isPaidPlan(u) && isSubscribedDuringMonth(u, monthKey))
+    : referrals.filter(u => isPaidPlan(u) && (u.status || 'active') === 'active');
+
+  const newReferrals = monthKey
+    ? referrals.filter(u => (u.created_at || '').slice(0, 7) === monthKey).length
+    : referrals.length;
+
+  const monthlyRevenue = paying.reduce((sum, u) => sum + (PLAN_PRICES[u.plan || 'free'] || 0), 0);
+  return {
+    referrals,
+    payingUsers: paying,
+    newReferrals,
+    totalReferrals: referrals.length,
+    payingReferrals: paying.length,
+    monthlyRevenue,
+    monthlyCommission: monthlyRevenue * AFFILIATE_COMMISSION_RATE,
+  };
+}
+
+// Senarai nama ejen untuk borang pendaftaran awam.
+// Hanya lajur id, name & ref_code dibenarkan untuk peranan `anon` (lihat migrasi
+// 20260731000000_allow_public_read_affiliate_names.sql dan
+// 20260803100000_add_affiliate_referral_links.sql). Jika RLS menyekat,
+// kembalikan senarai kosong supaya borang jatuh balik kepada input manual.
+export async function apiGetPublicAffiliateNames(): Promise<{ id: string; name: string; ref_code?: string }[]> {
+  const { data, error } = await supabase
+    .from('affiliates')
+    .select('id, name, ref_code')
+    .order('name', { ascending: true });
+  if (error) {
+    console.warn('Tidak dapat memuatkan senarai ejen untuk borang pendaftaran:', error.message);
+    return [];
+  }
+  return (data || []).filter((a: any) => (a.name || '').trim() !== '');
+}
+
+// ── Link rujukan affiliate ──────────────────────────────────────────────────
+// Setiap ejen ada kod unik (cth. "hasan"). Link yang dikongsi berbentuk:
+//   https://monitacc.com/?ref=hasan
+// Bila diklik, borang pendaftaran terus mengunci medan Rujukan kepada nama ejen.
+
+export const REFERRAL_QUERY_KEY = 'ref';
+
+// Bina link penuh yang boleh dikongsi oleh ejen.
+// `origin` boleh diberi untuk menguji; jika tidak, guna domain semasa pelayar.
+export function buildReferralLink(refCode?: string | null, origin?: string): string {
+  const base = (origin || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/+$/, '');
+  return `${base}/?${REFERRAL_QUERY_KEY}=${encodeURIComponent((refCode || '').trim())}`;
+}
+
+// Versi ringkas untuk paparan (buang "https://" supaya muat dalam jadual)
+export function displayReferralLink(refCode?: string | null, origin?: string): string {
+  return buildReferralLink(refCode, origin).replace(/^https?:\/\//, '');
+}
+
+// Cari ejen berdasarkan kod rujukan daripada URL. Kembali null jika kod tidak
+// wujud atau ejen sudah tidak aktif (ditapis oleh polisi RLS).
+export async function apiGetAffiliateByRefCode(refCode: string): Promise<{ id: string; name: string; ref_code: string } | null> {
+  const code = (refCode || '').trim().toLowerCase();
+  if (!code) return null;
+
+  const { data, error } = await supabase
+    .from('affiliates')
+    .select('id, name, ref_code')
+    .eq('ref_code', code)
+    .maybeSingle();
+
+  if (error) {
+    console.warn('Tidak dapat mengesahkan kod rujukan:', error.message);
+    return null;
+  }
+  return data ? (data as { id: string; name: string; ref_code: string }) : null;
 }
 
 export async function apiGetAffiliates(): Promise<Affiliate[]> {

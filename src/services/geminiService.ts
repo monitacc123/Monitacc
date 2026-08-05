@@ -1,6 +1,7 @@
 import { ALL_CATEGORIES } from "../constants/categories";
 import { extractTextFromPdf } from "./pdfExtractor";
 import { apiLogAiUsage, apiGetUserTokenUsage } from "./api";
+import { detectStatementPeriod, applyStatementYear } from "./statementPeriod";
 
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
@@ -253,105 +254,37 @@ Extract ALL transactions from the document now:`;
         pdfText = "[PDF content could not be extracted - please try an image format]";
       }
 
-      // Detect if this is a bank statement
-      isBankStatement = /Statement of Account|Penyata Akaun|OPENING BALANCE|CLOSING BALANCE|No of Withdrawal/i.test(pdfText);
+      // Kesan penyata bank. Senarai penanda meliputi format Maybank
+      // (BEGINNING/ENDING BALANCE, URUSNIAGA AKAUN, TRANSFER FR/TO A/C) dan
+      // CIMB (Statement of Account, No of Withdrawal). Sebelum ini hanya
+      // penanda CIMB disenaraikan, jadi penyata Maybank terlepas ke laluan
+      // resit biasa — seluruh penyata dihantar dalam SATU panggilan AI dan
+      // baris transaksi tercicir.
+      isBankStatement = /Statement of Account|Penyata Akaun|URUSNIAGA AKAUN|ACCOUNT TRANSACTIONS|OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|STATEMENT BALANCE|BAKI PENYATA|No of Withdrawal|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
 
       if (isBankStatement) {
-        // Process bank statement page by page for accuracy
-        const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
-        const allResults: ExtractedData[] = [];
-        let totalTokens = 0;
+        // Serahkan kepada extractBankTransactions() — enjin yang sama digunakan
+        // oleh skrin Padan Bank. Ia mengumpulkan baris transaksi secara TEMPATAN
+        // (bilangan ditentukan oleh penghurai, bukan AI), menyokong tarikh DD/MM
+        // Maybank, dan menghantar 15 transaksi setiap batch dengan kiraan yang
+        // dinyatakan kepada AI. Dengan ini fail yang sama memberi jumlah yang
+        // sama sama ada dimuat naik melalui Imbasan atau Padan Bank.
+        const bankTx = await extractBankTransactions(base64Data, mimeType, userId, plan);
+        if (!bankTx || bankTx.length === 0) return null;
 
-        const bankPrompt = (pageInfo: string) => `Extract ALL transactions from this page of a CIMB Islamic Bank statement into JSON.
-
-CRITICAL RULES:
-1. Respond with ONLY a valid JSON array
-2. Extract EVERY transaction line — do NOT skip or merge any
-3. Each transaction has a UNIQUE reference number — use it as docNumber
-4. Two transactions with same amount/date are DIFFERENT if they have different reference numbers
-5. NEVER merge transactions. Every date line = one transaction.
-
-Transaction type rules:
-- Withdrawal (money OUT) = "expense": DUITNOW TO ACCOUNT/MOBILE/ID when sending money, MYDEBIT PURCHASE, POS DEBIT, JOMPAY
-- Deposit (money IN) = "income": AUTOPAY CR, IBG CREDIT, CDM CASH DEPOSIT, HSE CHQ DEPOSIT, I-FUNDS TR FROM SA, DUITNOW TO ACCOUNT when receiving
-- Balance column: increases = income; decreases = expense
-- payment_method: always "bank"
-- category: "SALES" for income, "Lain-lain" for expense
-- date: YYYY-MM-DD (year 2025)
-- docNumber: the Cheque/Ref No shown
-- docType: "Penyata Bank"
-- description: transaction description
-
-${pageInfo}
-Return ONLY JSON: [{"type":"income"|"expense","docType":"Penyata Bank","docNumber":"...","category":"SALES"|"Lain-lain","amount":number,"date":"YYYY-MM-DD","description":"...","payment_method":"bank"}]`;
-
-        for (let i = 0; i < pages.length; i++) {
-          const pageContent = pages[i].trim();
-          if (!pageContent || pageContent.length < 30) continue;
-          // Skip pages that don't have transaction data
-          if (!/\d{1,2}\/\d{1,2}\/\d{4}/.test(pageContent)) continue;
-
-          const pageMessages = [{
-            role: "user",
-            content: `${bankPrompt(`Page ${i + 1} of ${pages.length}.`)}\n\nPAGE CONTENT:\n${pageContent}`,
-          }];
-
-          try {
-            const { content: pageResult, tokensUsed: pgTokens } = await withRetry(
-              () => chatCompletion(pageMessages, false, SCAN_MODELS, 16384), 3, 1000
-            );
-            totalTokens += pgTokens;
-
-            if (pageResult && pageResult.trim()) {
-              const jsonStr = extractJson(pageResult);
-              let parsed = JSON.parse(jsonStr);
-              if (!Array.isArray(parsed)) parsed = parsed.transactions || parsed.data || [parsed];
-              const valid = parsed.filter((item: any) => item && Number(item.amount) > 0);
-              allResults.push(...valid);
-            }
-          } catch (pageErr: any) {
-            console.warn(`[BankScan] Page ${i + 1} failed:`, pageErr?.message);
-          }
-        }
-
-        if (userId && totalTokens > 0) {
-          apiLogAiUsage(userId, totalTokens, "scan").catch(() => {});
-        }
-
-        if (allResults.length > 0) {
-          // Deduplicate using docNumber
-          const seen = new Set<string>();
-          const deduped = allResults.filter(item => {
-            const key = `${item.date}|${item.amount}|${item.docNumber || ''}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
-          });
-
-          // Check expected count from summary
-          const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
-          if (summaryMatch) {
-            const expectedTotal = parseInt(summaryMatch[1], 10) + parseInt(summaryMatch[2], 10);
-            if (deduped.length < expectedTotal) {
-              const missing = expectedTotal - deduped.length;
-              for (let m = 0; m < missing; m++) {
-                deduped.push({
-                  type: "income",
-                  docType: "Penyata Bank",
-                  docNumber: `MANUAL-CHECK-${m + 1}`,
-                  category: "Lain-lain",
-                  amount: 0,
-                  date: "2025-01-01",
-                  description: `Transaksi tidak dapat dikesan (#${m + 1}) - sila semak manual`,
-                  payment_method: "bank",
-                });
-              }
-            }
-          }
-
-          return deduped;
-        }
-        return null;
+        return bankTx.map((t): ExtractedData => ({
+          type: t.type === "credit" ? "income" : "expense",
+          docType: "Penyata Bank",
+          docNumber: t.reference || "",
+          // Kategori dicadangkan oleh AI berdasarkan nama penerima & catatan
+          // pada penyata. Jatuh balik kepada nilai am hanya bila AI benar-benar
+          // tiada petunjuk (cth. pindahan kepada nama peribadi tanpa catatan).
+          category: t.category || (t.type === "credit" ? "SALES" : "Lain-lain"),
+          amount: t.amount,
+          date: t.date,
+          description: t.description,
+          payment_method: "bank",
+        }));
       } else {
         messages = [{
           role: "user",
@@ -464,6 +397,26 @@ export interface BankTransaction {
   type: "credit" | "debit";
   reference?: string;
   remark?: string;
+  /** Kategori perakaunan yang dicadangkan AI. Kosong jika butiran tidak mencukupi. */
+  category?: string;
+}
+
+// Padankan kategori yang dipulangkan AI dengan senarai rasmi. AI kadangkala
+// menulis huruf kecil atau menambah ruang, jadi padanan dibuat secara longgar —
+// tetapi nilai yang TIDAK wujud dalam senarai ditolak supaya tiada kategori
+// rekaan masuk ke dalam lejar.
+// "Lain-lain" bukan sebahagian ALL_CATEGORIES tetapi ia label rasmi sistem
+// untuk transaksi yang tidak dapat dikelaskan — jadi ia turut diterima.
+const CATEGORY_LOOKUP = new Map<string, string>([
+  ...ALL_CATEGORIES.map(c => [c.trim().toLowerCase(), c] as [string, string]),
+  ["lain-lain", "Lain-lain"],
+  ["lain lain", "Lain-lain"],
+]);
+
+function normalizeCategory(value: any): string {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (!key) return "";
+  return CATEGORY_LOOKUP.get(key) || "";
 }
 
 function localParseFallback(pdfText: string, existing: BankTransaction[]): BankTransaction[] {
@@ -474,12 +427,8 @@ function localParseFallback(pdfText: string, existing: BankTransaction[]): BankT
 
   const lines = pdfText.split("\n");
 
-  // Extract statement year
-  let fallbackYear = new Date().getFullYear().toString();
-  const yrMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*\d{1,2}\/\d{1,2}\/(\d{2,4})/i);
-  if (yrMatch) {
-    fallbackYear = yrMatch[1].length === 2 ? `20${yrMatch[1]}` : yrMatch[1];
-  }
+  // Tahun penyata — tahun semasa hanya sebagai pilihan terakhir
+  const fallbackYear = detectStatementPeriod(pdfText).year || new Date().getFullYear().toString();
 
   // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
   const datePattern = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+\S/;
@@ -563,8 +512,6 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
     }
     const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
 
-    let statementYear = new Date().getFullYear().toString();
-
     const normalizeType = (type: any): "credit" | "debit" | null => {
       if (!type) return null;
       const t = String(type).toLowerCase().trim();
@@ -578,6 +525,21 @@ export async function extractBankTransactions(base64Data: string, mimeType: stri
       if (typeof val === "number") return Math.abs(val);
       const cleaned = String(val).replace(/[,\s]/g, "");
       return Math.abs(Number(cleaned));
+    };
+
+    // Tahun penyata — diisi semula dari header PDF jika dijumpai.
+    // MESTI diisytihar di sini supaya buildPrompt di bawah dapat melihatnya.
+    let statementYear = new Date().getFullYear().toString();
+    let statementMonth: number | null = null;
+    // Benar hanya untuk penyata yang tarikh transaksinya tiada tahun (cth Maybank).
+    // Untuk penyata sebegini kita tulis semula tahun selepas AI selesai, kerana
+    // apa jua tahun yang AI keluarkan datang daripada tekaan prompt kita.
+    let datesLackYear = false;
+
+    // Semua laluan keluar melalui sini supaya pembetulan tahun tidak terlepas.
+    const finalize = (txs: BankTransaction[]): BankTransaction[] | null => {
+      const fixed = datesLackYear ? applyStatementYear(txs, statementYear, statementMonth) : txs;
+      return fixed.length > 0 ? fixed : null;
     };
 
     const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this bank statement section into JSON.
@@ -596,8 +558,25 @@ Rules:
 - Every [TX] block is a separate transaction — return one JSON item for each
 - DO NOT invent, fabricate, or add any transaction that is not explicitly present in the text. Only extract what you can see.
 - DO NOT duplicate any transaction. Each [TX] marker should produce exactly one JSON item.
+
+CATEGORY — classify each transaction using the payee name and any remark text:
+- Telco (Maxis, Celcom, U Mobile, TM / Unifi, Digi, Yes, TM TECHNOLOGY) = "TELECOMMUNICATION EXPENSES"
+- Electricity / water (TNB, Syabas, Air Selangor, IWK, SAJ) = "WATER AND ELECTRICITY"
+- Petrol station or toll (Petronas, Shell, Caltex, Touch n Go, SmartTAG) = "PETROL, PARKING AND TOLL"
+- The bank's own fee line (SERVICE CHARGE, STAMP DUTY, GST ON FEE, CHEQUE BOOK) = "BANK CHARGES"
+- Mosque, surau, charity, sedekah, derma = "CONDOLENCES & DONATION"; zakat specifically = "ZAKAT"
+- Shop / premise / stall rent (sewa kedai, sewa kantin, sewa lot) = "RENTAL OF OFFICE"
+- Staff pay (gaji, upah, elaun) = "SALARIES, BONUS AND ALLOWANCES"
+- Road tax or insurance / takaful = "ROADTAX AND INSURANCE"
+- Supplier / stock / raw material purchase = "PURCHASES"
+- Marketplace or ads platform (TikTok Shop, Shopee, Lazada, Facebook Ads) = "ADVERTISEMENT/ MARKETING EXPENSES"
+- Also read the free-text remark line under the payee — it is often the clearest clue (e.g. "Sewa kantin" = rent, "Sedekah jumaat" = donation, "Sarapan" = staff refreshment). A bare "Bayaran" is NOT a clue.
+- Money IN from customers (DuitNow QR, MAE QR, cheque deposit) = "SALES"
+- Owner moving their own money (own name, "Tabung", FUND/WTDRW) = "CAPITAL"
+- Use "Lain-lain" ONLY when the payee is just a personal name with no other clue about what the money was for. Do not guess wildly — but do NOT default to "Lain-lain" when a clear clue exists.
+- category MUST be copied EXACTLY, character for character, from this list: ${ALL_CATEGORIES.join(", ")}, Lain-lain
 ${partInfo || ""}
-Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
+Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"...","category":"..."}]`;
 
     let allTransactions: BankTransaction[] = [];
 
@@ -665,9 +644,10 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
           amount: parseAmount(item.amount),
           type: normalizeType(item.type)! as "credit" | "debit",
           reference: (item.reference || "").trim(),
+          category: normalizeCategory(item.category),
         }));
 
-        return allTransactions.length > 0 ? allTransactions : null;
+        return finalize(allTransactions);
       }
 
       const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
@@ -677,12 +657,16 @@ Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":num
       // Detect if Maybank (DD/MM without year) vs CIMB (DD/MM/YYYY)
       const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
 
-      // Extract statement year from header (e.g., "31/01/26" -> 2026, or "31/01/2026")
-      const yearMatch = pdfText.match(/STATEMENT DATE[^:]*:\s*(\d{1,2})\/(\d{1,2})\/(\d{2,4})/i);
-      if (yearMatch) {
-        const yr = yearMatch[3];
-        statementYear = yr.length === 2 ? `20${yr}` : yr;
+      // Tempoh penyata dari header (banyak variasi format — lihat detectStatementPeriod)
+      const period = detectStatementPeriod(pdfText);
+      if (period.year) {
+        statementYear = period.year;
+        statementMonth = period.month;
+      } else {
+        console.warn("[BankExtract] Tahun penyata tidak dikesan — guna tahun semasa sebagai anggaran");
       }
+      datesLackYear = isMaybank;
+      console.log(`[BankExtract] Tempoh penyata: ${statementYear}${statementMonth ? `-${String(statementMonth).padStart(2, "0")}` : ""} (tarikh tanpa tahun: ${datesLackYear})`);
 
       const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION|TRANSFER FR A\\/C|TRANSFER TO A\\/C|PAYMENT FR A\\/C|INTER-BANK";
 
@@ -849,6 +833,7 @@ ${pdfText.slice(0, 15000)}`;
               amount: parseAmount(item.amount),
               type: normalizeType(item.type)! as "credit" | "debit",
               reference: (item.reference || "").trim(),
+              category: normalizeCategory(item.category),
             }));
             console.log(`[BankExtract] Generic fallback extracted ${allTransactions.length} transactions`);
           } catch (e) {
@@ -859,11 +844,14 @@ ${pdfText.slice(0, 15000)}`;
         if (userId && totalTokensUsed > 0) {
           apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
         }
-        return allTransactions.length > 0 ? allTransactions : null;
+        return finalize(allTransactions);
       }
 
-      for (let i = 0; i < batches.length; i++) {
-        const batch = batches[i];
+      // Proses satu batch dan pulangkan barisnya. Dahulu badan fungsi ini berada
+      // dalam gelung `for` yang menunggu setiap panggilan AI selesai sebelum
+      // memulakan yang berikutnya — 14 batch bermakna 14 panggilan berturutan.
+      const processBatch = async (batch: { text: string; txCount: number; pageNum: number }, i: number): Promise<BankTransaction[]> => {
+        const out: BankTransaction[] = [];
         const partInfo = `\nBatch ${i + 1}/${batches.length} (page ${batch.pageNum}).${i > 0 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
         const prompt = buildPrompt(batch.txCount, partInfo);
 
@@ -895,9 +883,17 @@ ${pdfText.slice(0, 15000)}`;
               amount: parseAmount(item.amount),
               type: normalizeType(item.type)! as "credit" | "debit",
               reference: (item.reference || "").trim(),
+              category: normalizeCategory(item.category),
             }));
 
             console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
+
+            // Bilangan transaksi setiap batch ditentukan oleh penghurai tempatan
+            // (penanda [TX]), BUKAN oleh AI. Jika AI memulangkan lebih daripada
+            // itu — contohnya memecah satu transaksi kepada dua — lebihan itu
+            // palsu dan mesti dipangkas, bukan disimpan.
+            const capToBatch = (rows: BankTransaction[]) =>
+              rows.length > batch.txCount ? rows.slice(0, batch.txCount) : rows;
 
             // If AI returned fewer than expected, try to fill from raw text
             if (valid.length < batch.txCount) {
@@ -930,11 +926,12 @@ ${pdfText.slice(0, 15000)}`;
                     amount: parseAmount(item.amount),
                     type: normalizeType(item.type)! as "credit" | "debit",
                     reference: (item.reference || "").trim(),
+                    category: normalizeCategory(item.category),
                   }));
 
                   if (retryValid.length > valid.length) {
                     console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
-                    allTransactions.push(...retryValid);
+                    out.push(...capToBatch(retryValid));
                     usedRetry = true;
                   }
                 } catch {}
@@ -942,7 +939,7 @@ ${pdfText.slice(0, 15000)}`;
 
               if (!usedRetry) {
                 // Still missing - fill from raw [TX] blocks using local extraction
-                allTransactions.push(...valid);
+                out.push(...capToBatch(valid));
                 const txBlocks = batch.text.split(/\[TX \d+\]/).filter(b => b.trim());
                 const dateRe = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/;
                 const amountRe = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
@@ -978,7 +975,7 @@ ${pdfText.slice(0, 15000)}`;
                     );
                     if (!alreadyExists) {
                       const descMatch = block.match(/(?:TRANSFER (?:FR|TO) A\/C|PAYMENT FR A\/C|INTER-BANK PAYMENT INTO A\/C)/);
-                      allTransactions.push({
+                      out.push({
                         date: blockDate,
                         description: descMatch ? descMatch[0] : "Transaksi Bank",
                         amount: txAmount,
@@ -994,20 +991,55 @@ ${pdfText.slice(0, 15000)}`;
                 }
               }
             } else {
-              allTransactions.push(...valid);
+              out.push(...capToBatch(valid));
             }
           } catch {}
         }
+        return out;
+      };
+
+      // Jalankan batch secara SELARI dengan had serentak, bukan satu demi satu.
+      // Had ini penting: menghantar kesemua 14 batch sekali gus berisiko kena
+      // sekatan kadar (429) daripada API, yang akhirnya jadi lebih lambat.
+      // Hasil dikumpul mengikut indeks supaya susunan transaksi kekal sama
+      // seperti dalam penyata asal.
+      const MAX_CONCURRENT_BATCHES = 4;
+      const batchResults: BankTransaction[][] = new Array(batches.length);
+      let nextBatchIndex = 0;
+
+      const worker = async () => {
+        while (true) {
+          const i = nextBatchIndex++;
+          if (i >= batches.length) return;
+          try {
+            batchResults[i] = await processBatch(batches[i], i);
+          } catch (err: any) {
+            console.warn(`[BankExtract] Batch ${i + 1} gagal:`, err?.message);
+            batchResults[i] = [];
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(MAX_CONCURRENT_BATCHES, batches.length) }, worker)
+      );
+
+      for (const rows of batchResults) {
+        if (rows) allTransactions.push(...rows);
       }
 
-      // Deduplicate: remove exact duplicates based on date+amount+type+description+reference.
-      // Allow same date+amount+type only when description or reference differ (genuinely distinct transactions).
-      const seen = new Map<string, number>();
+      // Deduplicate only true duplicates from overlapping batches.
+      // Only dedupe when both transactions share the same non-empty reference number,
+      // since the batching system can cause the same transaction to appear in adjacent batches.
+      // Transactions without reference numbers are always kept (they are unique by [TX] marker).
+      const seen = new Set<string>();
       const deduped: BankTransaction[] = [];
       for (const tx of allTransactions) {
-        const key = `${tx.date}|${tx.amount}|${tx.type}|${(tx.description || "").trim()}|${(tx.reference || "").trim()}`;
-        if (seen.has(key)) continue;
-        seen.set(key, 1);
+        if (tx.reference) {
+          const key = `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
         deduped.push(tx);
       }
       const beforeDedup = allTransactions.length;
@@ -1026,13 +1058,44 @@ ${pdfText.slice(0, 15000)}`;
 
       const actualCredits = allTransactions.filter(t => t.type === "credit").length;
       const actualDebits = allTransactions.filter(t => t.type === "debit").length;
-      console.log(`[BankExtract] Expected: ${expectedTotal || 'unknown'}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
+      console.log(`[BankExtract] Expected: ${expectedTotalTx}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
+
+      // `expectedTotalTx` dikira oleh penghurai tempatan dengan mengumpul baris
+      // penyata — ia TIDAK bergantung pada AI, jadi ia angka yang boleh dipercayai.
+      //
+      // Pemulihan tempatan hanya dijalankan jika AI benar-benar memulangkan
+      // KURANG daripada angka itu. Sebelum ini ia dijalankan setiap kali
+      // ("always try local fallback"), dan kerana penghurai tempatan mengira
+      // jumlah & nombor rujukan dengan cara yang BERBEZA daripada AI, kunci
+      // pendua tidak sepadan — transaksi yang sudah ada dimasukkan semula.
+      // Itulah punca kiraan membengkak (137 sebenar -> 207 dipaparkan).
+      if (allTransactions.length < expectedTotalTx) {
+        const shortfall = expectedTotalTx - allTransactions.length;
+        const locallyParsed = localParseFallback(pdfText, allTransactions).slice(0, shortfall);
+        if (locallyParsed.length > 0) {
+          allTransactions.push(...locallyParsed);
+          console.log(`[BankExtract] Recovered ${locallyParsed.length}/${shortfall} missing transactions via local parse`);
+        }
+      }
+
+      // Jaring keselamatan terakhir: jangan sekali-kali pulangkan lebih banyak
+      // transaksi daripada yang benar-benar ada dalam penyata.
+      if (expectedTotalTx > 0 && allTransactions.length > expectedTotalTx) {
+        console.warn(`[BankExtract] Trimmed ${allTransactions.length - expectedTotalTx} extra rows down to ${expectedTotalTx}`);
+        allTransactions = allTransactions.slice(0, expectedTotalTx);
+      }
+
+      if (expectedTotal > 0 && allTransactions.length !== expectedTotal) {
+        // Ringkasan penyata (No of Withdrawal/Deposits) tidak sepadan — catat
+        // amaran sahaja. JANGAN cipta rekod tiruan untuk menampung beza:
+        // memasukkan rekod rekaan ke dalam sistem perakaunan lebih bahaya
+        // daripada kiraan yang kurang.
+        console.warn(`[BankExtract] Statement summary says ${expectedTotal}, extracted ${allTransactions.length} — sila semak manual`);
+      }
 
       if (userId && totalTokensUsed > 0) {
         apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
       }
-
-      return allTransactions.length > 0 ? allTransactions : null;
     } else {
       const isUrl = base64Data.startsWith("http");
       let imageUrl: string;
@@ -1083,10 +1146,11 @@ ${pdfText.slice(0, 15000)}`;
         amount: parseAmount(item.amount),
         type: normalizeType(item.type)! as "credit" | "debit",
         reference: (item.reference || "").trim(),
+        category: normalizeCategory(item.category),
       }));
     }
 
-    return allTransactions.length > 0 ? allTransactions : null;
+    return finalize(allTransactions);
   } catch (error) {
     console.error("Error extracting bank transactions:", error);
     if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
