@@ -296,3 +296,112 @@ export const ALL_CATEGORIES = Array.from(new Set([
   ...EXPENSE_CATEGORIES,
   ...ASSET_LIABILITY_CATEGORIES
 ]));
+
+// ── Baki Awal (Opening Balances) ──────────────────────────────────────────────
+// Susunan kumpulan ini mencerminkan struktur Kunci Kira-Kira supaya jumlah
+// yang dimasukkan mengalir terus ke baris yang betul dalam laporan.
+//
+// `side` menentukan sebelah mana persamaan perakaunan baki itu berada:
+//   'asset'  -> Aset          (Debit)
+//   'contra' -> Kontra-aset   (Kredit, cth susut nilai terkumpul — kurangkan aset)
+//   'liab'   -> Liabiliti     (Kredit)
+//   'equity' -> Ekuiti/Modal  (Kredit)
+//
+// `bsKey` memetakan kategori kepada baris Kunci Kira-Kira yang sedia ada.
+export type OpeningBalanceSide = 'asset' | 'contra' | 'liab' | 'equity';
+
+export interface OpeningBalanceGroup {
+  key: string;
+  label: string;
+  hint: string;
+  side: OpeningBalanceSide;
+  categories: string[];
+}
+
+export const OPENING_BALANCE_GROUPS: OpeningBalanceGroup[] = [
+  {
+    key: 'fixedAssets',
+    label: 'Aset Tetap',
+    hint: 'Nilai kos belian aset yang masih dimiliki pada tarikh baki awal',
+    side: 'asset',
+    categories: [
+      'FIXED ASSETS',
+      'MOTOR VEHICLES',
+      'FURNITURE AND FITTINGS',
+      'OFFICE EQUIPMENT',
+      'COMPUTER AND SOFTWARE',
+      'KITCHEN UTENSIL',
+      'RENOVATION',
+      'SIGNBOARD',
+      'BUILDING',
+      'GOODWILL',
+    ],
+  },
+  {
+    key: 'contraAssets',
+    label: 'Susut Nilai Terkumpul',
+    hint: 'Masukkan sebagai nombor positif — sistem akan tolak daripada aset tetap',
+    side: 'contra',
+    categories: [
+      'ACCUM. DEPRN - MOTOR VEHICLES',
+      'ACCUM. DEPRN - FURNITURE AND FITTINGS',
+      'ACCUM. DEPRN - OFFICE EQUIPMENT',
+      'ACCUM. DEPRN - COMPUTER AND SOFTWARE',
+      'ACCUM. DEPRN - KITCHEN UTENSIL',
+      'ACCUM. DEPRN - RENOVATION',
+      'PROVISION FOR DOUBTFUL DEBT',
+    ],
+  },
+  {
+    key: 'currentAssets',
+    label: 'Aset Semasa',
+    hint: 'Baki bank, tunai, penghutang dan stok pada tarikh baki awal',
+    side: 'asset',
+    categories: [
+      'BANK',
+      'CASH IN HAND',
+      'TRADE DEBTORS',
+      'OTHER DEBTORS',
+      'STOCK',
+      'DEPOSIT & PREPAYMENT',
+      'DEPOSIT - RENTAL',
+      'PREPAYMENT - UTILITIES',
+      'AMOUNT DUE FROM DIRECTOR',
+    ],
+  },
+  {
+    key: 'liabilities',
+    label: 'Liabiliti',
+    hint: 'Hutang perniagaan kepada pihak lain pada tarikh baki awal',
+    side: 'liab',
+    categories: [
+      'TRADE CREDITORS',
+      'OTHER CREDITORS',
+      'ACCRUALS',
+      'ACCRUALS - AUDIT FEE',
+      'ACCRUALS - ACCOUNTING FEE',
+      'ACCRUALS - TAX FEE',
+      'HIRE PURCHASE CREDITOR',
+      'TERM LOAN',
+      'PROVISION FOR TAXATION',
+      'AMOUNT DUE TO DIRECTOR',
+    ],
+  },
+  {
+    key: 'equity',
+    label: 'Ekuiti / Modal',
+    hint: 'Modal pemilik dan untung terkumpul yang dibawa ke hadapan',
+    side: 'equity',
+    categories: [
+      'CAPITAL',
+      'RETAINED EARNING',
+    ],
+  },
+];
+
+export const OPENING_BALANCE_CATEGORIES = OPENING_BALANCE_GROUPS.flatMap(g => g.categories);
+
+// Peta pantas kategori -> sebelah persamaan, untuk pengiraan laporan
+export const OPENING_BALANCE_SIDE: Record<string, OpeningBalanceSide> = Object.fromEntries(
+  OPENING_BALANCE_GROUPS.flatMap(g => g.categories.map(c => [c.toUpperCase(), g.side]))
+);
