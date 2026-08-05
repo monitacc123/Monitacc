@@ -14,7 +14,8 @@ export interface Record {
   origin?: 'manual' | 'scan' | 'sale';
   sale_id?: number;
   reconciled?: boolean;
-  payment_method?: 'cash' | 'bank';
+  // 'bank', 'cash', atau kod kaedah tersuai ('pm_...') — lihat constants/paymentMethods
+  payment_method?: string;
 }
 
 export interface Stats {
@@ -61,8 +62,26 @@ export interface Sale {
   customer_name?: string;
   created_at: string;
   reconciled?: boolean;
-  payment_method?: 'cash' | 'bank';
+  payment_method?: string;
 }
 
-export type AppView = 'landing' | 'auth' | 'welcome' | 'choose-plan' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard' | 'subscription-management';
+// Baki awal setiap akaun Kunci Kira-Kira, dibawa masuk sekali sahaja bila
+// perniagaan mula guna Monitacc. Semua baris berkongsi as_at_date yang sama.
+export interface OpeningBalance {
+  id?: number;
+  category: string;
+  amount: number;
+  as_at_date: string;
+}
+
+// Nilai stok fizikal pada hujung tempoh — jadi Stok Akhir dalam COGS,
+// dan Stok Awal untuk tempoh berikutnya.
+export interface StockTake {
+  id?: number;
+  as_at_date: string;
+  amount: number;
+  note?: string;
+}
+
+export type AppView = 'landing' | 'auth' | 'welcome' | 'choose-plan' | 'dashboard' | 'scan' | 'records' | 'reports' | 'profile' | 'plans' | 'sales' | 'ai-analysis' | 'user-management' | 'faq' | 'terms' | 'ledger' | 'reconcile' | 'categories' | 'opening-balance' | 'admin-dashboard' | 'admin-auth' | 'token-usage' | 'affiliated-management' | 'affiliate-auth' | 'affiliate-dashboard' | 'subscription-management';
 
