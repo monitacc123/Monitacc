@@ -1,0 +1,1271 @@
+import { ALL_CATEGORIES } from "../constants/categories";
+import { extractTextFromPdf } from "./pdfExtractor";
+import { apiLogAiUsage, apiGetUserTokenUsage } from "./api";
+import { detectStatementPeriod, applyStatementYear } from "./statementPeriod";
+
+const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
+const analysisCache = new Map<string, { data: string, timestamp: number }>();
+const CACHE_DURATION = 1000 * 60 * 15;
+
+const KIE_BASE = "https://api.kie.ai";
+const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
+
+// Models for analysis tasks (quality priority)
+const ANALYSIS_MODELS = [
+  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
+  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
+  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+];
+
+// Models for scan/OCR tasks (speed priority)
+const SCAN_MODELS = [
+  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
+  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
+  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
+];
+
+function getConfig() {
+  if (!KIE_API_KEY) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
+  return { apiKey: KIE_API_KEY };
+}
+
+interface ChatResult {
+  content: string;
+  tokensUsed: number;
+}
+
+async function trySingleModel(
+  modelEntry: { model: string; url: string },
+  messages: { role: string; content: any }[],
+  jsonMode: boolean,
+  maxTokens: number = 8192,
+): Promise<ChatResult> {
+  const { apiKey } = getConfig();
+  const hasImage = messages.some(m =>
+    Array.isArray(m.content) && m.content.some((c: any) => c.type === "image_url")
+  );
+
+  const body: any = {
+    model: modelEntry.model,
+    messages,
+    max_tokens: maxTokens,
+  };
+
+  if (jsonMode && !hasImage) {
+    body.response_format = { type: "json_object" };
+  }
+
+  const controller = new AbortController();
+  const timeoutMs = hasImage ? 90000 : 60000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  let res: Response;
+  try {
+    res = await fetch(modelEntry.url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+  } catch (err: any) {
+    clearTimeout(timeoutId);
+    if (err.name === 'AbortError') {
+      throw new Error(`Timeout: Model ${modelEntry.model} tidak bertindak balas dalam ${timeoutMs / 1000}s`);
+    }
+    throw err;
+  }
+  clearTimeout(timeoutId);
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`API error ${res.status}: ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  if (data.code && data.code >= 400) {
+    throw new Error(`Model error ${data.code}: ${data.msg}`);
+  }
+
+  const content = data.choices?.[0]?.message?.content || "";
+  const tokensUsed = data.usage
+    ? (data.usage.prompt_tokens || 0) + (data.usage.completion_tokens || 0)
+    : estimateTokens(messages, content);
+
+  return { content, tokensUsed };
+}
+
+async function chatCompletion(
+  messages: { role: string; content: any }[],
+  jsonMode = false,
+  models = ANALYSIS_MODELS,
+  maxTokens = 8192,
+): Promise<ChatResult> {
+  let lastError: any;
+  for (const modelEntry of models) {
+    try {
+      const result = await trySingleModel(modelEntry, messages, jsonMode, maxTokens);
+      if (result.content) return result;
+    } catch (err: any) {
+      console.warn(`Model ${modelEntry.model} failed:`, err?.message);
+      lastError = err;
+    }
+  }
+  throw lastError || new Error("Semua model AI tidak tersedia.");
+}
+
+function estimateTokens(messages: { role: string; content: any }[], output: string): number {
+  let inputText = "";
+  for (const m of messages) {
+    if (typeof m.content === "string") {
+      inputText += m.content;
+    } else if (Array.isArray(m.content)) {
+      for (const c of m.content) {
+        if (c.type === "text") inputText += c.text || "";
+        if (c.type === "image_url") inputText += "[IMAGE]";
+      }
+    }
+  }
+  return Math.ceil((inputText.length + output.length) / 4);
+}
+
+function extractJson(text: string): string {
+  const codeBlock = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (codeBlock) return codeBlock[1].trim();
+  const arrMatch = text.match(/\[[\s\S]*\]/);
+  if (arrMatch) return arrMatch[0];
+  const objMatch = text.match(/\{[\s\S]*\}/);
+  if (objMatch) return objMatch[0];
+  return text.trim();
+}
+
+async function checkTokenLimit(userId: string, plan: string): Promise<void> {
+  const usage = await apiGetUserTokenUsage(userId, plan);
+  if (usage.remaining <= 0) {
+    throw new Error(`KUOTA_HABIS:Had imbasan untuk pakej ${plan} telah habis. Sila naik taraf pelan atau hubungi admin untuk dapatkan bantuan.`);
+  }
+}
+
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, initialDelay = 2000): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      const isRateLimit = error?.message?.includes("429") || error?.status === 429;
+      if (isRateLimit && i < maxRetries - 1) {
+        const delay = initialDelay * Math.pow(2, i);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
+export interface ExtractedData {
+  type: "income" | "expense";
+  docType: string;
+  docNumber?: string;
+  category: string;
+  amount: number;
+  date: string;
+  description: string;
+  payment_method?: "cash" | "bank";
+}
+
+async function compressImage(base64Data: string, maxWidth = 1024, quality = 0.6): Promise<string> {
+  const MAX_SIZE = 1_500_000;
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(base64Data); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      let compressed = canvas.toDataURL("image/jpeg", quality);
+      if (compressed.length > MAX_SIZE) {
+        const ratio = Math.sqrt(MAX_SIZE / compressed.length);
+        canvas.width = Math.round(width * ratio);
+        canvas.height = Math.round(height * ratio);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        compressed = canvas.toDataURL("image/jpeg", 0.5);
+      }
+      resolve(compressed.length < base64Data.length * 1.1 ? compressed : base64Data);
+    };
+    img.onerror = () => resolve(base64Data);
+    img.src = base64Data.startsWith("data:") ? base64Data : `data:image/jpeg;base64,${base64Data}`;
+  });
+}
+
+export async function analyzeDocument(base64Data: string, mimeType: string = "image/jpeg", userId?: string, plan?: string): Promise<ExtractedData[] | null> {
+  try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
+    const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
+
+    const currentYear = new Date().getFullYear();
+    const prompt = `You are an expert OCR and accounting data extraction assistant. Your job is to extract transaction data from receipts, invoices, and financial documents.
+
+CRITICAL RULES:
+1. You MUST respond with ONLY a valid JSON array — no explanation, no markdown, no preamble
+2. Even if the image is blurry or partial, extract whatever data you can see
+3. If you can see ANY amount, date, or store name — create an entry for it
+4. NEVER refuse to extract — always attempt extraction
+5. If truly nothing can be read, return exactly: []
+6. If the document contains MULTIPLE receipts, invoices, or transactions, extract ALL of them as separate items in the array
+7. Each distinct receipt/invoice/transaction = one separate JSON object in the array
+
+Transaction rules:
+- Receipt/Resit from shop, restaurant, petrol = expense (type: "expense")
+- Payment received, sales, top-up received = income (type: "income")
+- payment_method: "cash" if paid by cash/tunai/wang; "bank" if card/online/transfer
+- date format: YYYY-MM-DD; if year missing use ${currentYear}; if date unclear use ${currentYear}-01-01
+- amount: use the TOTAL amount (Jumlah/Total/Grand Total), as a positive number
+- category must be exactly one of: ${ALL_CATEGORIES.join(", ")}
+- docType: "Resit" for receipt, "Invoice" for invoice, "Bil" for bill, "Lain-lain" for others
+
+Required JSON fields per item:
+{ "type": "income"|"expense", "docType": string, "docNumber": string, "category": string, "amount": number, "date": "YYYY-MM-DD", "description": string, "payment_method": "cash"|"bank" }
+
+Example output:
+[{"type":"expense","docType":"Resit","docNumber":"INV-001","category":"PETROL, PARKING AND TOLL","amount":50.00,"date":"${currentYear}-01-15","description":"Shell Petrol Station","payment_method":"cash"}]
+
+Extract ALL transactions from the document now:`;
+
+    let messages: { role: string; content: any }[];
+    let isBankStatement = false;
+
+    if (isPdf) {
+      let pdfText = "";
+      try {
+        pdfText = await extractTextFromPdf(base64Data);
+      } catch (pdfErr) {
+        console.error("PDF extraction failed:", pdfErr);
+        pdfText = "[PDF content could not be extracted - please try an image format]";
+      }
+
+      // Kesan penyata bank. Senarai penanda meliputi format Maybank
+      // (BEGINNING/ENDING BALANCE, URUSNIAGA AKAUN, TRANSFER FR/TO A/C) dan
+      // CIMB (Statement of Account, No of Withdrawal). Sebelum ini hanya
+      // penanda CIMB disenaraikan, jadi penyata Maybank terlepas ke laluan
+      // resit biasa — seluruh penyata dihantar dalam SATU panggilan AI dan
+      // baris transaksi tercicir.
+      isBankStatement = /Statement of Account|Penyata Akaun|URUSNIAGA AKAUN|ACCOUNT TRANSACTIONS|OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|STATEMENT BALANCE|BAKI PENYATA|No of Withdrawal|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
+
+      if (isBankStatement) {
+        // Serahkan kepada extractBankTransactions() — enjin yang sama digunakan
+        // oleh skrin Padan Bank. Ia mengumpulkan baris transaksi secara TEMPATAN
+        // (bilangan ditentukan oleh penghurai, bukan AI), menyokong tarikh DD/MM
+        // Maybank, dan menghantar 15 transaksi setiap batch dengan kiraan yang
+        // dinyatakan kepada AI. Dengan ini fail yang sama memberi jumlah yang
+        // sama sama ada dimuat naik melalui Imbasan atau Padan Bank.
+        const bankTx = await extractBankTransactions(base64Data, mimeType, userId, plan);
+        if (!bankTx || bankTx.length === 0) return null;
+
+        return bankTx.map((t): ExtractedData => ({
+          type: t.type === "credit" ? "income" : "expense",
+          docType: "Penyata Bank",
+          docNumber: t.reference || "",
+          // Kategori dicadangkan oleh AI berdasarkan nama penerima & catatan
+          // pada penyata. Jatuh balik kepada nilai am hanya bila AI benar-benar
+          // tiada petunjuk (cth. pindahan kepada nama peribadi tanpa catatan).
+          category: t.category || (t.type === "credit" ? "SALES" : "Lain-lain"),
+          amount: t.amount,
+          date: t.date,
+          description: t.description,
+          payment_method: "bank",
+        }));
+      } else {
+        messages = [{
+          role: "user",
+          content: `${prompt}\n\nIMPORTANT: This is a PDF document that may contain MULTIPLE receipts, invoices, or transactions across multiple pages. Extract EVERY transaction found — do NOT merge them into one. Each page may have a separate receipt/invoice.\n\nDOCUMENT CONTENT (extracted from PDF):\n\n${pdfText}`,
+        }];
+      }
+    } else {
+      const isUrl = base64Data.startsWith("http");
+      let imageUrl: string;
+      if (isUrl) {
+        imageUrl = base64Data;
+      } else {
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:${mimeType};base64,${base64Data}`;
+        const compressed = await compressImage(dataWithPrefix);
+        imageUrl = compressed;
+      }
+
+      messages = [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+          { type: "text", text: prompt },
+        ],
+      }];
+    }
+
+    let result: ChatResult;
+    try {
+      result = await withRetry(() => chatCompletion(messages, false, SCAN_MODELS, isPdf ? 16384 : 4096), 3, 1000);
+    } catch (apiErr: any) {
+      console.error("AI API call failed:", apiErr?.message);
+      throw new Error("AI tidak dapat memproses imej. Sila cuba lagi.");
+    }
+    let { content: text, tokensUsed } = result;
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "scan").catch(() => {});
+    }
+
+    if (!text || text.trim() === "") {
+      console.error("Empty response from AI");
+      throw new Error("AI tidak dapat membaca dokumen ini. Sila cuba imej yang lebih jelas.");
+    }
+
+    const jsonStr = extractJson(text);
+    let parsed: any[];
+    try {
+      parsed = JSON.parse(jsonStr);
+    } catch {
+      const fallbackMessages = isPdf ? messages : [{
+        role: "user" as const,
+        content: [
+          ...(Array.isArray(messages[0].content) ? messages[0].content.filter((c: any) => c.type === "image_url") : []),
+          {
+            type: "text",
+            text: `Look at this document image. Tell me: what is the total amount, the date, and the store/vendor name? Reply ONLY as JSON: [{"type":"expense","docType":"Resit","docNumber":"","category":"Lain-lain","amount":0,"date":"${new Date().getFullYear()}-01-01","description":"","payment_method":"cash"}] — fill in the values you can read.`,
+          },
+        ],
+      }];
+      try {
+        const retry = await chatCompletion(fallbackMessages, false, SCAN_MODELS, 4096);
+        parsed = JSON.parse(extractJson(retry.content));
+        if (userId && retry.tokensUsed > 0) {
+          apiLogAiUsage(userId, retry.tokensUsed, "scan").catch(() => {});
+        }
+      } catch {
+        throw new Error("AI tidak dapat membaca resit ini. Sila cuba gambar yang lebih jelas atau terang.");
+      }
+    }
+
+    if (!Array.isArray(parsed)) {
+      parsed = (parsed as any).transactions || (parsed as any).data || [parsed];
+    }
+
+    const filtered = parsed.filter((item: any) =>
+      item && item.type && item.amount && item.date && item.category
+    );
+
+    if (filtered.length > 0) return filtered;
+
+    // If filtered is empty but we got items with partial data, relax the filter
+    if (parsed.length > 0) {
+      const relaxed = parsed.filter((item: any) => item && Number(item.amount) > 0).map((item: any) => ({
+        type: item.type || "expense",
+        docType: item.docType || "Lain-lain",
+        docNumber: item.docNumber || "",
+        category: item.category || "Lain-lain",
+        amount: Number(item.amount) || 0,
+        date: item.date || `${new Date().getFullYear()}-01-01`,
+        description: item.description || "Transaksi",
+        payment_method: item.payment_method || "cash",
+      }));
+      if (relaxed.length > 0) return relaxed;
+    }
+
+    throw new Error("AI tidak dapat mengekstrak data dari dokumen ini. Sila pastikan gambar jelas dan cuba lagi.");
+  } catch (error: any) {
+    console.error("Error analyzing document:", error?.message || error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) throw error;
+    throw new Error(error?.message || "AI tidak dapat memproses dokumen ini. Sila cuba lagi.");
+  }
+}
+
+export interface BankTransaction {
+  date: string;
+  description: string;
+  amount: number;
+  type: "credit" | "debit";
+  reference?: string;
+  remark?: string;
+  /** Kategori perakaunan yang dicadangkan AI. Kosong jika butiran tidak mencukupi. */
+  category?: string;
+}
+
+// Padankan kategori yang dipulangkan AI dengan senarai rasmi. AI kadangkala
+// menulis huruf kecil atau menambah ruang, jadi padanan dibuat secara longgar —
+// tetapi nilai yang TIDAK wujud dalam senarai ditolak supaya tiada kategori
+// rekaan masuk ke dalam lejar.
+// "Lain-lain" bukan sebahagian ALL_CATEGORIES tetapi ia label rasmi sistem
+// untuk transaksi yang tidak dapat dikelaskan — jadi ia turut diterima.
+const CATEGORY_LOOKUP = new Map<string, string>([
+  ...ALL_CATEGORIES.map(c => [c.trim().toLowerCase(), c] as [string, string]),
+  ["lain-lain", "Lain-lain"],
+  ["lain lain", "Lain-lain"],
+]);
+
+function normalizeCategory(value: any): string {
+  const key = String(value ?? "").trim().toLowerCase();
+  if (!key) return "";
+  return CATEGORY_LOOKUP.get(key) || "";
+}
+
+function localParseFallback(pdfText: string, existing: BankTransaction[]): BankTransaction[] {
+  const recovered: BankTransaction[] = [];
+  const existingKeys = new Set(
+    existing.map(t => `${t.date}|${t.amount}|${t.type}|${t.reference || ""}`)
+  );
+
+  const lines = pdfText.split("\n");
+
+  // Tahun penyata — tahun semasa hanya sebagai pilihan terakhir
+  const fallbackYear = detectStatementPeriod(pdfText).year || new Date().getFullYear().toString();
+
+  // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
+  const datePattern = /^(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\s+\S/;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT/i.test(line)) continue;
+    const dateMatch = line.match(datePattern);
+    if (!dateMatch) continue;
+
+    const day = dateMatch[1].padStart(2, "0");
+    const month = dateMatch[2].padStart(2, "0");
+    const rawYear = dateMatch[3];
+    const year = rawYear ? (rawYear.length === 2 ? `20${rawYear}` : rawYear) : fallbackYear;
+    const date = `${year}-${month}-${day}`;
+
+    // Collect the transaction block (up to 8 lines after the date line)
+    const block = [line];
+    for (let j = i + 1; j < Math.min(i + 8, lines.length); j++) {
+      const nextLine = lines[j].trim();
+      if (!nextLine) continue;
+      if (datePattern.test(nextLine)) break;
+      block.push(nextLine);
+    }
+
+    const blockText = block.join(" ");
+    // Extract amounts - look for decimal numbers like 100.00, 1,810.00
+    const amounts = blockText.match(/\d{1,3}(?:,\d{3})*\.\d{2}/g);
+    if (!amounts || amounts.length === 0) continue;
+
+    // The last number is typically the balance; amounts before it are withdrawal/deposit
+    // For a simple fallback, take the first or second-to-last amount as the transaction amount
+    const balanceStr = amounts[amounts.length - 1];
+    const amountStr = amounts.length >= 2 ? amounts[amounts.length - 2] : amounts[0];
+    const amount = parseFloat(amountStr.replace(/,/g, ""));
+    if (isNaN(amount) || amount === 0) continue;
+
+    // Determine type: Maybank uses amount suffixes (- for debit, + for credit)
+    // and keywords TRANSFER FR A/C (debit) vs TRANSFER TO A/C (credit)
+    let type: "credit" | "debit" = "debit";
+    if (/\d+\.\d{2}\+/.test(blockText) || /TRANSFER TO A\/C|INTER-BANK PAYMENT INTO/i.test(blockText)) {
+      type = "credit";
+    } else if (/\d+\.\d{2}-/.test(blockText) || /TRANSFER FR A\/C|PAYMENT FR A\/C/i.test(blockText)) {
+      type = "debit";
+    } else {
+      const isDebit = /DUITNOW TO MOBILE|MYDEBIT PURCHASE|POS DEBIT|JOMPAY|IBK PAYMENT/i.test(blockText);
+      const isCredit = /AUTOPAY CR|IBG CREDIT|CDM CASH|HSE CHQ|I-FUNDS TR FROM SA/i.test(blockText);
+      type = isDebit ? "debit" : (isCredit ? "credit" : "debit");
+    }
+
+    // Extract reference
+    const refMatch = blockText.match(/(?:IN\d{5,}|In\d{5,}|\d{9,}|[A-Z]{2,}\d{5,})/);
+    const reference = refMatch ? refMatch[0] : "";
+
+    const key = `${date}|${amount}|${type}|${reference}`;
+    if (existingKeys.has(key)) continue;
+
+    // Description - extract everything after the date
+    const descMatch = line.match(/\d{1,2}\/\d{1,2}(?:\/\d{2,4})?\s+(.*)/);
+
+    const description = descMatch ? descMatch[1].trim() : "Transaksi Bank";
+
+    recovered.push({
+      date,
+      description,
+      amount,
+      type,
+      reference,
+      remark: "Diekstrak secara tempatan - sila semak semula",
+    });
+    existingKeys.add(key);
+  }
+
+  return recovered;
+}
+
+export async function extractBankTransactions(base64Data: string, mimeType: string = "application/pdf", userId?: string, plan?: string): Promise<BankTransaction[] | null> {
+  try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
+    const isPdf = mimeType === "application/pdf" || base64Data.includes("data:application/pdf");
+
+    const normalizeType = (type: any): "credit" | "debit" | null => {
+      if (!type) return null;
+      const t = String(type).toLowerCase().trim();
+      if (t === "credit" || t === "cr" || t === "deposit" || t === "in") return "credit";
+      if (t === "debit" || t === "dr" || t === "withdrawal" || t === "out") return "debit";
+      return null;
+    };
+
+    const parseAmount = (val: any): number => {
+      if (val === undefined || val === null) return NaN;
+      if (typeof val === "number") return Math.abs(val);
+      const cleaned = String(val).replace(/[,\s]/g, "");
+      return Math.abs(Number(cleaned));
+    };
+
+    // Tahun penyata — diisi semula dari header PDF jika dijumpai.
+    // MESTI diisytihar di sini supaya buildPrompt di bawah dapat melihatnya.
+    let statementYear = new Date().getFullYear().toString();
+    let statementMonth: number | null = null;
+    // Benar hanya untuk penyata yang tarikh transaksinya tiada tahun (cth Maybank).
+    // Untuk penyata sebegini kita tulis semula tahun selepas AI selesai, kerana
+    // apa jua tahun yang AI keluarkan datang daripada tekaan prompt kita.
+    let datesLackYear = false;
+
+    // Semua laluan keluar melalui sini supaya pembetulan tahun tidak terlepas.
+    const finalize = (txs: BankTransaction[]): BankTransaction[] | null => {
+      const fixed = datesLackYear ? applyStatementYear(txs, statementYear, statementMonth) : txs;
+      return fixed.length > 0 ? fixed : null;
+    };
+
+    const buildPrompt = (txCount: number, partInfo?: string) => `Extract ALL ${txCount} transactions from this bank statement section into JSON.
+
+There are EXACTLY ${txCount} transactions below, each marked with [TX n]. Return EXACTLY ${txCount} items — one per [TX] marker.
+
+Rules:
+- Each [TX] block represents ONE transaction. The amount appears with +/- sign or in withdrawal/deposit columns (e.g. "1,900.00-" is debit, "3,000.00+" is credit).
+- debit (money OUT) = amount has "-" suffix, or keywords: TRANSFER FR A/C, PAYMENT FR A/C
+- credit (money IN) = amount has "+" suffix, or keywords: TRANSFER TO A/C, INTER-BANK PAYMENT INTO A/C
+- amount = positive number, no comma separators
+- date = YYYY-MM-DD (use year ${statementYear} if only DD/MM is shown)
+- description = transaction description text (e.g. "TRANSFER FR A/C" + recipient name)
+- reference = any reference/invoice number shown (e.g. "IN2601063", "20260101M0007275861", "QR81917339"), empty string if none
+- CRITICAL: Two transactions with the SAME amount and description are SEPARATE entries if they appear as separate [TX] blocks. Never merge them.
+- Every [TX] block is a separate transaction — return one JSON item for each
+- DO NOT invent, fabricate, or add any transaction that is not explicitly present in the text. Only extract what you can see.
+- DO NOT duplicate any transaction. Each [TX] marker should produce exactly one JSON item.
+
+CATEGORY — classify each transaction using the payee name and any remark text:
+- Telco (Maxis, Celcom, U Mobile, TM / Unifi, Digi, Yes, TM TECHNOLOGY) = "TELECOMMUNICATION EXPENSES"
+- Electricity / water (TNB, Syabas, Air Selangor, IWK, SAJ) = "WATER AND ELECTRICITY"
+- Petrol station or toll (Petronas, Shell, Caltex, Touch n Go, SmartTAG) = "PETROL, PARKING AND TOLL"
+- The bank's own fee line (SERVICE CHARGE, STAMP DUTY, GST ON FEE, CHEQUE BOOK) = "BANK CHARGES"
+- Mosque, surau, charity, sedekah, derma = "CONDOLENCES & DONATION"; zakat specifically = "ZAKAT"
+- Shop / premise / stall rent (sewa kedai, sewa kantin, sewa lot) = "RENTAL OF OFFICE"
+- Staff pay (gaji, upah, elaun) = "SALARIES, BONUS AND ALLOWANCES"
+- Road tax or insurance / takaful = "ROADTAX AND INSURANCE"
+- Supplier / stock / raw material purchase = "PURCHASES"
+- Marketplace or ads platform (TikTok Shop, Shopee, Lazada, Facebook Ads) = "ADVERTISEMENT/ MARKETING EXPENSES"
+- Also read the free-text remark line under the payee — it is often the clearest clue (e.g. "Sewa kantin" = rent, "Sedekah jumaat" = donation, "Sarapan" = staff refreshment). A bare "Bayaran" is NOT a clue.
+- Money IN from customers (DuitNow QR, MAE QR, cheque deposit) = "SALES"
+- Owner moving their own money (own name, "Tabung", FUND/WTDRW) = "CAPITAL"
+- Use "Lain-lain" ONLY when the payee is just a personal name with no other clue about what the money was for. Do not guess wildly — but do NOT default to "Lain-lain" when a clear clue exists.
+- category MUST be copied EXACTLY, character for character, from this list: ${ALL_CATEGORIES.join(", ")}, Lain-lain
+${partInfo || ""}
+Return ONLY JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"...","category":"..."}]`;
+
+    let allTransactions: BankTransaction[] = [];
+
+    if (isPdf) {
+      let pdfText = "";
+      try {
+        pdfText = await extractTextFromPdf(base64Data);
+      } catch (pdfErr) {
+        console.error("PDF extraction failed, will try image-based approach:", pdfErr);
+        pdfText = "";
+      }
+
+      if (!pdfText || pdfText.trim().length < 50) {
+        // No usable text - fall through to image-based extraction below
+        console.log("[BankExtract] PDF has no extractable text, using image-based approach");
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:application/pdf;base64,${base64Data.split(",")[1] || base64Data}`;
+
+        const genericPrompt = `Extract ALL bank transactions from this bank statement into JSON.
+
+Rules:
+- debit (money OUT) = payments, purchases, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers, sales proceeds
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if available, empty string otherwise
+- type = "credit" or "debit"
+
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]`;
+
+        const messages = [{
+          role: "user",
+          content: [
+            { type: "image_url", image_url: { url: dataWithPrefix, detail: "high" } },
+            { type: "text", text: genericPrompt },
+          ],
+        }];
+
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
+
+        if (userId && tokensUsed > 0) {
+          apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+        }
+
+        if (!text || text.trim() === "") return null;
+
+        const jsonStr = extractJson(text);
+        let parsed = JSON.parse(jsonStr);
+        if (!Array.isArray(parsed)) {
+          parsed = parsed.transactions || parsed.data || [parsed];
+        }
+
+        allTransactions = parsed.filter((item: any) => {
+          if (!item || !item.date) return false;
+          const amt = parseAmount(item.amount);
+          if (isNaN(amt)) return false;
+          const type = normalizeType(item.type);
+          if (!type) return false;
+          return true;
+        }).map((item: any) => ({
+          date: item.date,
+          description: (item.description || "Transaksi Bank").trim(),
+          amount: parseAmount(item.amount),
+          type: normalizeType(item.type)! as "credit" | "debit",
+          reference: (item.reference || "").trim(),
+          category: normalizeCategory(item.category),
+        }));
+
+        return finalize(allTransactions);
+      }
+
+      const pages = pdfText.split(/--- Page \d+ ---/).filter(p => p.trim());
+      const firstPageLines = pages[0]?.split("\n") || [];
+      const headerContext = firstPageLines.slice(0, 15).join("\n");
+
+      // Detect if Maybank (DD/MM without year) vs CIMB (DD/MM/YYYY)
+      const isMaybank = /Maybank|BEGINNING BALANCE|ENDING BALANCE|TRANSFER FR A\/C|TRANSFER TO A\/C|PAYMENT FR A\/C/i.test(pdfText);
+
+      // Tempoh penyata dari header (banyak variasi format — lihat detectStatementPeriod)
+      const period = detectStatementPeriod(pdfText);
+      if (period.year) {
+        statementYear = period.year;
+        statementMonth = period.month;
+      } else {
+        console.warn("[BankExtract] Tahun penyata tidak dikesan — guna tahun semasa sebagai anggaran");
+      }
+      datesLackYear = isMaybank;
+      console.log(`[BankExtract] Tempoh penyata: ${statementYear}${statementMonth ? `-${String(statementMonth).padStart(2, "0")}` : ""} (tarikh tanpa tahun: ${datesLackYear})`);
+
+      const TX_KEYWORDS = "DUITNOW|AUTOPAY|MYDEBIT|POS DEBIT|CDM CASH|HSE CHQ|I-FUNDS|IBG CREDIT|JOMPAY|IBK PAYMENT|INSTANT TRANSFER|FPX|TRF|CASA|GIRO|M2U|MAE|SI TO|LOAN|PYMNT|CR INTEREST|SALARY|BONUS|STANDING INSTRUCTION|TRANSFER FR A\\/C|TRANSFER TO A\\/C|PAYMENT FR A\\/C|INTER-BANK";
+
+      // Support both DD/MM/YYYY and DD/MM (Maybank) date formats
+      const datePrefix = isMaybank
+        ? `\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?`
+        : `\\d{1,2}\\/\\d{1,2}\\/\\d{4}`;
+
+      // For Maybank: only match DD/MM followed by content (not date-only lines like "31/01/26")
+      const txStartPattern = isMaybank
+        ? new RegExp(`^\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+[A-Za-z]\\S*)`)
+        : new RegExp(`^${datePrefix}(?:\\s*(?:${TX_KEYWORDS})|\\s+\\d{6,}|\\s+\\S{2,}|\\s*$)`);
+
+      // Detect dates embedded mid-line (e.g., "DUITNOW QR06/01" or "MBB CT22/01")
+      const txMidPattern = new RegExp(`(.+?)(${datePrefix}\\s*(?:${TX_KEYWORDS}|\\d{6,}|\\S{2,}).*)`);
+
+      const ignoredLinePattern = /OPENING BALANCE|CLOSING BALANCE|BEGINNING BALANCE|ENDING BALANCE|CONTINUE NEXT PAGE|BAKI PENUTUP|Statement Date|STATEMENT DATE|No of Withdrawal|No of Deposits|Total Withdrawal|Total Deposits|BAKI DIBAWA|BAKI AKHIR|B\/F BALANCE|TOTAL DEBIT|TOTAL CREDIT|PROFIT OUTSTANDING|LEDGER BALANCE|MUKA.*PAGE|ENTRY DATE|VALUE DATE|TRANSACTION DESCRIPTION|TRANSACTION AMOUNT|STATEMENT BALANCE|TARIKH MASUK|TARIKH NILAI|BUTIR URUSNIAGA|JUMLAH URUSNIAGA|BAKI PENYATA|PROTECTED BY PIDM|Perhatian.*Note|Please notify|Sila beritahu|Wang yang keluar|denoted by DR|ACCOUNT NUMBER|NOMBOR AKAUN|Maybank Islamic Berhad|IBS TMN|JALAN TUN|KAMPUNG BAKAR|進支日期|結單存餘|進支項說明|銀碼|ACCOUNT TRANSACTIONS|SME FIRST ACCOUNT/i;
+
+      // Standalone date with 2-digit year (statement date in header, e.g. "31/01/26")
+      const standaloneDatePattern = /^\d{1,2}\/\d{1,2}\/\d{2}$/;
+
+      // Split merged lines where description runs into next transaction date
+      // e.g. "DUITNOW QR06/01 TRANSFER FR A/C" or "MBB CT22/01 TRANSFER FR A/C"
+      // Key: the character BEFORE the date must be a non-digit (letter or symbol)
+      const noSpaceDatePattern = new RegExp(`^(.*[^\\d])(\\d{1,2}\\/\\d{1,2}(?:\\/\\d{2,4})?\\s+(?:${TX_KEYWORDS}).*)$`);
+
+      // Pattern to find a SECOND date embedded after the initial transaction start
+      const embeddedDatePattern = new RegExp(`^(${datePrefix}\\s+.+?[^\\d])(${datePrefix}\\s+(?:${TX_KEYWORDS}).*)$`);
+
+      const preprocessLines = (lines: string[]): string[] => {
+        const result: string[] = [];
+        for (const line of lines) {
+          if (ignoredLinePattern.test(line)) {
+            result.push(line);
+            continue;
+          }
+          if (txStartPattern.test(line)) {
+            // Even if line starts with a date, check if ANOTHER transaction is embedded later
+            const embeddedMatch = line.match(embeddedDatePattern);
+            if (embeddedMatch && !ignoredLinePattern.test(embeddedMatch[2])) {
+              result.push(embeddedMatch[1].trim());
+              result.push(embeddedMatch[2].trim());
+            } else {
+              // Also check noSpaceDatePattern for lines like "06/01 ...content... QR10/01 PAYMENT..."
+              const noSpaceCheck = line.match(noSpaceDatePattern);
+              if (noSpaceCheck && noSpaceCheck[1].length > 5 && !ignoredLinePattern.test(noSpaceCheck[2])) {
+                result.push(noSpaceCheck[1].trim());
+                result.push(noSpaceCheck[2].trim());
+              } else {
+                result.push(line);
+              }
+            }
+            continue;
+          }
+          // Check for no-space merged dates (e.g. "DUITNOW QR06/01 TRANSFER FR A/C")
+          const noSpaceMatch = line.match(noSpaceDatePattern);
+          if (noSpaceMatch && !ignoredLinePattern.test(noSpaceMatch[2])) {
+            if (noSpaceMatch[1].trim()) result.push(noSpaceMatch[1].trim());
+            result.push(noSpaceMatch[2].trim());
+            continue;
+          }
+          const midMatch = line.match(txMidPattern);
+          if (midMatch && !ignoredLinePattern.test(midMatch[2])) {
+            if (midMatch[1].trim()) result.push(midMatch[1].trim());
+            result.push(midMatch[2].trim());
+          } else {
+            result.push(line);
+          }
+        }
+        return result;
+      };
+
+      // Collect all transaction groups across all pages
+      const MAX_TX_PER_BATCH = 15;
+      const batches: { text: string; txCount: number; pageNum: number }[] = [];
+
+      for (let i = 0; i < pages.length; i++) {
+        const page = pages[i];
+        const rawLines = page.split("\n").filter(l => l.trim());
+        if (rawLines.length < 2) continue;
+
+        const pageLines = preprocessLines(rawLines);
+
+        // Group lines into transactions (each starts with a date)
+        const transactions: string[][] = [];
+        let currentTx: string[] | null = null;
+
+        for (const line of pageLines) {
+          if (ignoredLinePattern.test(line)) continue;
+          if (standaloneDatePattern.test(line.trim())) continue;
+          if (txStartPattern.test(line)) {
+            if (currentTx !== null) {
+              transactions.push(currentTx);
+            }
+            currentTx = [line];
+          } else if (currentTx !== null) {
+            currentTx.push(line);
+          }
+        }
+        if (currentTx !== null && currentTx.length > 0) {
+          transactions.push(currentTx);
+        }
+
+        console.log(`[BankExtract] Page ${i + 1}: ${rawLines.length} raw lines -> ${pageLines.length} processed lines -> ${transactions.length} transactions`);
+
+        if (transactions.length === 0) continue;
+
+        for (let start = 0; start < transactions.length; start += MAX_TX_PER_BATCH) {
+          const batchTxs = transactions.slice(start, start + MAX_TX_PER_BATCH);
+          const batchText = batchTxs.map((tx, idx) => `[TX ${idx + 1}]\n${tx.join("\n")}`).join("\n\n");
+          batches.push({
+            text: batchText,
+            txCount: batchTxs.length,
+            pageNum: i + 1,
+          });
+        }
+      }
+
+      let totalTokensUsed = 0;
+      const expectedTotalTx = batches.reduce((a, b) => a + b.txCount, 0);
+      console.log(`[BankExtract] Total batches: ${batches.length}, total expected tx: ${expectedTotalTx}`);
+
+      // Fallback: if structured parsing found no transactions, use generic AI extraction
+      if (batches.length === 0 && pdfText.trim().length >= 50) {
+        console.log(`[BankExtract] No structured transactions found, using generic AI fallback`);
+        const genericPrompt = `Extract ALL bank transactions from this bank statement text into JSON.
+
+Rules:
+- debit (money OUT) = payments, purchases, withdrawals, transfers out
+- credit (money IN) = deposits, incoming transfers, sales proceeds
+- amount = positive number (no commas)
+- date = YYYY-MM-DD format
+- description = transaction description
+- reference = reference number if available, empty string otherwise
+- type = "credit" or "debit"
+
+Return ONLY a JSON array: [{"date":"YYYY-MM-DD","description":"...","amount":number,"type":"credit"|"debit","reference":"..."}]
+
+BANK STATEMENT TEXT:
+${pdfText.slice(0, 15000)}`;
+
+        const { content: genericText, tokensUsed: genericTokens } = await withRetry(
+          () => chatCompletion([{ role: "user", content: genericPrompt }], false, ANALYSIS_MODELS, 32000), 3, 1000
+        );
+        totalTokensUsed += genericTokens;
+
+        if (genericText && genericText.trim()) {
+          const jsonStr = extractJson(genericText);
+          try {
+            let parsed = JSON.parse(jsonStr);
+            if (!Array.isArray(parsed)) {
+              parsed = parsed.transactions || parsed.data || [parsed];
+            }
+            allTransactions = parsed.filter((item: any) => {
+              if (!item || !item.date) return false;
+              const amt = parseAmount(item.amount);
+              if (isNaN(amt)) return false;
+              const type = normalizeType(item.type);
+              if (!type) return false;
+              return true;
+            }).map((item: any) => ({
+              date: item.date,
+              description: (item.description || "Transaksi Bank").trim(),
+              amount: parseAmount(item.amount),
+              type: normalizeType(item.type)! as "credit" | "debit",
+              reference: (item.reference || "").trim(),
+              category: normalizeCategory(item.category),
+            }));
+            console.log(`[BankExtract] Generic fallback extracted ${allTransactions.length} transactions`);
+          } catch (e) {
+            console.error("[BankExtract] Generic fallback parse error:", e);
+          }
+        }
+
+        if (userId && totalTokensUsed > 0) {
+          apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
+        }
+        return finalize(allTransactions);
+      }
+
+      // Proses satu batch dan pulangkan barisnya. Dahulu badan fungsi ini berada
+      // dalam gelung `for` yang menunggu setiap panggilan AI selesai sebelum
+      // memulakan yang berikutnya — 14 batch bermakna 14 panggilan berturutan.
+      const processBatch = async (batch: { text: string; txCount: number; pageNum: number }, i: number): Promise<BankTransaction[]> => {
+        const out: BankTransaction[] = [];
+        const partInfo = `\nBatch ${i + 1}/${batches.length} (page ${batch.pageNum}).${i > 0 ? `\n\nCOLUMN REFERENCE:\n${headerContext}` : ""}`;
+        const prompt = buildPrompt(batch.txCount, partInfo);
+
+        const messages = [{
+          role: "user",
+          content: `${prompt}\n\nDATA:\n${batch.text}`,
+        }];
+
+        const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
+        totalTokensUsed += tokensUsed;
+
+        if (text && text.trim()) {
+          const jsonStr = extractJson(text);
+          try {
+            let parsed = JSON.parse(jsonStr);
+            if (!Array.isArray(parsed)) {
+              parsed = parsed.transactions || parsed.data || [parsed];
+            }
+            const valid = parsed.filter((item: any) => {
+              if (!item || !item.date) return false;
+              const amt = parseAmount(item.amount);
+              if (isNaN(amt)) return false;
+              const type = normalizeType(item.type);
+              if (!type) return false;
+              return true;
+            }).map((item: any) => ({
+              date: item.date,
+              description: (item.description || "Transaksi Bank").trim(),
+              amount: parseAmount(item.amount),
+              type: normalizeType(item.type)! as "credit" | "debit",
+              reference: (item.reference || "").trim(),
+              category: normalizeCategory(item.category),
+            }));
+
+            console.log(`[BankExtract] Batch ${i + 1}: expected ${batch.txCount}, got ${valid.length}`);
+
+            // Bilangan transaksi setiap batch ditentukan oleh penghurai tempatan
+            // (penanda [TX]), BUKAN oleh AI. Jika AI memulangkan lebih daripada
+            // itu — contohnya memecah satu transaksi kepada dua — lebihan itu
+            // palsu dan mesti dipangkas, bukan disimpan.
+            const capToBatch = (rows: BankTransaction[]) =>
+              rows.length > batch.txCount ? rows.slice(0, batch.txCount) : rows;
+
+            // If AI returned fewer than expected, try to fill from raw text
+            if (valid.length < batch.txCount) {
+              // Try retry first
+              const retryMessages = [{
+                role: "user",
+                content: `${prompt}\n\nIMPORTANT: I counted EXACTLY ${batch.txCount} transactions in the data below (each starting with [TX n]). You returned only ${valid.length}. You MUST return EXACTLY ${batch.txCount} items. Two transactions CAN have IDENTICAL amounts, dates, and descriptions — they are still SEPARATE transactions if they have separate [TX] markers. NEVER MERGE transactions. Return one JSON item PER [TX] marker.\n\nDATA:\n${batch.text}`,
+              }];
+              const { content: retryText, tokensUsed: retryTokens } = await withRetry(() => chatCompletion(retryMessages, false, ANALYSIS_MODELS, 32000), 2, 1000);
+              totalTokensUsed += retryTokens;
+
+              let usedRetry = false;
+              if (retryText && retryText.trim()) {
+                const retryJson = extractJson(retryText);
+                try {
+                  let retryParsed = JSON.parse(retryJson);
+                  if (!Array.isArray(retryParsed)) {
+                    retryParsed = retryParsed.transactions || retryParsed.data || [retryParsed];
+                  }
+                  const retryValid = retryParsed.filter((item: any) => {
+                    if (!item || !item.date) return false;
+                    const amt = parseAmount(item.amount);
+                    if (isNaN(amt)) return false;
+                    const type = normalizeType(item.type);
+                    if (!type) return false;
+                    return true;
+                  }).map((item: any) => ({
+                    date: item.date,
+                    description: (item.description || "Transaksi Bank").trim(),
+                    amount: parseAmount(item.amount),
+                    type: normalizeType(item.type)! as "credit" | "debit",
+                    reference: (item.reference || "").trim(),
+                    category: normalizeCategory(item.category),
+                  }));
+
+                  if (retryValid.length > valid.length) {
+                    console.log(`[BankExtract] Batch ${i + 1} retry improved: ${valid.length} -> ${retryValid.length}`);
+                    out.push(...capToBatch(retryValid));
+                    usedRetry = true;
+                  }
+                } catch {}
+              }
+
+              if (!usedRetry) {
+                // Still missing - fill from raw [TX] blocks using local extraction
+                out.push(...capToBatch(valid));
+                const txBlocks = batch.text.split(/\[TX \d+\]/).filter(b => b.trim());
+                const dateRe = /(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?/;
+                const amountRe = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
+
+                if (txBlocks.length > valid.length) {
+                  const needed = txBlocks.length - valid.length;
+                  let added = 0;
+                  for (const block of txBlocks) {
+                    if (added >= needed) break;
+                    const dm = block.match(dateRe);
+                    if (!dm) continue;
+                    const day = dm[1].padStart(2, "0");
+                    const month = dm[2].padStart(2, "0");
+                    const yr = dm[3] ? (dm[3].length === 2 ? `20${dm[3]}` : dm[3]) : statementYear;
+                    const blockDate = `${yr}-${month}-${day}`;
+
+                    const amounts: string[] = [];
+                    let am;
+                    const amRe2 = /(\d{1,3}(?:,\d{3})*\.\d{2})[+-]?/g;
+                    while ((am = amRe2.exec(block)) !== null) amounts.push(am[1]);
+                    if (amounts.length === 0) continue;
+                    const txAmount = parseFloat(amounts[0].replace(/,/g, ""));
+                    if (isNaN(txAmount) || txAmount === 0) continue;
+
+                    const isCredit = /\.\d{2}\+|TRANSFER TO A\/C|INTER-BANK PAYMENT INTO/i.test(block);
+                    const txType: "credit" | "debit" = isCredit ? "credit" : "debit";
+
+                    // Check if this exact TX is already in valid results
+                    const alreadyExists = valid.some(v =>
+                      v.date === blockDate &&
+                      Math.abs(v.amount - txAmount) < 0.01 &&
+                      v.type === txType
+                    );
+                    if (!alreadyExists) {
+                      const descMatch = block.match(/(?:TRANSFER (?:FR|TO) A\/C|PAYMENT FR A\/C|INTER-BANK PAYMENT INTO A\/C)/);
+                      out.push({
+                        date: blockDate,
+                        description: descMatch ? descMatch[0] : "Transaksi Bank",
+                        amount: txAmount,
+                        type: txType,
+                        reference: "",
+                      });
+                      added++;
+                    }
+                  }
+                  if (added > 0) {
+                    console.log(`[BankExtract] Batch ${i + 1}: locally recovered ${added} missing transactions`);
+                  }
+                }
+              }
+            } else {
+              out.push(...capToBatch(valid));
+            }
+          } catch {}
+        }
+        return out;
+      };
+
+      // Jalankan batch secara SELARI dengan had serentak, bukan satu demi satu.
+      // Had ini penting: menghantar kesemua 14 batch sekali gus berisiko kena
+      // sekatan kadar (429) daripada API, yang akhirnya jadi lebih lambat.
+      // Hasil dikumpul mengikut indeks supaya susunan transaksi kekal sama
+      // seperti dalam penyata asal.
+      const MAX_CONCURRENT_BATCHES = 4;
+      const batchResults: BankTransaction[][] = new Array(batches.length);
+      let nextBatchIndex = 0;
+
+      const worker = async () => {
+        while (true) {
+          const i = nextBatchIndex++;
+          if (i >= batches.length) return;
+          try {
+            batchResults[i] = await processBatch(batches[i], i);
+          } catch (err: any) {
+            console.warn(`[BankExtract] Batch ${i + 1} gagal:`, err?.message);
+            batchResults[i] = [];
+          }
+        }
+      };
+
+      await Promise.all(
+        Array.from({ length: Math.min(MAX_CONCURRENT_BATCHES, batches.length) }, worker)
+      );
+
+      for (const rows of batchResults) {
+        if (rows) allTransactions.push(...rows);
+      }
+
+      // Deduplicate only true duplicates from overlapping batches.
+      // Only dedupe when both transactions share the same non-empty reference number,
+      // since the batching system can cause the same transaction to appear in adjacent batches.
+      // Transactions without reference numbers are always kept (they are unique by [TX] marker).
+      const seen = new Set<string>();
+      const deduped: BankTransaction[] = [];
+      for (const tx of allTransactions) {
+        if (tx.reference) {
+          const key = `${tx.date}|${tx.reference}|${tx.amount}|${tx.type}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+        }
+        deduped.push(tx);
+      }
+      const beforeDedup = allTransactions.length;
+      allTransactions = deduped;
+
+      console.log(`[BankExtract] Final total: ${allTransactions.length} (removed ${beforeDedup - allTransactions.length} duplicates)`);
+
+      // Try to detect expected count from statement summary
+      const summaryMatch = pdfText.match(/No of Withdrawal[^\d]*(\d+)[\s\S]*?No of Deposits?[^\d]*(\d+)/i);
+      let expectedTotal = 0;
+      if (summaryMatch) {
+        const expectedWithdrawals = parseInt(summaryMatch[1], 10);
+        const expectedDeposits = parseInt(summaryMatch[2], 10);
+        expectedTotal = expectedWithdrawals + expectedDeposits;
+      }
+
+      const actualCredits = allTransactions.filter(t => t.type === "credit").length;
+      const actualDebits = allTransactions.filter(t => t.type === "debit").length;
+      console.log(`[BankExtract] Expected: ${expectedTotalTx}, Got: ${allTransactions.length} (${actualDebits}W + ${actualCredits}D)`);
+
+      // `expectedTotalTx` dikira oleh penghurai tempatan dengan mengumpul baris
+      // penyata — ia TIDAK bergantung pada AI, jadi ia angka yang boleh dipercayai.
+      //
+      // Pemulihan tempatan hanya dijalankan jika AI benar-benar memulangkan
+      // KURANG daripada angka itu. Sebelum ini ia dijalankan setiap kali
+      // ("always try local fallback"), dan kerana penghurai tempatan mengira
+      // jumlah & nombor rujukan dengan cara yang BERBEZA daripada AI, kunci
+      // pendua tidak sepadan — transaksi yang sudah ada dimasukkan semula.
+      // Itulah punca kiraan membengkak (137 sebenar -> 207 dipaparkan).
+      if (allTransactions.length < expectedTotalTx) {
+        const shortfall = expectedTotalTx - allTransactions.length;
+        const locallyParsed = localParseFallback(pdfText, allTransactions).slice(0, shortfall);
+        if (locallyParsed.length > 0) {
+          allTransactions.push(...locallyParsed);
+          console.log(`[BankExtract] Recovered ${locallyParsed.length}/${shortfall} missing transactions via local parse`);
+        }
+      }
+
+      // Jaring keselamatan terakhir: jangan sekali-kali pulangkan lebih banyak
+      // transaksi daripada yang benar-benar ada dalam penyata.
+      if (expectedTotalTx > 0 && allTransactions.length > expectedTotalTx) {
+        console.warn(`[BankExtract] Trimmed ${allTransactions.length - expectedTotalTx} extra rows down to ${expectedTotalTx}`);
+        allTransactions = allTransactions.slice(0, expectedTotalTx);
+      }
+
+      if (expectedTotal > 0 && allTransactions.length !== expectedTotal) {
+        // Ringkasan penyata (No of Withdrawal/Deposits) tidak sepadan — catat
+        // amaran sahaja. JANGAN cipta rekod tiruan untuk menampung beza:
+        // memasukkan rekod rekaan ke dalam sistem perakaunan lebih bahaya
+        // daripada kiraan yang kurang.
+        console.warn(`[BankExtract] Statement summary says ${expectedTotal}, extracted ${allTransactions.length} — sila semak manual`);
+      }
+
+      if (userId && totalTokensUsed > 0) {
+        apiLogAiUsage(userId, totalTokensUsed, "bank_statement").catch(() => {});
+      }
+    } else {
+      const isUrl = base64Data.startsWith("http");
+      let imageUrl: string;
+      if (isUrl) {
+        imageUrl = base64Data;
+      } else {
+        const dataWithPrefix = base64Data.startsWith("data:")
+          ? base64Data
+          : `data:${mimeType};base64,${base64Data}`;
+        const compressed = await compressImage(dataWithPrefix);
+        imageUrl = compressed;
+      }
+
+      const prompt = buildPrompt(50);
+      const messages = [{
+        role: "user",
+        content: [
+          { type: "image_url", image_url: { url: imageUrl, detail: "high" } },
+          { type: "text", text: prompt },
+        ],
+      }];
+
+      const { content: text, tokensUsed } = await withRetry(() => chatCompletion(messages, false, ANALYSIS_MODELS, 32000), 3, 1000);
+
+      if (userId && tokensUsed > 0) {
+        apiLogAiUsage(userId, tokensUsed, "bank_statement").catch(() => {});
+      }
+
+      if (!text || text.trim() === "") return null;
+
+      const jsonStr = extractJson(text);
+      let parsed = JSON.parse(jsonStr);
+
+      if (!Array.isArray(parsed)) {
+        parsed = parsed.transactions || parsed.data || [parsed];
+      }
+
+      allTransactions = parsed.filter((item: any) => {
+        if (!item || !item.date) return false;
+        const amt = parseAmount(item.amount);
+        if (isNaN(amt)) return false;
+        const type = normalizeType(item.type);
+        if (!type) return false;
+        return true;
+      }).map((item: any) => ({
+        date: item.date,
+        description: (item.description || "Transaksi Bank").trim(),
+        amount: parseAmount(item.amount),
+        type: normalizeType(item.type)! as "credit" | "debit",
+        reference: (item.reference || "").trim(),
+        category: normalizeCategory(item.category),
+      }));
+    }
+
+    return finalize(allTransactions);
+  } catch (error) {
+    console.error("Error extracting bank transactions:", error);
+    if ((error as any)?.message?.startsWith("KUOTA_HABIS:")) throw error;
+    return null;
+  }
+}
+
+export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string, plan?: string): Promise<string> {
+  const latestRecordDate = records.length > 0 ? records[0].date : "";
+  const latestSaleDate = sales.length > 0 ? sales[0].date : "";
+  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${isConcise}`;
+
+  const cached = analysisCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+
+  try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
+    const prompt = `Analisa data kewangan berikut untuk perniagaan kecil.
+${isConcise
+  ? "Berikan ringkasan yang sangat padat dan ringkas (bullet points sahaja) tentang prestasi dan 1 cadangan utama."
+  : "Berikan ringkasan prestasi perniagaan, kenal pasti trend, dan berikan 3 cadangan tindakan yang boleh diambil."}
+Sila berikan jawapan dalam Bahasa Melayu. Format maklum balas dalam Markdown.
+
+Data Transaksi:
+${JSON.stringify(records.map(r => ({ type: r.type, category: r.category, amount: r.amount, date: r.date, description: r.description })))}
+
+Data Jualan:
+${JSON.stringify(sales.map(s => ({ product: s.product_name, quantity: s.quantity, total: s.total, date: s.date })))}`;
+
+    const { content: result, tokensUsed } = await withRetry(() => chatCompletion([{ role: "user", content: prompt }]));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "analysis").catch(() => {});
+    }
+
+    if (result) {
+      analysisCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    }
+    return result || "Tiada analisis tersedia.";
+  } catch (error: any) {
+    console.error("Error analyzing financials:", error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) {
+      return `## Had Token Habis\n\nKuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up token tambahan.`;
+    }
+    if (error?.message?.includes("429")) {
+      return "Had kuota dicapai. Sila cuba lagi dalam beberapa minit.";
+    }
+    return "Ralat menjana analisis.";
+  }
+}
+
+export interface DashboardInsight {
+  type: "improvement" | "attention" | "positive";
+  title: string;
+  description: string;
+}
+
+export async function getDashboardInsights(records: any[], sales: any[], userId?: string, plan?: string): Promise<DashboardInsight[]> {
+  const latestRecordDate = records.length > 0 ? records[0].date : "";
+  const latestSaleDate = sales.length > 0 ? sales[0].date : "";
+  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}`;
+
+  const cached = insightsCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+
+  try {
+    if (userId && plan) {
+      await checkTokenLimit(userId, plan);
+    }
+    const prompt = `Analisa data kewangan berikut dan berikan 3-4 cadangan ringkas (insights) untuk papan pemuka (dashboard).
+Setiap cadangan mesti mempunyai jenis: 'improvement', 'attention', atau 'positive'.
+Berikan jawapan dalam Bahasa Melayu.
+
+Data Transaksi:
+${JSON.stringify(records.slice(0, 20).map(r => ({ type: r.type, category: r.category, amount: r.amount, date: r.date })))}
+
+Data Jualan:
+${JSON.stringify(sales.slice(0, 20).map(s => ({ product: s.product_name, quantity: s.quantity, total: s.total, date: s.date })))}
+
+Return a JSON array. Each item must have: type (improvement/attention/positive), title, description.`;
+
+    const { content: text, tokensUsed } = await withRetry(() => chatCompletion([{ role: "user", content: prompt }], true));
+
+    if (userId && tokensUsed > 0) {
+      apiLogAiUsage(userId, tokensUsed, "insights").catch(() => {});
+    }
+
+    const result = JSON.parse(extractJson(text));
+
+    if (Array.isArray(result) && result.length > 0) {
+      insightsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    }
+    return Array.isArray(result) ? result : [];
+  } catch (error: any) {
+    console.error("Error getting dashboard insights:", error);
+    if (error?.message?.startsWith("KUOTA_HABIS:")) {
+      return [{
+        type: "attention",
+        title: "Had Token Habis",
+        description: "Kuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up.",
+      }];
+    }
+    if (error?.message?.includes("429")) {
+      return [{
+        type: "attention",
+        title: "Had Quota Dicapai",
+        description: "Analisis AI sedang berehat sebentar. Sila cuba lagi dalam beberapa minit.",
+      }];
+    }
+    return [];
+  }
+}
