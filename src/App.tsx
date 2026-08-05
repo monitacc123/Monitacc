@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, ChevronRight, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, EyeOff, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2, ImagePlus, RotateCcw, CircleX } from 'lucide-react';
+import { LayoutDashboard, Camera, FileText, ChartPie as PieChart, User, ListFilter as Filter, Plus, Trash2, Pencil, ChevronRight, ChevronLeft, TrendingUp, TrendingDown, CreditCard, CircleCheck as CheckCircle2, Check, Clock, Menu, X, ArrowLeft, ArrowRight, Eye, EyeOff, Hash, TriangleAlert as AlertTriangle, CircleAlert as AlertCircle, ShoppingBag, ShoppingCart, ReceiptText, Utensils, Car, Zap, Banknote, Package, Box, Send, Tag, Briefcase, Heart, Hop as Home, Coffee, DollarSign, Sparkles, RefreshCw, FileDown, Download, SearchX, CircleUser as UserCircle, Search, Copy, ExternalLink, BookOpen, ChevronDown, Loader as Loader2, ShieldCheck, Settings, Info, MessageCircle, Users, Calendar, Receipt, Landmark, Printer, Megaphone, Monitor, Shield, Calculator, Plane, Phone, Wallet, Paperclip, Lock, Crown, LogOut, Mail, CreditCard as Edit2, ImagePlus, RotateCcw, CircleX, Link2, Share2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import Markdown from 'react-markdown';
 import { jsPDF } from 'jspdf';
@@ -22,7 +22,7 @@ import {
 } from 'recharts';
 import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
 import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
-import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType } from './types';
+import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType, OpeningBalance, StockTake } from './types';
 
 function safeParseDate(dateStr: string): Date {
   if (!dateStr) return new Date(0);
@@ -75,18 +75,241 @@ import {
   apiDeleteAffiliate,
   apiTopUpUserTokens,
   apiGetRecordImageUrl,
+  apiGetReferredUsers,
+  apiGetPublicAffiliateNames,
+  apiGetAffiliateByRefCode,
+  buildReferralLink,
+  displayReferralLink,
+  REFERRAL_QUERY_KEY,
+  apiUpdateUserReferral,
+  calcAffiliateEarning,
+  normalizeReferralName,
   PLAN_TOKEN_LIMITS,
+  PLAN_PRICES,
+  AFFILIATE_COMMISSION_RATE,
   type Affiliate,
+  type ReferredUser,
   PLAN_SCAN_LIMITS,
   PLAN_PDF_LIMITS,
+  usesSharedScanPool,
+  canScanBankStatement,
+  apiGetOpeningBalances,
+  apiSaveOpeningBalances,
+  apiGetStockTakes,
+  apiSaveStockTake,
+  apiDeleteStockTake,
+  apiGetPaymentMethods,
+  apiAddPaymentMethod,
+  apiDeletePaymentMethod,
 } from './services/api';
-import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST } from './constants/categories';
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST, OPENING_BALANCE_GROUPS } from './constants/categories';
+import {
+  type PaymentMethod,
+  BUILTIN_PAYMENT_METHODS,
+  BANK_METHOD_CODE,
+  CASH_METHOD_CODE,
+  allPaymentMethods,
+  paymentMethodLabel,
+  paymentMethodShortLabel,
+  validateNewMethodLabel,
+} from './constants/paymentMethods';
+import {
+  toBalanceMap as obToMap,
+  openingDate as obDate,
+  openingSum as obSum,
+  stockValueAt as obStockValueAt,
+  cumulativeStockProfitEffect as obStockProfitEffect,
+  checkOpeningBalances as obCheck,
+  groupsWithPaymentMethods as obGroups,
+} from './services/openingBalance';
 import { createCheckoutSession, openCustomerPortal, type PaidPlan } from './services/stripeService';
 import { supabase } from './lib/supabase';
 
 // --- Helpers ---
 
-const SearchableSelect = ({ 
+/*
+  Kaedah Bayaran — dikongsi melalui context supaya setiap borang (rekod manual,
+  edit rekod, jualan, semakan hasil imbasan) melihat senarai yang sama tanpa
+  perlu menghantar prop menerusi berlapis-lapis komponen.
+*/
+interface PaymentMethodsContextValue {
+  methods: PaymentMethod[];                                  // kaedah tersuai sahaja
+  options: PaymentMethod[];                                  // termasuk Bank & Tunai
+  addMethod: (label: string) => Promise<PaymentMethod>;
+  deleteMethod: (id: number) => Promise<void>;
+}
+
+const PaymentMethodsContext = React.createContext<PaymentMethodsContextValue>({
+  methods: [],
+  options: BUILTIN_PAYMENT_METHODS,
+  addMethod: async () => { throw new Error('Kaedah bayaran belum sedia'); },
+  deleteMethod: async () => {},
+});
+
+const usePaymentMethods = () => React.useContext(PaymentMethodsContext);
+
+/*
+  Dropdown Kaedah Bayaran + butang "+" untuk menambah kaedah sendiri
+  (cth Touch 'n Go, ShopeePay). Kaedah baharu terus tersedia dalam semua
+  borang lain dan menjadi barisnya sendiri dalam Kunci Kira-Kira.
+*/
+const PaymentMethodSelect = ({
+  value,
+  onChange,
+  compact = false,
+  onError,
+}: {
+  value: string,
+  onChange: (code: string) => void,
+  compact?: boolean,
+  onError?: (msg: string) => void,
+}) => {
+  const { methods, options, addMethod } = usePaymentMethods();
+  const [adding, setAdding] = useState(false);
+  const [label, setLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Medan ini berkongsi satu baris sempit dengan Jumlah & Tarikh, jadi padding
+  // dan butang "+" sengaja dikecilkan supaya nama kaedah tidak terpotong.
+  const fieldClass = compact
+    ? 'w-full bg-slate-50 border border-slate-200 rounded-xl pl-2.5 pr-7 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none'
+    : 'w-full pl-3 pr-7 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none';
+
+  const btnClass = compact
+    ? 'shrink-0 w-8 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center hover:bg-emerald-100 transition-colors'
+    : 'shrink-0 w-9 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center hover:bg-emerald-100 transition-colors';
+
+  const fail = (msg: string) => {
+    setError(msg);
+    onError?.(msg);
+  };
+
+  const handleAdd = async () => {
+    const invalid = validateNewMethodLabel(label, methods);
+    if (invalid) return fail(invalid);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await addMethod(label);
+      onChange(created.code);
+      setLabel('');
+      setAdding(false);
+    } catch (err: any) {
+      fail(err?.message || 'Gagal menambah kaedah bayaran');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (adding) {
+    return (
+      <div className="space-y-1.5">
+        <div className="flex items-stretch gap-1.5">
+          <input
+            autoFocus
+            type="text"
+            value={label}
+            onChange={(e) => { setLabel(e.target.value); setError(null); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') { e.preventDefault(); handleAdd(); }
+              if (e.key === 'Escape') { setAdding(false); setLabel(''); setError(null); }
+            }}
+            placeholder="Contoh: Touch 'n Go"
+            className={fieldClass.replace('appearance-none', '')}
+          />
+          <button
+            type="button"
+            onClick={handleAdd}
+            disabled={saving}
+            className={btnClass}
+            title="Simpan kaedah bayaran"
+          >
+            {saving ? <Loader2 size={compact ? 13 : 15} className="animate-spin" /> : <Check size={compact ? 14 : 16} />}
+          </button>
+          <button
+            type="button"
+            onClick={() => { setAdding(false); setLabel(''); setError(null); }}
+            className={btnClass.replace('emerald', 'slate')}
+            title="Batal"
+          >
+            <X size={compact ? 14 : 16} />
+          </button>
+        </div>
+        {error && <p className="text-[10px] font-bold text-red-500 ml-1">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-stretch gap-1.5">
+      <div className="relative flex-1 min-w-0">
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          title={paymentMethodLabel(value, methods)}
+          className={fieldClass}
+        >
+          {options.map(m => (
+            <option key={m.code} value={m.code}>{m.label}</option>
+          ))}
+          {/* Kaedah yang sudah dipadam tetapi masih terpakai pada rekod ini */}
+          {value && !options.some(m => m.code === value) && (
+            <option value={value}>{paymentMethodLabel(value, methods)}</option>
+          )}
+        </select>
+        <ChevronDown size={13} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+      </div>
+      <button
+        type="button"
+        onClick={() => setAdding(true)}
+        className={btnClass}
+        title="Tambah kaedah bayaran baharu"
+      >
+        <Plus size={compact ? 14 : 16} />
+      </button>
+    </div>
+  );
+};
+
+/** Nama kaedah bayaran sesuatu rekod, untuk jadual & cetakan. */
+const PaymentMethodName = ({ code, upper = false }: { code?: string, upper?: boolean }) => {
+  const { methods } = usePaymentMethods();
+  const label = paymentMethodShortLabel(code, methods);
+  return <>{upper ? label.toUpperCase() : label}</>;
+};
+
+/** Lencana kaedah bayaran: tunai kuning, bank biru, kaedah tersuai ungu. */
+const PaymentMethodBadge = ({ code, variant = 'plain' }: { code?: string, variant?: 'plain' | 'bordered' }) => {
+  const { methods } = usePaymentMethods();
+  const label = paymentMethodShortLabel(code, methods);
+  const isCash = code === CASH_METHOD_CODE;
+  const isCustom = methods.some(m => m.code === code);
+
+  const tone = variant === 'bordered'
+    ? (isCash ? 'bg-amber-50 text-amber-700 border-amber-100'
+      : isCustom ? 'bg-violet-50 text-violet-700 border-violet-100'
+        : 'bg-indigo-50 text-indigo-700 border-indigo-100')
+    : (isCash ? 'bg-amber-50 text-amber-600'
+      : isCustom ? 'bg-violet-50 text-violet-600'
+        : 'bg-sky-50 text-sky-600');
+
+  if (variant === 'bordered') {
+    return (
+      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border inline-flex items-center gap-1 ${tone}`}>
+        {isCash ? <DollarSign size={10} className="mr-0.5" /> : isCustom ? <Wallet size={10} className="mr-0.5" /> : <Landmark size={10} className="mr-0.5" />}
+        {label}
+      </span>
+    );
+  }
+
+  return (
+    <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${tone}`}>{label}</span>
+  );
+};
+
+const SearchableSelect = ({
   value, 
   onChange, 
   options, 
@@ -249,7 +472,9 @@ const generatePDFReport = (
   startDate?: string,
   endDate?: string,
   monthlyData?: any,
-  categoryMappings?: Record<string, string>
+  categoryMappings?: Record<string, string>,
+  openingStock = 0,
+  closingStock = 0
 ) => {
   const doc = new jsPDF();
   const monthNames = [
@@ -286,7 +511,8 @@ const generatePDFReport = (
       .filter(c => categoryMappings[c] === 'EXPENSE' && calcTotal(`expenses.${c}`) !== 0);
 
     const totalSalesAmt = calcTotal('sales') + calcTotal('salesAdjustments');
-    const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0);
+    // Kos Jualan = Stok Awal + Belian - Stok Akhir
+    const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0) + openingStock - closingStock;
     const grossProfit = totalSalesAmt - totalCogsAmt;
     const totalOtherIncome = otherIncomeCats.reduce((s, c) => s + calcTotal(`otherIncome.${c}`), 0);
     const totalExpensesAmt = expenseCats.reduce((s, c) => s + calcTotal(`expenses.${c}`), 0);
@@ -394,9 +620,11 @@ const generatePDFReport = (
 
     // ── KOS JUALAN ─────────────────────────────────────────────────────────
     sectionHdr('Kos Jualan (Cost of Sales)');
+    if (openingStock !== 0) row('Stok Awal (Opening Stock)', openingStock);
     if (cogsCats.length > 0) {
       cogsCats.forEach(cat => row(cat, calcTotal(`cogs.${cat}`)));
     }
+    if (closingStock !== 0) row('Tolak: Stok Akhir (Closing Stock)', -closingStock);
     subtotal('Jumlah Kos Jualan', totalCogsAmt);
     spacer(2);
     grandTotal('UNTUNG KASAR (GROSS PROFIT)', grossProfit);
@@ -572,6 +800,7 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
     { id: 'records', label: 'Transaksi', icon: FileText, premium: null },
     { id: 'reports', label: 'Laporan', icon: PieChart, premium: null },
     { id: 'ledger', label: 'Lejar', icon: BookOpen, premium: null },
+    { id: 'opening-balance', label: 'Baki Awal', icon: Landmark, premium: null },
     { id: 'reconcile', label: 'Padanan Bank', icon: RefreshCw, premium: 'Ultimate' },
     { id: 'ai-analysis', label: 'Smart Analisis', icon: Sparkles, premium: 'Starter' },
     { id: 'profile', label: 'Akaun', icon: User, premium: null },
@@ -784,7 +1013,7 @@ const LANDING_PLANS = [
     features: [
       '100 Imbasan Transaksi / bulan',
       'Unlimited Rekod Manual',
-      '3× Imbasan Bank Statement',
+      'Tiada Imbasan Bank Statement',
       'Monitacc Assistant',
       '1× Smart Analysis',
     ],
@@ -798,7 +1027,7 @@ const LANDING_PLANS = [
     features: [
       '250 Imbasan Transaksi / bulan',
       'Unlimited Rekod Manual',
-      '9× Imbasan Bank Statement',
+      'Tiada Imbasan Bank Statement',
       'Monitacc Assistant',
       '4× Smart Analysis',
     ],
@@ -1262,12 +1491,17 @@ const AUTH_PLANS = [
   { name: 'Ultimate', price: '150', period: '/bln', desc: 'Unlimited Imbasan' },
 ];
 
-const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null; onBack?: () => void }) => {
-  const [isLogin, setIsLogin] = useState(!initialPlan);
+const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null; refCode?: string | null; onBack?: () => void }) => {
+  const [isLogin, setIsLogin] = useState(!initialPlan && !refCode);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [phone, setPhone] = useState('');
   const [referredBy, setReferredBy] = useState('');
+  const [agentNames, setAgentNames] = useState<{ id: string; name: string; ref_code?: string }[]>([]);
+  const [refMode, setRefMode] = useState<'list' | 'manual'>('list');
+  // Ejen yang dikenal pasti daripada link ?ref=... — medan Rujukan dikunci kepada namanya
+  const [lockedAgent, setLockedAgent] = useState<{ id: string; name: string } | null>(null);
+  const [refLookupDone, setRefLookupDone] = useState(!refCode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showLoginPass, setShowLoginPass] = useState(false);
@@ -1275,6 +1509,39 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
   const [selectedPlan, setSelectedPlan] = useState<string>(initialPlan || 'Percuma');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Muatkan senarai ejen berdaftar untuk dropdown Rujukan.
+  // Jika kosong (RLS menyekat atau tiada ejen), borang jatuh balik kepada input manual.
+  useEffect(() => {
+    if (isLogin) return;
+    apiGetPublicAffiliateNames()
+      .then(list => {
+        setAgentNames(list);
+        if (list.length === 0) setRefMode('manual');
+      })
+      .catch(() => setRefMode('manual'));
+  }, [isLogin]);
+
+  // Terjemah kod daripada link affiliate (?ref=hasan) kepada nama ejen sebenar,
+  // kemudian kunci medan Rujukan supaya komisen sentiasa dipadankan dengan tepat.
+  useEffect(() => {
+    const code = (refCode || '').trim();
+    if (!code) { setRefLookupDone(true); return; }
+
+    let dibatalkan = false;
+    apiGetAffiliateByRefCode(code)
+      .then(agent => {
+        if (dibatalkan) return;
+        if (agent && (agent.name || '').trim()) {
+          setLockedAgent({ id: agent.id, name: agent.name });
+          setReferredBy(agent.name);
+        }
+      })
+      .catch(() => { /* kod tidak sah — borang kembali kepada pilihan biasa */ })
+      .finally(() => { if (!dibatalkan) setRefLookupDone(true); });
+
+    return () => { dibatalkan = true; };
+  }, [refCode]);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedEmail');
@@ -1347,6 +1614,15 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
           <p className="text-slate-500 text-sm mt-1">Sistem Perakaunan Pintar Monitacc</p>
         </div>
 
+        {!isLogin && lockedAgent && (
+          <div className="mb-6 flex items-start gap-3 p-3.5 bg-emerald-50 border border-emerald-100 rounded-xl">
+            <Sparkles size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+            <p className="text-xs text-emerald-800 font-medium leading-relaxed">
+              Anda dijemput oleh <span className="font-bold">{lockedAgent.name}</span>. Medan rujukan sudah diisi automatik — teruskan pendaftaran anda.
+            </p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-5">
           {!isLogin && (
             <>
@@ -1385,16 +1661,81 @@ const AuthView = ({ onAuthSuccess, initialPlan, onBack }: { onAuthSuccess: (user
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Rujukan <span className="text-red-500">*</span></label>
-                <input
-                  type="text"
-                  value={referredBy}
-                  onChange={(e) => setReferredBy(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Nama Individu yang perkenalkan"
-                  required
-                />
-                {!referredBy.trim() && (
-                  <p className="text-[11px] text-slate-400 font-medium ml-1">Tiada Rujukan — sila masukkan nama individu yang memperkenalkan anda, atau taip <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika tiada.</p>
+
+                {lockedAgent ? (
+                  <>
+                    <div className="flex items-center gap-3 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+                      <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center text-white shrink-0">
+                        <Check size={16} strokeWidth={3} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Dirujuk Oleh</p>
+                        <p className="text-sm font-bold text-emerald-900 truncate">{lockedAgent.name}</p>
+                      </div>
+                      <Lock size={14} className="text-emerald-400 shrink-0" />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => { setLockedAgent(null); setReferredBy(''); }}
+                      className="text-[11px] font-bold text-slate-400 hover:text-slate-600 ml-1"
+                    >
+                      Bukan orang ini? Tukar rujukan
+                    </button>
+                  </>
+                ) : !refLookupDone ? (
+                  <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-400">
+                    <Loader2 size={14} className="animate-spin" />
+                    <span className="text-xs font-medium">Menyemak link rujukan…</span>
+                  </div>
+                ) : refMode === 'list' && agentNames.length > 0 ? (
+                  <>
+                    <select
+                      value={agentNames.some(a => a.name === referredBy) ? referredBy : ''}
+                      onChange={(e) => {
+                        if (e.target.value === '__manual__') {
+                          setRefMode('manual');
+                          setReferredBy('');
+                        } else {
+                          setReferredBy(e.target.value);
+                        }
+                      }}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all cursor-pointer"
+                      required
+                    >
+                      <option value="">— Sila pilih —</option>
+                      <option value="Tiada Rujukan">Tiada Rujukan</option>
+                      {agentNames.map(a => (
+                        <option key={a.id} value={a.name}>{a.name}</option>
+                      ))}
+                      <option value="__manual__">Nama tiada dalam senarai…</option>
+                    </select>
+                    <p className="text-[11px] text-slate-400 font-medium ml-1">
+                      Pilih nama individu yang memperkenalkan anda. Pilih <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika anda datang sendiri.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      type="text"
+                      value={referredBy}
+                      onChange={(e) => setReferredBy(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                      placeholder="Nama Individu yang perkenalkan"
+                      required
+                    />
+                    {agentNames.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => { setRefMode('list'); setReferredBy(''); }}
+                        className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 ml-1"
+                      >
+                        ← Kembali ke senarai ejen
+                      </button>
+                    )}
+                    {!referredBy.trim() && (
+                      <p className="text-[11px] text-slate-400 font-medium ml-1">Tiada Rujukan — sila masukkan nama individu yang memperkenalkan anda, atau taip <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika tiada.</p>
+                    )}
+                  </>
                 )}
               </div>
               <div className="space-y-2">
@@ -2610,18 +2951,69 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   const [saving, setSaving] = useState(false);
   const [saveProgress, setSaveProgress] = useState({ current: 0, total: 0 });
   const [showUpgradeModal, setShowUpgradeModal] = useState<{ type: 'receipt' | 'pdf'; used: number; limit: number } | null>(null);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [selectedRows, setSelectedRows] = useState<number[]>([]);
   const processingRef = useRef(false);
   const initialImageProcessedRef = useRef(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
   const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
-  const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
+  // Starter & Growth: imbasan resit + muat naik PDF resit berkongsi satu kuota
+  const sharesScanPool = usesSharedScanPool(planKey);
+  const pdfLimit = sharesScanPool ? receiptLimit : (PLAN_PDF_LIMITS[planKey] ?? 1);
 
   const activeTask = queue.find(t => t.id === activeTaskId) || null;
   const completedCount = queue.filter(t => t.status === 'complete').length;
   const failedCount = queue.filter(t => t.status === 'failed').length;
   const totalRecords = queue.filter(t => t.status === 'complete').reduce((sum, t) => sum + t.results.length, 0);
+
+  // Senarai rekod aktif + index asal (index asal wajib dikekalkan supaya edit/buang
+  // tetap tepat walaupun paparan ditapis)
+  const activeResults = activeTask?.results || [];
+  const incomeCount = activeResults.filter(r => r.type === 'income').length;
+  const expenseCount = activeResults.length - incomeCount;
+  const visibleResults = activeResults
+    .map((result, idx) => ({ result, idx }))
+    .filter(({ result }) => typeFilter === 'all' || result.type === typeFilter);
+  const visibleIdxs = visibleResults.map(v => v.idx);
+  const allVisibleSelected = visibleIdxs.length > 0 && visibleIdxs.every(i => selectedRows.includes(i));
+
+  // Pilihan direset bila tukar dokumen atau tukar tapisan supaya tiada index tertinggal
+  useEffect(() => { setSelectedRows([]); }, [activeTaskId]);
+  useEffect(() => { setTypeFilter('all'); }, [activeTaskId]);
+
+  const toggleRow = (idx: number) => {
+    setSelectedRows(prev => prev.includes(idx) ? prev.filter(i => i !== idx) : [...prev, idx]);
+  };
+
+  const toggleSelectAllVisible = () => {
+    setSelectedRows(prev => allVisibleSelected
+      ? prev.filter(i => !visibleIdxs.includes(i))
+      : [...new Set([...prev, ...visibleIdxs])]
+    );
+  };
+
+  const removeSelectedRows = (taskId: string) => {
+    if (selectedRows.length === 0) return;
+    if (!confirm(`Buang ${selectedRows.length} rekod yang dipilih?`)) return;
+    setQueue(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newResults = t.results.filter((_, i) => !selectedRows.includes(i));
+      return { ...t, results: newResults, status: newResults.length > 0 ? 'complete' : 'failed', error: newResults.length === 0 ? 'Semua rekod telah dibuang.' : '' };
+    }));
+    setSelectedRows([]);
+  };
+
+  const setTypeForSelectedRows = (taskId: string, newType: 'income' | 'expense') => {
+    if (selectedRows.length === 0) return;
+    setQueue(prev => prev.map(t => {
+      if (t.id !== taskId) return t;
+      const newResults = t.results.map((r, i) => selectedRows.includes(i) ? { ...r, type: newType } : r);
+      return { ...t, results: newResults };
+    }));
+    setSelectedRows([]);
+  };
 
   const addToQueue = (image: string, mimeType: string) => {
     const task: ScanTask = {
@@ -2643,7 +3035,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
     if (!isAdminUser && user?.id && isFinite(isPdf ? pdfLimit : receiptLimit)) {
       try {
         const usage = await apiGetScanUsageThisMonth(user.id);
-        const used = isPdf ? usage.pdf : usage.receipt;
+        // Kuota kongsi: resit dan PDF ditolak daripada baldi yang sama
+        const used = sharesScanPool ? usage.receipt + usage.pdf : (isPdf ? usage.pdf : usage.receipt);
         const limit = isPdf ? pdfLimit : receiptLimit;
         if (used >= limit) {
           setShowUpgradeModal({ type: scanType, used, limit });
@@ -2678,7 +3071,12 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 
       const data = await analyzeDocument(task.image, finalMimeType || "image/jpeg", user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
       if (data && Array.isArray(data) && data.length > 0) {
-        const uniqueData = data.filter((item, index, self) =>
+        // Penyata bank: JANGAN buang pendua. Penghurai penyata sudah menjamin
+        // satu rekod bagi setiap baris transaksi, dan penyata sah memang boleh
+        // mengandungi baris serupa (cth. dua bayaran QR RM5 daripada orang yang
+        // sama pada hari yang sama). Membuangnya akan menghilangkan rekod benar.
+        const isBankStatement = data.every(d => d.docType === 'Penyata Bank');
+        const uniqueData = isBankStatement ? data : data.filter((item, index, self) =>
           index === self.findIndex((t2) => (
             t2.date === item.date &&
             Math.abs(t2.amount - item.amount) < 0.01 &&
@@ -2756,6 +3154,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
   };
 
   const removeTaskResult = (taskId: string, index: number) => {
+    setSelectedRows([]); // index berubah selepas buang, jadi pilihan lama tidak lagi sah
     setQueue(prev => prev.map(t => {
       if (t.id !== taskId) return t;
       const newResults = t.results.filter((_, i) => i !== index);
@@ -3048,14 +3447,95 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 </button>
               </div>
 
+              {/* Tapisan jenis transaksi */}
+              <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide -mx-1 px-1 pb-1">
+                {([
+                  { key: 'all', label: 'Semua', count: activeResults.length, icon: null, active: 'bg-slate-900 text-white border-slate-900' },
+                  { key: 'income', label: 'Duit Masuk', count: incomeCount, icon: TrendingUp, active: 'bg-emerald-600 text-white border-emerald-600' },
+                  { key: 'expense', label: 'Duit Keluar', count: expenseCount, icon: TrendingDown, active: 'bg-rose-600 text-white border-rose-600' },
+                ] as const).map(chip => (
+                  <button
+                    key={chip.key}
+                    onClick={() => setTypeFilter(chip.key)}
+                    className={`shrink-0 flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-[11px] font-bold transition-all active:scale-95 ${
+                      typeFilter === chip.key
+                        ? `${chip.active} shadow-sm`
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    {chip.icon && <chip.icon size={13} strokeWidth={2.5} />}
+                    {chip.label}
+                    <span className={`px-1.5 py-0.5 rounded-md text-[10px] ${typeFilter === chip.key ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>
+                      {chip.count}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Bar pilihan pukal */}
+              <div className="flex flex-wrap items-center gap-2 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-2.5">
+                <button
+                  onClick={toggleSelectAllVisible}
+                  disabled={visibleIdxs.length === 0}
+                  className="flex items-center gap-2 text-[11px] font-bold text-slate-600 hover:text-slate-900 transition-colors disabled:opacity-40"
+                >
+                  <span className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
+                    allVisibleSelected ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-slate-300'
+                  }`}>
+                    {allVisibleSelected && <Check size={13} strokeWidth={3} />}
+                  </span>
+                  {allVisibleSelected ? 'Buang Pilihan' : 'Pilih Semua'}
+                </button>
+
+                {selectedRows.length > 0 ? (
+                  <>
+                    <span className="text-[11px] font-bold text-emerald-600">{selectedRows.length} dipilih</span>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <button
+                        onClick={() => setTypeForSelectedRows(activeTask.id, 'income')}
+                        className="px-2.5 py-1.5 bg-emerald-50 text-emerald-600 border border-emerald-100 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-all"
+                      >
+                        Jadi Duit Masuk
+                      </button>
+                      <button
+                        onClick={() => setTypeForSelectedRows(activeTask.id, 'expense')}
+                        className="px-2.5 py-1.5 bg-rose-50 text-rose-600 border border-rose-100 rounded-lg text-[10px] font-bold hover:bg-rose-100 transition-all"
+                      >
+                        Jadi Duit Keluar
+                      </button>
+                      <button
+                        onClick={() => removeSelectedRows(activeTask.id)}
+                        className="p-1.5 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-all"
+                        title="Buang rekod dipilih"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <span className="text-[11px] font-medium text-slate-400 ml-auto">
+                    Menunjuk {visibleIdxs.length} daripada {activeResults.length} rekod
+                  </span>
+                )}
+              </div>
+
+              {visibleIdxs.length === 0 && (
+                <div className="text-center py-10 text-slate-400">
+                  <SearchX size={28} className="mx-auto mb-2" />
+                  <p className="text-xs font-bold">Tiada rekod untuk tapisan ini.</p>
+                </div>
+              )}
+
               <div className="space-y-4">
-                {activeTask.results.map((result, idx) => (
+                {visibleResults.map(({ result, idx }) => (
                   <motion.div
                     key={idx}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: idx * 0.05 }}
-                    className="card-premium p-4 md:p-5 bg-white border border-slate-200 relative group"
+                    transition={{ duration: 0.3, delay: Math.min(idx * 0.05, 0.4) }}
+                    className={`card-premium p-4 md:p-5 bg-white relative group transition-all ${
+                      selectedRows.includes(idx) ? 'border-2 border-emerald-500 ring-2 ring-emerald-500/10' : 'border border-slate-200'
+                    }`}
                   >
                     {checkExistingDuplicate(result) && (
                       <div className="absolute -top-3 left-6 z-10 px-3 py-1 bg-amber-500 text-white text-[10px] font-bold rounded-full shadow-lg flex items-center gap-1.5 animate-bounce">
@@ -3066,6 +3546,17 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                     <div className="flex flex-col gap-4 md:gap-6">
                       {/* Transaction type + delete */}
                       <div className="flex items-center justify-between gap-3">
+                        <button
+                          onClick={() => toggleRow(idx)}
+                          title="Pilih rekod ini"
+                          className={`w-8 h-8 shrink-0 rounded-lg border-2 flex items-center justify-center transition-all active:scale-90 ${
+                            selectedRows.includes(idx)
+                              ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
+                              : 'bg-white border-slate-300 text-transparent hover:border-emerald-400'
+                          }`}
+                        >
+                          <Check size={16} strokeWidth={3} />
+                        </button>
                         <div className="flex items-center gap-3 bg-slate-50 p-2.5 md:p-3 rounded-2xl border border-slate-200 flex-1 min-w-0">
                           <div className={`w-9 h-9 md:w-10 md:h-10 rounded-xl flex items-center justify-center shrink-0 shadow-md ${result.type === 'income' ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}`}>
                             {React.createElement(getCategoryIcon(result.category), { size: 18, strokeWidth: 2.5 })}
@@ -3136,17 +3627,11 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                         </div>
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bayaran</p>
-                          <div className="relative">
-                            <select
-                              value={result.payment_method || 'bank'}
-                              onChange={(e) => updateTaskResult(activeTask.id, idx, 'payment_method', e.target.value)}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm appearance-none pr-8"
-                            >
-                              <option value="bank">Bank</option>
-                              <option value="cash">Tunai</option>
-                            </select>
-                            <ChevronDown size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                          </div>
+                          <PaymentMethodSelect
+                            compact
+                            value={result.payment_method || BANK_METHOD_CODE}
+                            onChange={(code) => updateTaskResult(activeTask.id, idx, 'payment_method', code)}
+                          />
                         </div>
                         <div className="space-y-1.5">
                           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
@@ -3269,8 +3754,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Naik Taraf Untuk Lebih Banyak</p>
                 <div className="space-y-2">
                   {[
-                    { plan: 'Starter', receipt: '100 imbasan', pdf: '3x PDF', price: 'RM 50/bln' },
-                    { plan: 'Growth', receipt: '250 imbasan', pdf: '9x PDF', price: 'RM 100/bln' },
+                    { plan: 'Starter', receipt: '100 imbasan', pdf: '100 imbasan (resit + PDF)', price: 'RM 50/bln' },
+                    { plan: 'Growth', receipt: '250 imbasan', pdf: '250 imbasan (resit + PDF)', price: 'RM 100/bln' },
                     { plan: 'Ultimate', receipt: 'Unlimited', pdf: 'Unlimited PDF', price: 'RM 150/bln' },
                   ].map(p => (
                     <div key={p.plan} className="flex items-center justify-between py-2 border-b border-slate-100 last:border-0">
@@ -3395,10 +3880,12 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {/* Kaedah Bayaran diberi barisnya sendiri supaya nama kaedah yang
+                panjang (cth "Touch 'n Go eWallet") tidak terpotong */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input 
+                <input
                   required
                   type="number"
                   step="0.01"
@@ -3410,7 +3897,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
-                <input 
+                <input
                   required
                   type="date"
                   value={formData.date}
@@ -3418,19 +3905,12 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
-                <div className="relative">
-                  <select 
-                    value={formData.payment_method}
-                    onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
-                  >
-                    <option value="bank">Bank / Online</option>
-                    <option value="cash">Tunai (Cash)</option>
-                  </select>
-                  <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
+                <PaymentMethodSelect
+                  value={formData.payment_method}
+                  onChange={(code) => setFormData({ ...formData, payment_method: code })}
+                />
               </div>
             </div>
 
@@ -3822,10 +4302,10 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
-                <input 
+                <input
                   type="number"
                   step="0.01"
                   value={formData.amount}
@@ -3835,26 +4315,19 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
-                <input 
+                <input
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({...formData, date: e.target.value})}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 sm:col-span-2">
                 <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
-                <div className="relative">
-                  <select 
-                    value={formData.payment_method}
-                    onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
-                  >
-                    <option value="bank">Bank / Online</option>
-                    <option value="cash">Tunai (Cash)</option>
-                  </select>
-                  <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                </div>
+                <PaymentMethodSelect
+                  value={formData.payment_method}
+                  onChange={(code) => setFormData({ ...formData, payment_method: code })}
+                />
               </div>
             </div>
 
@@ -4569,17 +5042,10 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
                   <div className="space-y-1.5">
                     <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
-                    <div className="relative">
-                      <select 
-                        value={formData.payment_method}
-                        onChange={(e) => setFormData({...formData, payment_method: e.target.value as any})}
-                        className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all appearance-none pr-10"
-                      >
-                        <option value="bank">Bank / Online</option>
-                        <option value="cash">Tunai (Cash)</option>
-                      </select>
-                      <ChevronDown size={14} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                    </div>
+                    <PaymentMethodSelect
+                      value={formData.payment_method}
+                      onChange={(code) => setFormData({ ...formData, payment_method: code })}
+                    />
                   </div>
 
                   <div className="flex gap-4 pt-4">
@@ -4669,7 +5135,7 @@ const TransactionReportTemplate = ({ records, user }: { records: any[], user: Us
                 <td className="py-2 px-2 border-r border-black uppercase">{record.type === 'income' ? 'MASUK' : 'KELUAR'}</td>
                 <td className="py-2 px-2 border-r border-black">{record.category}</td>
                 <td className="py-2 px-2 border-r border-black truncate max-w-[150px]">{record.description}</td>
-                <td className="py-2 px-2 border-r border-black uppercase">{record.payment_method === 'cash' ? 'TUNAI' : 'BANK'}</td>
+                <td className="py-2 px-2 border-r border-black uppercase"><PaymentMethodName code={record.payment_method} upper /></td>
                 <td className={`py-2 px-2 text-right font-bold ${record.type === 'income' ? 'text-black' : 'text-red-600'}`}>
                   {record.type === 'income' ? '+' : '-'} {record.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
                 </td>
@@ -4695,6 +5161,7 @@ const TransactionReportTemplate = ({ records, user }: { records: any[], user: Us
 };
 
 const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initialYear, onUpdate, onDelete, onDeleteSale, onAddNewCategory, categoryMappings }: { records: TransactionRecord[], sales: any[], user: UserType | null, initialCategory?: string, initialMonth?: number, initialYear?: number, onUpdate: (id: number, data: any) => void, onDelete: (id: number) => void, onDeleteSale: (id: number) => void, onAddNewCategory: (name: string, type: string) => void, categoryMappings: Record<string, string> }) => {
+  const { methods: customMethods } = usePaymentMethods();
   const [selectedCategory, setSelectedCategory] = useState(initialCategory || 'JUALAN (REKOD)');
   const [editingRecord, setEditingRecord] = useState<TransactionRecord | null>(null);
 
@@ -4724,6 +5191,13 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
 
   const years = Array.from({ length: 5 }, (_, i) => new Date().getFullYear() - i);
 
+  // Setiap kaedah bayaran tersuai ialah akaun lejarnya sendiri, sama seperti
+  // BANK dan CASH IN HAND.
+  const ledgerAccounts = useMemo(() => {
+    const base = Array.from(new Set([...ALL_CATEGORIES, ...customMethods.map(m => m.bs_category)]));
+    return base.includes(selectedCategory) ? base : [selectedCategory, ...base];
+  }, [customMethods, selectedCategory]);
+
   // Combine records and sales (avoiding duplicates) for a complete ledger
   const allTransactions = [
     ...records.map(r => ({ ...r, source: 'record' })),
@@ -4739,6 +5213,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         type: 'income',
         sale_id: s.id,
         source: 'sale',
+        payment_method: s.payment_method,
         reconciled: s.reconciled
       }))
   ];
@@ -4747,11 +5222,16 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
     .filter(r => {
       const cat = (r.category || '').trim().toLowerCase();
       const sel = selectedCategory.toLowerCase();
-      
+      const method = (r as any).payment_method;
+
+      // Kaedah bayaran tersuai (cth e-dompet) — satu akaun lejar setiap kaedah
+      const customMethod = customMethods.find(m => m.bs_category.toLowerCase() === sel);
+      if (customMethod) return method === customMethod.code || cat === sel;
+
       // Balance Sheet Groupings
-      if (sel === 'bank') return (r as any).payment_method === 'bank' || cat === 'bank' || cat.includes('bank');
-      if (sel === 'cash in hand') return (r as any).payment_method === 'cash' || cat === 'cash in hand' || cat.includes('tunai') || cat.includes('cash');
-      
+      if (sel === 'bank') return method === BANK_METHOD_CODE || cat === 'bank' || cat.includes('bank');
+      if (sel === 'cash in hand') return method === CASH_METHOD_CODE || cat === 'cash in hand' || cat.includes('tunai') || cat.includes('cash');
+
       const fixedAssetCats = ["fixed assets", "motor vehicles", "furniture and fittings", "office equipment", "computer and software", "kitchen utensil", "renovation", "signboard", "building", "goodwill"];
       if (sel === 'fixed assets') return cat === sel || fixedAssetCats.includes(cat) || cat.includes('aset tetap') || cat.includes('kenderaan') || cat.includes('perabot') || cat.includes('pejabat') || cat.includes('komputer');
       
@@ -4892,7 +5372,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
               <SearchableSelect
                 value={selectedCategory}
                 onChange={setSelectedCategory}
-                options={ALL_CATEGORIES.includes(selectedCategory) ? ALL_CATEGORIES : [selectedCategory, ...ALL_CATEGORIES]}
+                options={ledgerAccounts}
                 placeholder="Pilih Akaun"
               />
             </div>
@@ -5289,7 +5769,86 @@ const ManualReconcileModal = ({
   );
 };
 
-const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMissingRecord, onBulkAdd, onRefresh, user }: { records: TransactionRecord[], sales: Sale[], onUpdateRecord: (id: number, data: any) => void, onUpdateSale: (id: number, data: any) => void, onAddMissingRecord: (bt: any) => void, onBulkAdd: (data: any[]) => void, onRefresh: () => void, user: UserType | null }) => {
+// ============================================================
+// Penghuraian CSV penyata bank
+// Menyokong format Xero (*Date, *Amount, Payee, Description, Reference)
+// dan format biasa bank Malaysia (Date, Description, Amount / Debit / Credit)
+// ============================================================
+
+// Pecahkan satu baris CSV dengan menghormati petikan: a,"b,c",d -> ['a','b,c','d']
+const parseCsvLine = (line: string): string[] => {
+  const out: string[] = [];
+  let cur = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') { cur += '"'; i++; }  // petikan berganda = petikan literal
+        else inQuotes = false;
+      } else cur += ch;
+    } else if (ch === '"') {
+      inQuotes = true;
+    } else if (ch === ',') {
+      out.push(cur); cur = '';
+    } else cur += ch;
+  }
+  out.push(cur);
+  return out.map(c => c.trim());
+};
+
+// Buang tanda '*' (Xero menandakan lajur wajib) dan seragamkan huruf
+const normalizeCsvHeader = (h: string) => h.replace(/^﻿/, '').replace(/\*/g, '').trim().toLowerCase();
+
+const CSV_ALIASES = {
+  date: ['date', 'transaction date', 'tarikh', 'posting date', 'value date', 'trans date', 'tarikh transaksi'],
+  description: ['description', 'transaction description', 'narrative', 'details', 'particulars', 'penerangan', 'keterangan', 'butiran'],
+  payee: ['payee', 'payee name', 'penerima', 'nama penerima'],
+  amount: ['amount', 'transaction amount', 'jumlah', 'value', 'nilai'],
+  debit: ['debit', 'debit amount', 'withdrawal', 'withdrawals', 'money out', 'keluar', 'pengeluaran'],
+  credit: ['credit', 'credit amount', 'deposit', 'deposits', 'money in', 'masuk', 'deposit amount'],
+  reference: ['reference', 'ref', 'reference number', 'cheque number', 'cheque no', 'rujukan', 'no rujukan'],
+};
+
+// Terima "1,234.56", "(1,234.56)" (negatif ala perakaunan), "1234.56-", "RM 1,234.56"
+const parseCsvAmount = (raw: string): number => {
+  if (!raw) return NaN;
+  let s = raw.replace(/[rm\s]/gi, '').replace(/,/g, '');
+  let negative = false;
+  if (/^\(.*\)$/.test(s)) { negative = true; s = s.slice(1, -1); }
+  if (s.endsWith('-')) { negative = true; s = s.slice(0, -1); }
+  if (s.endsWith('+')) s = s.slice(0, -1);
+  const n = parseFloat(s);
+  if (isNaN(n)) return NaN;
+  return negative ? -Math.abs(n) : n;
+};
+
+const CSV_MONTHS: Record<string, string> = {
+  JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06',
+  JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12',
+  MAC: '03', MEI: '05', OGO: '08', OKT: '10', DIS: '12',
+};
+
+// Terima YYYY-MM-DD, DD/MM/YYYY (lalai Xero), DD-MMM-YYYY, DD/MM/YY
+const parseCsvDate = (raw: string): string => {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+
+  const parts = s.split(/[\/\-.]/).map(p => p.trim());
+  if (parts.length === 3) {
+    const [p1, p2, p3] = parts;
+    const year = p3.length === 2 ? `20${p3}` : p3;
+    const month = /^\d+$/.test(p2) ? p2.padStart(2, '0') : (CSV_MONTHS[p2.slice(0, 3).toUpperCase()] || '');
+    if (month && /^\d{4}$/.test(year)) {
+      return `${year}-${month}-${p1.padStart(2, '0')}`;  // hari dahulu (standard Xero & Malaysia)
+    }
+  }
+  const parsed = Date.parse(s);
+  return isNaN(parsed) ? '' : format(new Date(parsed), 'yyyy-MM-dd');
+};
+
+const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMissingRecord, onBulkAdd, onRefresh, user }:{ records: TransactionRecord[], sales: Sale[], onUpdateRecord: (id: number, data: any) => void, onUpdateSale: (id: number, data: any) => void, onAddMissingRecord: (bt: any) => void, onBulkAdd: (data: any[]) => void, onRefresh: () => void, user: UserType | null }) => {
   const [bankTransactions, setBankTransactions] = useState<any[]>(() => {
     const saved = localStorage.getItem('monitacc_bank_transactions');
     return saved ? JSON.parse(saved) : [];
@@ -5298,6 +5857,12 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
   const [isBulkAdding, setIsBulkAdding] = useState(false);
   const [manualMatchTransaction, setManualMatchTransaction] = useState<any | null>(null);
   const [uploadStatus, setUploadStatus] = useState<{ type: 'info' | 'success' | 'error'; message: string } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkProcessing, setIsBulkProcessing] = useState(false);
+
+  // Imbasan penyata bank dengan AI hanya untuk pakej Ultimate (admin dikecualikan).
+  const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
+  const bolehImbasPenyata = user?.role === 'admin' || canScanBankStatement(planKey);
 
   useEffect(() => {
     localStorage.setItem('monitacc_bank_transactions', JSON.stringify(bankTransactions));
@@ -5397,66 +5962,84 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
     const file = e.target.files?.[0];
     if (!file) return;
 
+    // Imbasan penyata bank dengan AI (PDF/imej) eksklusif Ultimate.
+    // Import CSV kekal terbuka untuk semua pakej — ia bukan "imbasan".
+    const isCsv = file.name.toLowerCase().endsWith('.csv');
+    if (!isCsv && !bolehImbasPenyata) {
+      setUploadStatus({
+        type: 'error',
+        message: 'Imbasan penyata bank dengan AI hanya tersedia untuk pakej Ultimate. Anda masih boleh muat naik fail CSV yang dimuat turun daripada bank anda.',
+      });
+      e.target.value = '';
+      return;
+    }
+
     setIsUploading(true);
     const reader = new FileReader();
-    
-    if (file.name.endsWith('.csv')) {
+
+    if (isCsv) {
       reader.onload = (event) => {
         try {
           const text = event.target?.result as string;
-          const lines = text.split('\n').filter(l => l.trim());
-          if (lines.length === 0) return;
+          const lines = text.split(/\r?\n/).filter(l => l.trim());
+          if (lines.length === 0) {
+            setUploadStatus({ type: 'error', message: 'Fail CSV kosong.' });
+            return;
+          }
 
-          // Detect headers
-          const header = lines[0].toLowerCase();
-          let dateIdx = 0;
-          let descIdx = 1;
-          let amountIdx = 2;
+          const headerCols = parseCsvLine(lines[0]).map(c => normalizeCsvHeader(c));
+          const findCol = (aliases: string[]) => headerCols.findIndex(c => aliases.includes(c));
 
-          if (header.includes('transaction date')) {
-            const cols = lines[0].split(',').map(c => c.trim().toLowerCase());
-            dateIdx = cols.indexOf('transaction date');
-            descIdx = cols.indexOf('transaction description');
-            amountIdx = cols.indexOf('amount');
-            if (amountIdx === -1) amountIdx = cols.indexOf('transaction amount');
-          } else if (header.includes('date') && header.includes('description') && header.includes('amount')) {
-            const cols = lines[0].split(',').map(c => c.trim().toLowerCase());
-            dateIdx = cols.indexOf('date');
-            descIdx = cols.indexOf('description');
-            amountIdx = cols.indexOf('amount');
+          const dateIdx = findCol(CSV_ALIASES.date);
+          const descIdx = findCol(CSV_ALIASES.description);
+          const payeeIdx = findCol(CSV_ALIASES.payee);
+          const amountIdx = findCol(CSV_ALIASES.amount);
+          const debitIdx = findCol(CSV_ALIASES.debit);
+          const creditIdx = findCol(CSV_ALIASES.credit);
+          const refIdx = findCol(CSV_ALIASES.reference);
+
+          if (dateIdx === -1) {
+            setUploadStatus({ type: 'error', message: 'Lajur tarikh tidak dijumpai. Pastikan CSV ada tajuk lajur seperti "Date" atau "*Date" (format Xero).' });
+            return;
+          }
+          if (amountIdx === -1 && debitIdx === -1 && creditIdx === -1) {
+            setUploadStatus({ type: 'error', message: 'Lajur jumlah tidak dijumpai. Gunakan lajur "Amount"/"*Amount", atau pasangan "Debit" dan "Credit".' });
+            return;
           }
 
           const data = lines.slice(1).map((line, i) => {
-            const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
-            const amountStr = cols[amountIdx] || '0';
-            const amount = parseFloat(amountStr.replace(/,/g, ''));
-            
-            // Handle Maybank date format (DD-MMM-YYYY or DD/MM/YYYY)
-            let rawDate = cols[dateIdx] || '';
-            let formattedDate = rawDate;
-            if (rawDate.includes('-') && isNaN(Date.parse(rawDate))) {
-              // Try to convert DD-MMM-YYYY to YYYY-MM-DD
-              const parts = rawDate.split('-');
-              if (parts.length === 3) {
-                const months: {[key: string]: string} = {
-                  'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04', 'MAY': '05', 'JUN': '06',
-                  'JUL': '07', 'AUG': '08', 'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12'
-                };
-                const day = parts[0].padStart(2, '0');
-                const month = months[parts[1].toUpperCase()] || '01';
-                const year = parts[2].length === 2 ? `20${parts[2]}` : parts[2];
-                formattedDate = `${year}-${month}-${day}`;
-              }
+            const cols = parseCsvLine(line);
+            const cell = (idx: number) => (idx >= 0 ? (cols[idx] || '').trim() : '');
+
+            // Jumlah: lajur Amount tunggal (bertanda +/-) ATAU pasangan Debit/Credit
+            let amount = parseCsvAmount(cell(amountIdx));
+            if (isNaN(amount) || (amount === 0 && amountIdx === -1)) {
+              const debit = parseCsvAmount(cell(debitIdx));
+              const credit = parseCsvAmount(cell(creditIdx));
+              if (!isNaN(debit) && debit !== 0) amount = -Math.abs(debit);
+              else if (!isNaN(credit) && credit !== 0) amount = Math.abs(credit);
+              else amount = 0;
             }
+
+            // Penerangan: gabung Payee + Description ala Xero
+            const payee = cell(payeeIdx);
+            const desc = cell(descIdx);
+            const description = [payee, desc].filter(Boolean).join(' — ') || 'Transaksi Bank';
 
             return {
               id: `bt-${Date.now()}-${i}`,
-              date: formattedDate || format(new Date(), 'yyyy-MM-dd'),
-              description: cols[descIdx] || 'Transaksi Bank',
+              date: parseCsvDate(cell(dateIdx)) || format(new Date(), 'yyyy-MM-dd'),
+              description,
               amount: Math.abs(amount),
-              type: amount >= 0 ? 'credit' : 'debit'
+              type: amount >= 0 ? 'credit' : 'debit',
+              reference: cell(refIdx),
             };
-          });
+          }).filter(t => t.amount > 0);
+
+          if (data.length === 0) {
+            setUploadStatus({ type: 'error', message: 'Tiada transaksi sah dijumpai dalam fail CSV. Sila semak lajur tarikh dan jumlah.' });
+            return;
+          }
 
           // Merge with existing transactions, only dedup against already-loaded ones
           setBankTransactions(prev => {
@@ -5639,6 +6222,91 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
     setBankTransactions(prev => prev.filter(bt => bt.id !== btId));
   };
 
+  // ---------- Pilih & proses sekali gus ----------
+  const selectableIds = bankTransactions
+    .filter(bt => !matches.get(bt.id)?.alreadyReconciled)
+    .map(bt => bt.id);
+  const allSelected = selectableIds.length > 0 && selectableIds.every(id => selectedIds.has(id));
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allSelected ? new Set() : new Set(selectableIds));
+  };
+
+  // Transaksi terpilih, dipisahkan ikut jenis tindakan yang sesuai
+  const selectedTx = bankTransactions.filter(bt => selectedIds.has(bt.id));
+  const selectedWithMatch = selectedTx.filter(bt => {
+    const m = matches.get(bt.id);
+    return m && !m.alreadyReconciled;
+  });
+  const selectedWithoutMatch = selectedTx.filter(bt => !matches.has(bt.id));
+
+  // Sahkan semua padanan yang ditemui bagi transaksi terpilih
+  const handleBulkReconcile = async () => {
+    if (selectedWithMatch.length === 0) return;
+    if (!confirm(`Sahkan ${selectedWithMatch.length} padanan yang ditemui?\n\nRekod sedia ada akan ditandakan sebagai telah dipadankan.`)) return;
+
+    setIsBulkProcessing(true);
+    try {
+      for (const bt of selectedWithMatch) {
+        const match = matches.get(bt.id);
+        if (!match) continue;
+        if (match.type === 'record') onUpdateRecord(match.item.id, { ...match.item, reconciled: true });
+        else onUpdateSale(match.item.id, { ...match.item, reconciled: true });
+      }
+      const doneIds = new Set(selectedWithMatch.map(bt => bt.id));
+      setBankTransactions(prev => prev.filter(bt => !doneIds.has(bt.id)));
+      setSelectedIds(prev => new Set([...prev].filter(id => !doneIds.has(id))));
+      setUploadStatus({ type: 'success', message: `${selectedWithMatch.length} padanan berjaya disahkan.` });
+    } catch (err) {
+      console.error('Bulk reconcile failed:', err);
+      setUploadStatus({ type: 'error', message: 'Gagal mengesahkan sebahagian padanan. Sila cuba lagi.' });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
+  // Jana rekod baru bagi transaksi terpilih yang tiada padanan
+  const handleBulkQuickAdd = async () => {
+    if (selectedWithoutMatch.length === 0) return;
+    if (!confirm(`Jana ${selectedWithoutMatch.length} rekod baru dengan kategori yang dicadangkan secara automatik?\n\nAnda boleh ubah kategori kemudian di halaman Transaksi.`)) return;
+
+    setIsBulkProcessing(true);
+    try {
+      const recordsToSave = selectedWithoutMatch.map(bt => {
+        const type = bt.type === 'credit' ? 'income' : 'expense';
+        return {
+          type,
+          docType: type === 'income' ? 'Duit Masuk Bank' : 'Duit Keluar Bank',
+          docNumber: `BANK-${bt.id}`,
+          category: guessCategory(bt.description, type),
+          amount: bt.amount,
+          date: bt.date,
+          description: bt.description,
+          reconciled: true,
+          origin: 'manual',
+        };
+      });
+      await onBulkAdd(recordsToSave);
+      const doneIds = new Set(selectedWithoutMatch.map(bt => bt.id));
+      setBankTransactions(prev => prev.filter(bt => !doneIds.has(bt.id)));
+      setSelectedIds(prev => new Set([...prev].filter(id => !doneIds.has(id))));
+      setUploadStatus({ type: 'success', message: `${recordsToSave.length} rekod baru berjaya dijana.` });
+    } catch (err) {
+      console.error('Bulk quick add failed:', err);
+      setUploadStatus({ type: 'error', message: 'Gagal menjana sebahagian rekod. Sila cuba lagi.' });
+    } finally {
+      setIsBulkProcessing(false);
+    }
+  };
+
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
@@ -5670,8 +6338,10 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           )}
           <label className={`btn-primary flex items-center gap-2 cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}>
             {isUploading ? <RefreshCw size={18} className="animate-spin" /> : <Download size={18} />}
-            {bankTransactions.length > 0 ? 'Muat Semula Penyata' : 'Muat Naik Penyata Bank'}
-            <input type="file" accept=".csv,.pdf,image/*" className="hidden" onChange={handleFileUpload} />
+            {bolehImbasPenyata
+              ? (bankTransactions.length > 0 ? 'Muat Semula Penyata' : 'Muat Naik Penyata Bank')
+              : (bankTransactions.length > 0 ? 'Muat Semula CSV' : 'Muat Naik CSV Bank')}
+            <input type="file" accept={bolehImbasPenyata ? '.csv,.pdf' : '.csv'} className="hidden" onChange={handleFileUpload} />
           </label>
         </div>
       </header>
@@ -5714,9 +6384,23 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             </div>
             <h3 className="text-xl font-bold text-slate-900 font-display">Mula Padanan Bank</h3>
             <p className="text-slate-500 text-sm leading-relaxed">
-              Muat naik penyata bank anda (CSV/PDF/Gambar) untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda. AI akan mengekstrak semua transaksi secara automatik.
+              {bolehImbasPenyata
+                ? 'Muat naik penyata bank anda (CSV/PDF) untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda.'
+                : 'Muat naik fail CSV penyata bank anda untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda.'}
             </p>
-            <p className="text-[10px] text-slate-400 font-medium">Sokongan: PDF penyata bank, gambar tangkap skrin penyata, atau CSV (Tarikh, Penerangan, Jumlah)</p>
+            {!bolehImbasPenyata && (
+              <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-left">
+                <Crown size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
+                  Imbasan penyata bank <span className="font-bold">PDF dengan AI</span> hanya tersedia untuk pakej Ultimate.
+                  Pakej anda masih boleh import fail CSV yang dimuat turun terus daripada bank.
+                </p>
+              </div>
+            )}
+            <p className="text-[10px] text-slate-400 font-medium">
+              Format CSV disokong: <span className="font-bold">Xero</span> (*Date, *Amount, Payee, Description, Reference),
+              atau Date / Description / Amount, atau lajur berasingan Debit &amp; Credit.
+            </p>
             <div className="flex flex-col sm:flex-row gap-3 mt-2 w-full">
               <button 
                 onClick={generateMockBankData}
@@ -5726,8 +6410,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               </button>
               <label className="flex-1 px-8 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-50 transition-all cursor-pointer flex items-center justify-center gap-2">
                 <FileText size={18} />
-                Muat Naik Penyata
-                <input type="file" accept=".csv,.pdf,image/*" className="hidden" onChange={handleFileUpload} />
+                {bolehImbasPenyata ? 'Muat Naik CSV / PDF' : 'Muat Naik CSV'}
+                <input type="file" accept={bolehImbasPenyata ? '.csv,.pdf' : '.csv'} className="hidden" onChange={handleFileUpload} />
               </label>
             </div>
           </div>
@@ -5778,19 +6462,77 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
           </div>
 
           <div className="card-premium overflow-hidden bg-white border-slate-100 shadow-sm">
-            <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
-              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Transaksi Bank Terkini</h4>
+            <div className="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    disabled={selectableIds.length === 0}
+                    className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                  />
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pilih Semua</span>
+                </label>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">Transaksi Bank Terkini</h4>
+              </div>
               <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md uppercase tracking-wider">
                 {bankTransactions.length} Transaksi Ditemui
               </span>
             </div>
+
+            {/* Bar tindakan sekali gus */}
+            {selectedIds.size > 0 && (
+              <div className="px-4 py-3 bg-emerald-600 text-white flex items-center justify-between gap-3 flex-wrap sticky top-0 z-20">
+                <div className="flex items-center gap-2 text-xs font-bold">
+                  <Check size={14} strokeWidth={3} />
+                  {selectedIds.size} transaksi dipilih
+                  <button
+                    onClick={() => setSelectedIds(new Set())}
+                    className="ml-1 px-2 py-0.5 bg-white/15 hover:bg-white/25 rounded text-[10px] uppercase tracking-wider transition-colors"
+                  >
+                    Kosongkan
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {selectedWithMatch.length > 0 && (
+                    <button
+                      onClick={handleBulkReconcile}
+                      disabled={isBulkProcessing}
+                      className="px-3 py-2 bg-white text-emerald-700 text-[10px] font-bold rounded-lg hover:bg-emerald-50 transition-all disabled:opacity-60 flex items-center gap-1.5"
+                    >
+                      <Check size={12} strokeWidth={3} />
+                      Sahkan {selectedWithMatch.length} Padanan
+                    </button>
+                  )}
+                  {selectedWithoutMatch.length > 0 && (
+                    <button
+                      onClick={handleBulkQuickAdd}
+                      disabled={isBulkProcessing}
+                      className="px-3 py-2 bg-slate-900 text-white text-[10px] font-bold rounded-lg hover:bg-slate-800 transition-all disabled:opacity-60 flex items-center gap-1.5"
+                    >
+                      <Zap size={12} />
+                      Padan Pantas {selectedWithoutMatch.length} Rekod
+                    </button>
+                  )}
+                  {isBulkProcessing && <Loader2 size={14} className="animate-spin" />}
+                </div>
+              </div>
+            )}
             {/* Mobile Card View */}
             <div className="lg:hidden divide-y divide-slate-100">
               {bankTransactions.map(bt => {
                 const match = matches.get(bt.id);
                 return (
-                  <div key={bt.id} className="p-4 space-y-3">
+                  <div key={bt.id} className={`p-4 space-y-3 ${selectedIds.has(bt.id) ? 'bg-emerald-50/60' : ''}`}>
                     <div className="flex items-start justify-between gap-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(bt.id)}
+                        onChange={() => toggleSelect(bt.id)}
+                        disabled={match?.alreadyReconciled}
+                        className="w-4 h-4 mt-0.5 rounded accent-emerald-600 cursor-pointer shrink-0 disabled:opacity-30"
+                      />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-bold text-slate-900 truncate">{bt.description}</p>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
@@ -5869,6 +6611,15 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-slate-50">
+                    <th className="pl-6 pr-2 py-4 w-10">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={toggleSelectAll}
+                        disabled={selectableIds.length === 0}
+                        className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                      />
+                    </th>
                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarikh</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Penerangan</th>
                     <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Jumlah (RM)</th>
@@ -5880,7 +6631,16 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                   {bankTransactions.map(bt => {
                     const match = matches.get(bt.id);
                     return (
-                      <tr key={bt.id} className="hover:bg-slate-50/50 transition-colors">
+                      <tr key={bt.id} className={`transition-colors ${selectedIds.has(bt.id) ? 'bg-emerald-50/60' : 'hover:bg-slate-50/50'}`}>
+                        <td className="pl-6 pr-2 py-4">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(bt.id)}
+                            onChange={() => toggleSelect(bt.id)}
+                            disabled={match?.alreadyReconciled}
+                            className="w-4 h-4 rounded accent-emerald-600 cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                          />
+                        </td>
                         <td className="px-6 py-4 text-xs font-bold text-slate-600 whitespace-nowrap">
                           {bt.date.includes('-') ? format(safeParseDate(bt.date), 'dd MMM yyyy') : bt.date}
                         </td>
@@ -6005,6 +6765,8 @@ const RecordsView = ({
   const [viewingDocument, setViewingDocument] = useState<{ url: string; filename: string } | null>(null);
   const [downloadingReport, setDownloadingReport] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [searchQuery, setSearchQuery] = useState('');
+  const { methods: customMethods } = usePaymentMethods();
 
   const months = [
     'Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun',
@@ -6017,7 +6779,22 @@ const RecordsView = ({
   const mergedRecords = records.map(r => ({ ...r, origin: (r.origin || 'manual') as 'manual' | 'scan' | 'sale' }))
     .sort((a, b) => safeParseDate(b.date).getTime() - safeParseDate(a.date).getTime());
 
+  const searchTerm = searchQuery.trim().toLowerCase();
+
   const filtered = mergedRecords.filter(r => {
+    // Carian: padan penerangan, kategori, no. kod akaun atau jumlah
+    if (searchTerm) {
+      const haystack = [
+        r.description,
+        r.category,
+        getAccCode(r.category || (r.origin === 'sale' ? 'SALES' : '')),
+        String(r.amount),
+        paymentMethodShortLabel(r.payment_method, customMethods),
+        format(safeParseDate(r.date), 'dd MMM yyyy'),
+      ].join(' ').toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
+
     // Type filter
     if (filter !== 'all') {
       if (filter === 'income' && r.type !== 'income') return false;
@@ -6116,6 +6893,26 @@ const RecordsView = ({
           </div>
         </div>
 
+        {/* Carian */}
+        <div className="relative">
+          <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Cari penerangan, kategori, jumlah..."
+            className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-9 py-2.5 text-xs font-medium text-slate-700 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X size={15} />
+            </button>
+          )}
+        </div>
+
         {/* Type filter */}
         <div className="grid grid-cols-4 bg-slate-100 rounded-2xl p-1 gap-1">
           {[
@@ -6206,9 +7003,32 @@ const RecordsView = ({
       <header className="hidden lg:flex mb-10 flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div>
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Rekod Transaksi</h2>
-          <p className="text-slate-500 text-sm font-medium">Senarai semua duit masuk dan duit keluar.</p>
+          <p className="text-slate-500 text-sm font-medium">
+            {searchTerm
+              ? `${filtered.length} rekod sepadan dengan "${searchQuery}"`
+              : 'Senarai semua duit masuk dan duit keluar.'}
+          </p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
+          <div className="relative w-full lg:w-72">
+            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Cari penerangan, kategori, jumlah..."
+              className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-9 py-2.5 text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors"
+                title="Kosongkan carian"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             {[{ id: 'all', label: 'Semua' }, { id: 'income', label: 'Masuk' }, { id: 'expense', label: 'Keluar' }, { id: 'sale', label: 'Jualan' }].map((opt) => (
               <button key={opt.id} onClick={() => setFilter(opt.id as any)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{opt.label}</button>
@@ -6304,11 +7124,7 @@ const RecordsView = ({
                           </div>
                           <div className="flex items-center gap-1.5 mt-0.5">
                             <span className="text-[11px] text-slate-400 font-medium">{format(safeParseDate(record.date), 'dd MMM yyyy')}</span>
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
-                              record.payment_method === 'cash' ? 'bg-amber-50 text-amber-600' : 'bg-sky-50 text-sky-600'
-                            }`}>
-                              {record.payment_method === 'cash' ? 'Tunai' : 'Bank'}
-                            </span>
+                            <PaymentMethodBadge code={record.payment_method} />
                           </div>
                         </div>
                         <div className="flex flex-col items-end gap-1.5 shrink-0">
@@ -6344,9 +7160,11 @@ const RecordsView = ({
               <div className="py-16 text-center">
                 <div className="flex flex-col items-center gap-3">
                   <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200">
-                    <ReceiptText size={26} />
+                    {searchTerm ? <SearchX size={26} /> : <ReceiptText size={26} />}
                   </div>
-                  <p className="text-slate-400 text-xs font-semibold">Tiada rekod ditemui.</p>
+                  <p className="text-slate-400 text-xs font-semibold">
+                    {searchTerm ? `Tiada rekod sepadan dengan "${searchQuery}".` : 'Tiada rekod ditemui.'}
+                  </p>
                 </div>
               </div>
             )}
@@ -6449,14 +7267,7 @@ const RecordsView = ({
                       </div>
                     </td>
                     <td className="px-2 py-4">
-                      <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border inline-flex items-center gap-1 ${
-                        record.payment_method === 'cash'
-                          ? 'bg-amber-50 text-amber-700 border-amber-100'
-                          : 'bg-indigo-50 text-indigo-700 border-indigo-100'
-                      }`}>
-                        {record.payment_method === 'cash' ? <DollarSign size={10} className="mr-0.5" /> : <Landmark size={10} className="mr-0.5" />}
-                        {record.payment_method === 'cash' ? 'Tunai' : 'Bank'}
-                      </span>
+                      <PaymentMethodBadge code={record.payment_method} variant="bordered" />
                     </td>
                     <td className={`px-2 py-4 font-bold text-sm font-display text-right whitespace-nowrap ${
                       record.origin === 'sale' ? 'text-emerald-600' : (record.type === 'income' ? 'text-emerald-600' : 'text-rose-600')
@@ -6491,9 +7302,16 @@ const RecordsView = ({
                   <td colSpan={9} className="p-20 text-center">
                     <div className="flex flex-col items-center gap-3">
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
-                        <ReceiptText size={32} />
+                        {searchTerm ? <SearchX size={32} /> : <ReceiptText size={32} />}
                       </div>
-                      <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod ditemui.</p>
+                      <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">
+                        {searchTerm ? `Tiada rekod sepadan dengan "${searchQuery}"` : 'Tiada rekod ditemui.'}
+                      </p>
+                      {searchTerm && (
+                        <button onClick={() => setSearchQuery('')} className="text-emerald-600 text-[11px] font-bold hover:underline">
+                          Kosongkan carian
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -6541,20 +7359,24 @@ const ProfitLossReport = ({
   reportType,
   startDate,
   endDate,
-  selectedMonth
-}: { 
-  records: TransactionRecord[], 
-  sales: Sale[], 
-  user: UserType | null, 
-  isAnnualOverride?: boolean, 
-  selectedYear?: number, 
+  selectedMonth,
+  openingBalances = [],
+  stockTakes = []
+}: {
+  records: TransactionRecord[],
+  sales: Sale[],
+  user: UserType | null,
+  isAnnualOverride?: boolean,
+  selectedYear?: number,
   categoryMappings: Record<string, any>,
   setCategoryMappings: (mappings: any) => void,
   onCategoryClick?: (category: string, month?: number, year?: number) => void,
   reportType?: 'monthly' | 'yearly' | 'custom',
   startDate?: string,
   endDate?: string,
-  selectedMonth?: number
+  selectedMonth?: number,
+  openingBalances?: OpeningBalance[],
+  stockTakes?: StockTake[]
 }) => {
   const [isAnnual, setIsAnnual] = useState(false);
   const [editingCategory, setEditingCategory] = useState<string | null>(null);
@@ -6638,6 +7460,9 @@ const ProfitLossReport = ({
         otherIncome: {},
         expenses: {},
         taxation: 0,
+        cogsPurchases: 0,
+        openingStock: 0,
+        closingStock: 0,
         cogsTotal: 0,
         expensesTotal: 0,
         otherIncomeTotal: 0
@@ -6706,13 +7531,26 @@ const ProfitLossReport = ({
     });
 
     // Calculate Totals
-    months.forEach(m => {
+    months.forEach((m, i) => {
       const mData = data[m];
-      
-      mData.cogsTotal = Object.values(mData.cogs).reduce((a: any, b: any) => a + b, 0) as number;
+
+      // Stok Awal bulan ini = nilai stok pada hari terakhir bulan sebelum.
+      // Stok Akhir bulan ini = nilai stok pada hari terakhir bulan ini.
+      // Kerana Stok Akhir bulan N ialah Stok Awal bulan N+1, baris ini saling
+      // membatal antara bulan — jumlah setahun tinggal (Stok Awal Jan - Stok Akhir Dis).
+      const prevMonthEnd = new Date(currentYear, i, 0);
+      prevMonthEnd.setHours(23, 59, 59, 999);
+      const thisMonthEnd = new Date(currentYear, i + 1, 0);
+      thisMonthEnd.setHours(23, 59, 59, 999);
+
+      mData.openingStock = obStockValueAt(openingBalances, stockTakes, prevMonthEnd);
+      mData.closingStock = obStockValueAt(openingBalances, stockTakes, thisMonthEnd);
+
+      mData.cogsPurchases = Object.values(mData.cogs).reduce((a: any, b: any) => a + b, 0) as number;
+      mData.cogsTotal = mData.cogsPurchases + mData.openingStock - mData.closingStock;
       mData.expensesTotal = Object.values(mData.expenses).reduce((a: any, b: any) => a + b, 0) as number;
       mData.otherIncomeTotal = Object.values(mData.otherIncome).reduce((a: any, b: any) => a + b, 0) as number;
-      
+
       mData.grossProfit = mData.sales + mData.salesAdjustments - mData.cogsTotal;
       mData.netProfit = mData.grossProfit + mData.otherIncomeTotal - mData.expensesTotal - mData.taxation;
     });
@@ -6721,6 +7559,14 @@ const ProfitLossReport = ({
   };
 
   const monthlyData = getMonthlyData();
+
+  // Baris Stok Awal/Stok Akhir hanya bermakna jika pengguna telah mengisi
+  // baki awal stok atau sekurang-kurangnya satu stock take.
+  const hasStockRows = months.some(m => monthlyData[m].openingStock !== 0 || monthlyData[m].closingStock !== 0);
+  // Untuk lajur JUMLAH: stok tidak boleh dijumlah merentas bulan. Nilai tahunan
+  // yang betul ialah Stok Awal bulan pertama dan Stok Akhir bulan terakhir.
+  const yearOpeningStock = monthlyData[months[0]].openingStock;
+  const yearClosingStock = monthlyData[months[months.length - 1]].closingStock;
 
   const calculateRowTotal = (path: string) => {
     return months.reduce((sum, m) => {
@@ -6913,7 +7759,25 @@ const ProfitLossReport = ({
                 const otherIncomeCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'OTHER_INCOME' && calcTotal(`otherIncome.${c}`) !== 0);
                 const expenseCats = Object.keys(categoryMappings).filter(c => categoryMappings[c] === 'EXPENSE' && calcTotal(`expenses.${c}`) !== 0);
                 const totalSalesAmt = calcTotal('sales') + calcTotal('salesAdjustments');
-                const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0);
+
+                // Stok Awal/Akhir mengikut tempoh laporan yang dipilih
+                const stkStart = reportType === 'monthly' && selectedMonth !== undefined
+                  ? new Date(currentYear, selectedMonth, 0)
+                  : reportType === 'custom' && startDate
+                    ? new Date(new Date(`${startDate}T00:00:00`).getTime() - 86400000)
+                    : new Date(currentYear, 0, 0);
+                const stkEnd = reportType === 'monthly' && selectedMonth !== undefined
+                  ? new Date(currentYear, selectedMonth + 1, 0)
+                  : reportType === 'custom' && endDate
+                    ? new Date(`${endDate}T00:00:00`)
+                    : new Date(currentYear, 11, 31);
+                stkStart.setHours(23, 59, 59, 999);
+                stkEnd.setHours(23, 59, 59, 999);
+                const pdfOpeningStock = obStockValueAt(openingBalances, stockTakes, stkStart);
+                const pdfClosingStock = obStockValueAt(openingBalances, stockTakes, stkEnd);
+
+                // Kos Jualan = Stok Awal + Belian - Stok Akhir
+                const totalCogsAmt = cogsCats.reduce((s, c) => s + calcTotal(`cogs.${c}`), 0) + pdfOpeningStock - pdfClosingStock;
                 const grossProfit = totalSalesAmt - totalCogsAmt;
                 const totalOtherIncome = otherIncomeCats.reduce((s, c) => s + calcTotal(`otherIncome.${c}`), 0);
                 const totalExpensesAmt = expenseCats.reduce((s, c) => s + calcTotal(`expenses.${c}`), 0);
@@ -7054,8 +7918,16 @@ const ProfitLossReport = ({
                 // COGS
                 if (seg === 'all' || seg === 'cogs') {
                   drawSectionLabel('B. Kos Jualan / Cost of Goods Sold');
+                  if (pdfOpeningStock !== 0) {
+                    drawRow(getAccCode('STOCK'), 'STOK AWAL / OPENING STOCK', pdfOpeningStock, { indent: true });
+                  }
                   if (cogsCats.length > 0) {
                     cogsCats.forEach(cat => drawRow(getAccCode(cat), cat, calcTotal(`cogs.${cat}`), { indent: true }));
+                  }
+                  if (pdfClosingStock !== 0) {
+                    drawRow(getAccCode('STOCK'), 'TOLAK: STOK AKHIR / CLOSING STOCK', -pdfClosingStock, { indent: true });
+                  }
+                  if (cogsCats.length > 0 || pdfOpeningStock !== 0 || pdfClosingStock !== 0) {
                     drawSeparator();
                   }
                   drawRow('', 'JUMLAH KOS JUALAN (TOTAL)', totalCogsAmt, { bold: true, totalRow: true });
@@ -7349,6 +8221,18 @@ const ProfitLossReport = ({
             )}
 
             {/* COGS SECTION */}
+            {hasStockRows && (
+              <tr>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode('STOCK')}</td>
+                <td className="px-1.5 py-1.5 pl-2 sticky left-[60px] bg-white z-10">
+                  <span className="font-medium">STOK AWAL (OPENING STOCK)</span>
+                </td>
+                {!isAnnual && months.map(m => (
+                  <td key={m} className="px-1 py-1.5 text-right">{formatCurrency(monthlyData[m].openingStock)}</td>
+                ))}
+                <td className="px-1.5 py-1.5 text-right bg-slate-50\30">{formatCurrency(yearOpeningStock)}</td>
+              </tr>
+            )}
             {Object.keys(categoryMappings)
               .filter(cat => categoryMappings[cat] === 'COGS')
               .filter(cat => shouldShowCategory(cat, 'cogs'))
@@ -7373,6 +8257,22 @@ const ProfitLossReport = ({
                 </td>
               </tr>
             ))}
+            {hasStockRows && (
+              <tr>
+                <td className="px-1.5 py-1.5 sticky left-0 bg-white z-10">{getAccCode('STOCK')}</td>
+                <td className="px-1.5 py-1.5 pl-2 sticky left-[60px] bg-white z-10">
+                  <span className="font-medium">TOLAK: STOK AKHIR (CLOSING STOCK)</span>
+                </td>
+                {!isAnnual && months.map(m => (
+                  <td key={m} className="px-1 py-1.5 text-right">
+                    {monthlyData[m].closingStock ? `(${formatCurrency(monthlyData[m].closingStock)})` : '-'}
+                  </td>
+                ))}
+                <td className="px-1.5 py-1.5 text-right bg-slate-50\30">
+                  {yearClosingStock ? `(${formatCurrency(yearClosingStock)})` : '-'}
+                </td>
+              </tr>
+            )}
             <tr className="bg-slate-50/30 font-bold text-slate-900 border-t border-slate-200">
               <td className="px-1.5 py-1.5 sticky left-0 bg-slate-50/30 z-10"></td>
               <td className="px-1.5 py-1.5 sticky left-[60px] bg-slate-50/30 z-10 uppercase tracking-wider group">
@@ -7803,19 +8703,23 @@ const ReportsView = ({
   salesStats: initialSalesStats, 
   records, 
   sales, 
-  user, 
+  user,
   categoryMappings,
   setCategoryMappings,
-  onCategoryClick 
-}: { 
-  stats: Stats | null, 
-  salesStats: any, 
-  records: TransactionRecord[], 
-  sales: Sale[], 
-  user: UserType | null, 
+  onCategoryClick,
+  openingBalances = [],
+  stockTakes = []
+}: {
+  stats: Stats | null,
+  salesStats: any,
+  records: TransactionRecord[],
+  sales: Sale[],
+  user: UserType | null,
   categoryMappings: Record<string, any>,
   setCategoryMappings: (mappings: any) => void,
-  onCategoryClick: (category: string, month?: number, year?: number) => void 
+  onCategoryClick: (category: string, month?: number, year?: number) => void,
+  openingBalances?: OpeningBalance[],
+  stockTakes?: StockTake[]
 }) => {
   const [isAnnualMode, setIsAnnualMode] = useState(false);
   const [reportType, setReportType] = useState<'monthly' | 'yearly' | 'custom'>('monthly');
@@ -7980,7 +8884,12 @@ const ReportsView = ({
           else md[mi].expenses[cat] = (md[mi].expenses[cat] || 0) + r.amount;
         }
       });
-      generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate, md, categoryMappings);
+      // Stok Awal tahun ini = nilai stok pada 31 Dis tahun sebelum; Stok Akhir = 31 Dis tahun ini
+      const yStart = new Date(selectedYear, 0, 0); yStart.setHours(23, 59, 59, 999);
+      const yEnd = new Date(selectedYear, 11, 31); yEnd.setHours(23, 59, 59, 999);
+      generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate, md, categoryMappings,
+        obStockValueAt(openingBalances, stockTakes, yStart),
+        obStockValueAt(openingBalances, stockTakes, yEnd));
     } else {
       generatePDFReport(user, reportType, selectedMonth, selectedYear, filteredRecords, filteredSales, incomeList, expenseList, totalIncome, totalExpense, totalSales, startDate, endDate);
     }
@@ -8320,20 +9229,24 @@ const ReportsView = ({
           startDate={startDate}
           endDate={endDate}
           selectedMonth={selectedMonth}
+          openingBalances={openingBalances}
+          stockTakes={stockTakes}
         />
       </div>
       <div className="print:break-before-page">
-        <BalanceSheetReport 
-          records={records} 
-          sales={sales} 
-          user={user} 
-          selectedYear={selectedYear} 
+        <BalanceSheetReport
+          records={records}
+          sales={sales}
+          user={user}
+          selectedYear={selectedYear}
           reportType={reportType}
           startDate={startDate}
           endDate={endDate}
           selectedMonth={selectedMonth}
           onCategoryClick={onCategoryClick}
           categoryMappings={categoryMappings}
+          openingBalances={openingBalances}
+          stockTakes={stockTakes}
         />
       </div>
       </div>
@@ -8351,23 +9264,28 @@ const BalanceSheetReport = ({
   endDate,
   selectedMonth,
   onCategoryClick,
-  categoryMappings
-}: { 
-  records: TransactionRecord[], 
-  sales: Sale[], 
-  user: UserType | null, 
+  categoryMappings,
+  openingBalances = [],
+  stockTakes = []
+}: {
+  records: TransactionRecord[],
+  sales: Sale[],
+  user: UserType | null,
   selectedYear?: number,
   reportType?: 'monthly' | 'yearly' | 'custom',
   startDate?: string,
   endDate?: string,
   selectedMonth?: number,
   onCategoryClick?: (category: string, month?: number, year?: number) => void,
-  categoryMappings: Record<string, any>
+  categoryMappings: Record<string, any>,
+  openingBalances?: OpeningBalance[],
+  stockTakes?: StockTake[]
 }) => {
-  const currentYear = reportType === 'custom' && startDate ? 
-    parseISO(startDate).getFullYear() : 
+  const currentYear = reportType === 'custom' && startDate ?
+    parseISO(startDate).getFullYear() :
     (propYear || new Date().getFullYear());
-  
+
+  const { methods: customMethods } = usePaymentMethods();
   const [customAsAtDate, setCustomAsAtDate] = useState<string | null>(null);
 
   const asAtDate = customAsAtDate ? format(parseISO(customAsAtDate), 'dd/MM/yyyy') : (
@@ -8445,8 +9363,29 @@ const BalanceSheetReport = ({
   });
   const currentPeriodProfit = calculateProfitForPeriod(currentRecords, currentSales);
 
+  // Pelarasan stok ke atas untung terkumpul.
+  // Setiap tempoh menambah (Stok Awal - Stok Akhir) kepada COGS; bila dijumlah
+  // sejak mula, nilai pertengahan saling membatal dan tinggal kesan bersih ini.
+  // Wajib padan dengan pengiraan dalam ProfitLossReport, jika tidak Untung
+  // Terkumpul di sini tidak akan sama dengan Untung Bersih dalam Untung Rugi.
+  const dayBeforeStart = new Date(startOfPeriod.getTime() - 1);
+  const stockEffectPrior = obStockProfitEffect(openingBalances, stockTakes, dayBeforeStart);
+  const stockEffectCurrent = obStockProfitEffect(openingBalances, stockTakes, effectiveEndOfPeriod) - stockEffectPrior;
+
+  // Baki awal hanya terpakai jika tarikhnya jatuh pada atau sebelum tarikh laporan
+  const openingFor = (cats: string[]) => obSum(openingBalances, cats, effectiveEndOfPeriod);
+
+  // Untung dibawa ke hadapan = untung tempoh lepas + untung terkumpul dalam baki
+  // awal + kesan stok sebelum tempoh ini bermula
+  const openingRetainedPrior = obSum(openingBalances, ['RETAINED EARNING'], dayBeforeStart);
+  const priorProfitTotal = priorProfit + openingRetainedPrior + stockEffectPrior;
+  // Jika tarikh baki awal jatuh dalam tempoh laporan ini, untung terkumpulnya
+  // dikira sebagai sebahagian tempoh semasa supaya tiada yang tercicir.
+  const currentProfitTotal = currentPeriodProfit + stockEffectCurrent
+    + (openingFor(['RETAINED EARNING']) - openingRetainedPrior);
+
   // Total Cumulative Profit
-  const netProfit = priorProfit + currentPeriodProfit;
+  const netProfit = priorProfitTotal + currentProfitTotal;
 
   // Balance Sheet is cumulative. We filter all data up to the effectiveEndOfPeriod.
   const filteredRecords = records.filter(r => safeParseDate(r.date) <= effectiveEndOfPeriod);
@@ -8523,42 +9462,72 @@ const BalanceSheetReport = ({
     }, 0);
   };
 
-  const fixedAssets = getBalance(fixedAssetCats) + getBalance(contraAssetCats);
-  const cash = filteredRecords.reduce((sum, r) => {
-    const category = r.category.trim().toUpperCase();
-    const isAssetLiability = assetLiabilitySet.has(category) || categoryMappings[category] === 'ASSET_LIABILITY';
-    const isCashCategory = cashCats.map(c => c.toLowerCase()).includes(category.toLowerCase());
+  // Kontra-aset dimasukkan sebagai nombor positif dalam borang Baki Awal,
+  // jadi ia ditolak di sini.
+  const fixedAssets = getBalance(fixedAssetCats) + getBalance(contraAssetCats)
+    + openingFor(fixedAssetCats) - openingFor(contraAssetCats);
 
-    // 1. Direct adjustments where Cash is the category
-    if (isCashCategory) {
-      return sum + (r.type === 'income' ? r.amount : -r.amount);
-    }
+  /*
+    Baki bagi kaedah bayaran yang dijejak secara langsung (tunai & setiap kaedah
+    tersuai seperti e-dompet). Bank TIDAK dikira di sini — bank ialah angka
+    penyeimbang di bawah.
 
-    if (r.sale_id) return sum;
+    `methodCode`  — nilai payment_method pada transaksi
+    `ownCats`     — kategori Kunci Kira-Kira milik kaedah ini, untuk pelarasan
+                    terus dan baki awal
+  */
+  const methodBalance = (methodCode: string, ownCats: string[]) => {
+    const lowerOwnCats = ownCats.map(c => c.toLowerCase());
 
-    // 2. Transactions where Cash is the payment method but NOT the category
-    if (!isCashCategory && r.payment_method === 'cash') {
-      if (!isAssetLiability) {
+    return openingFor(ownCats) + filteredRecords.reduce((sum, r) => {
+      const category = r.category.trim().toUpperCase();
+      const isAssetLiability = assetLiabilitySet.has(category) || categoryMappings[category] === 'ASSET_LIABILITY';
+      const isOwnCategory = lowerOwnCats.includes(category.toLowerCase());
+
+      // 1. Direct adjustments where this account is the category
+      if (isOwnCategory) {
         return sum + (r.type === 'income' ? r.amount : -r.amount);
-      } else {
-        return sum + (r.type === 'income' ? -r.amount : r.amount);
       }
-    }
 
-    return sum;
-  }, 0) + filteredSales.reduce((sum, s) => {
-    const sCat = (s.category || '').trim().toUpperCase();
-    if (assetLiabilitySet.has(sCat)) return sum;
-    if (s.payment_method === 'cash') {
-      return sum + s.total;
-    }
-    return sum;
-  }, 0);
+      if (r.sale_id) return sum;
 
-  const debtors = getBalance(debtorCats);
-  const stock = getBalance(stockCats);
-  let deposits = getBalance(depositCats);
-  let accruals = getBalance(accrualCats);
+      // 2. Transactions paid by this method but recorded under another category
+      if (r.payment_method === methodCode) {
+        if (!isAssetLiability) {
+          return sum + (r.type === 'income' ? r.amount : -r.amount);
+        } else {
+          return sum + (r.type === 'income' ? -r.amount : r.amount);
+        }
+      }
+
+      return sum;
+    }, 0) + filteredSales.reduce((sum, s) => {
+      const sCat = (s.category || '').trim().toUpperCase();
+      if (assetLiabilitySet.has(sCat)) return sum;
+      if (s.payment_method === methodCode) {
+        return sum + s.total;
+      }
+      return sum;
+    }, 0);
+  };
+
+  const cash = methodBalance(CASH_METHOD_CODE, cashCats);
+
+  // Setiap kaedah bayaran tersuai menjadi barisnya sendiri di bawah Aset Semasa
+  const methodRows = customMethods.map(m => ({
+    ...m,
+    balance: methodBalance(m.code, [m.bs_category]),
+  }));
+  const customMethodTotal = methodRows.reduce((sum, m) => sum + m.balance, 0);
+
+  const debtors = getBalance(debtorCats) + openingFor(debtorCats);
+
+  // Stok pada tarikh laporan ialah stock take terkini (atau baki awal jika belum
+  // ada stock take), ditambah sebarang pelarasan yang direkod pada kategori STOCK.
+  const stock = obStockValueAt(openingBalances, stockTakes, effectiveEndOfPeriod) + getBalance(stockCats);
+
+  let deposits = getBalance(depositCats) + openingFor(depositCats);
+  let accruals = getBalance(accrualCats) + openingFor(accrualCats);
 
   // Reclassify negative deposits to accruals as requested by user
   if (deposits < 0) {
@@ -8566,12 +9535,15 @@ const BalanceSheetReport = ({
     deposits = 0;
   }
 
-  const creditors = getBalance(creditorCats);
-  const loans = getBalance(loanCats);
-  const taxProvision = getBalance(taxCats);
+  const creditors = getBalance(creditorCats) + openingFor(creditorCats);
+  const loans = getBalance(loanCats) + openingFor(loanCats);
+  const taxProvision = getBalance(taxCats) + openingFor(taxCats);
 
-  const capital = getBalance(capitalCats);
-  const drawings = getBalance(drawingCats);
+  const capital = getBalance(capitalCats) + openingFor(capitalCats);
+  // Akaun pengarah dikendalikan sebagai ekuiti dalam penyata ini: baki "due to"
+  // menambah ekuiti, baki "due from" menguranginya.
+  const drawings = getBalance(drawingCats)
+    + openingFor(['AMOUNT DUE TO DIRECTOR']) - openingFor(['AMOUNT DUE FROM DIRECTOR']);
   const retainedEarnings = netProfit;
 
   // In a single-entry system, we derive the Bank/Cash balance from the accounting equation:
@@ -8581,12 +9553,17 @@ const BalanceSheetReport = ({
   
   const totalCurrentLiabilities = accruals + creditors + loans + taxProvision;
   const totalEquity = capital + drawings + retainedEarnings;
-  const otherAssets = fixedAssets + cash + debtors + stock + deposits;
-  
-  // Calculate bank as the balancing figure to ensure the balance sheet always balances
+  // Kaedah bayaran tersuai masuk di sini supaya duit yang bergerak melalui
+  // e-dompet tidak lagi tersalah kira sebagai baki bank.
+  const otherAssets = fixedAssets + cash + customMethodTotal + debtors + stock + deposits;
+
+  // Calculate bank as the balancing figure to ensure the balance sheet always balances.
+  // Baki awal bank tidak ditambah di sini secara terus — kerana set baki awal
+  // mesti seimbang (Aset = Liabiliti + Ekuiti), baki awal bank mengalir masuk
+  // dengan sendirinya melalui persamaan ini.
   const bank = totalEquity + totalCurrentLiabilities - otherAssets;
-  
-  const totalCurrentAssets = bank + cash + debtors + stock + deposits;
+
+  const totalCurrentAssets = bank + cash + customMethodTotal + debtors + stock + deposits;
   const netCurrentAssets = totalCurrentAssets - totalCurrentLiabilities;
   const totalAssets = fixedAssets + netCurrentAssets;
 
@@ -8722,6 +9699,7 @@ const BalanceSheetReport = ({
             sectionHdr('Aset Semasa (Current Assets)');
             row('Bank', bank);
             row('Tunai di Tangan', cash);
+            methodRows.forEach(m => row(m.label, m.balance));
             if (debtors !== 0) row('Penghutang Dagangan', debtors);
             if (stock !== 0) row('Stok', stock);
             if (deposits !== 0) row('Deposit & Prabayar', deposits);
@@ -8749,8 +9727,8 @@ const BalanceSheetReport = ({
             sectionHdr('Ekuiti Pemilik (Owner\'s Equity)');
             row('Modal (Capital)', capital);
             row('Ambilan / Pendahuluan', drawings);
-            row('Untung/(Rugi) Terkumpul B/H', priorProfit);
-            row('Untung/(Rugi) Semasa', currentPeriodProfit);
+            row('Untung/(Rugi) Terkumpul B/H', priorProfitTotal);
+            row('Untung/(Rugi) Semasa', currentProfitTotal);
             subtotal('Jumlah Ekuiti', totalEquity);
             spacer(2);
             grandTotal('JUMLAH DIBIAYAI OLEH', totalEquity);
@@ -8855,6 +9833,19 @@ const BalanceSheetReport = ({
               </div>
               <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(cash)}</span>
             </div>
+              {methodRows.map(m => (
+                <div
+                  key={m.code}
+                  className="flex justify-between py-1 pl-4 hover:bg-slate-50 cursor-pointer rounded transition-colors group"
+                  onClick={() => onCategoryClick?.(m.bs_category, reportType === 'monthly' ? selectedMonth : undefined, currentYear)}
+                >
+                  <div className="flex items-center gap-2">
+                    <span>{m.bs_category}</span>
+                    <ChevronRight size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                  <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(m.balance)}</span>
+                </div>
+              ))}
               {debtors !== 0 && (
                 <div 
                   className="flex justify-between py-1 pl-4 hover:bg-slate-50 cursor-pointer rounded transition-colors group"
@@ -9005,7 +9996,7 @@ const BalanceSheetReport = ({
                   <span>UNTUNG / RUGI TERKUMPUL (BAWA HADAPAN)</span>
                   <ChevronRight size={10} className="text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(priorProfit)}</span>
+                <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-indigo-600 transition-all">{formatCurrency(priorProfitTotal)}</span>
               </div>
               <div 
                 className="flex justify-between font-bold text-emerald-700 py-1 pl-4 hover:bg-emerald-50 cursor-pointer rounded transition-colors group"
@@ -9015,7 +10006,7 @@ const BalanceSheetReport = ({
                   <span>UNTUNG SEMASA (CURRENT PERIOD PROFIT)</span>
                   <ChevronRight size={10} className="text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
-                <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-emerald-600 transition-all">{formatCurrency(currentPeriodProfit)}</span>
+                <span className="w-32 text-right pr-8 group-hover:underline group-hover:text-emerald-600 transition-all">{formatCurrency(currentProfitTotal)}</span>
               </div>
               <div className="flex justify-between font-bold text-sm pt-6 border-t border-slate-200 mt-4">
                 <span className="uppercase tracking-wider">JUMLAH EKUITI</span>
@@ -9464,6 +10455,625 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
   );
 };
 
+// Tukar objek Date kepada format 'YYYY-MM-DD' (ikut waktu tempatan, bukan UTC)
+const toISODate = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+const formatDateLabel = (iso: string) =>
+  new Date(`${iso}T00:00:00`).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+
+const HARI_PENDEK = ['Ahd', 'Isn', 'Sel', 'Rab', 'Kha', 'Jum', 'Sab'];
+const BULAN_PENUH = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
+
+// Pemilih julat tarikh berbentuk kalendar: klik tarikh mula, kemudian tarikh akhir
+const DateRangeCalendar = ({ from, to, onChange }: { from: string; to: string; onChange: (from: string, to: string) => void }) => {
+  const [open, setOpen] = useState(false);
+  const [pendingFrom, setPendingFrom] = useState('');
+  const [viewDate, setViewDate] = useState(() => (from ? new Date(`${from}T00:00:00`) : new Date()));
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setPendingFrom('');
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [open]);
+
+  const year = viewDate.getFullYear();
+  const month = viewDate.getMonth();
+  const leadingBlanks = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(leadingBlanks).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  const todayISO = toISODate(new Date());
+
+  // Julat yang sedang dipapar: guna pilihan separuh siap jika ada
+  const activeFrom = pendingFrom || from;
+  const activeTo = pendingFrom ? '' : to;
+
+  const handleDayClick = (day: number) => {
+    const iso = toISODate(new Date(year, month, day));
+    if (!pendingFrom) {
+      setPendingFrom(iso);
+      return;
+    }
+    if (iso < pendingFrom) onChange(iso, pendingFrom);
+    else onChange(pendingFrom, iso);
+    setPendingFrom('');
+    setOpen(false);
+  };
+
+  const label = from && to
+    ? (from === to ? formatDateLabel(from) : `${formatDateLabel(from)} – ${formatDateLabel(to)}`)
+    : from ? `Dari ${formatDateLabel(from)}`
+    : to ? `Hingga ${formatDateLabel(to)}`
+    : 'Semua Tarikh';
+
+  // Senarai tahun untuk dropdown: 10 tahun lepas hingga tahun depan
+  const thisYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 12 }, (_, i) => thisYear + 1 - i);
+  if (!yearOptions.includes(year)) yearOptions.push(year);
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className={`flex items-center gap-2 pl-3 pr-2.5 py-2.5 text-xs font-bold bg-white border rounded-xl outline-none transition-all ${
+          from || to ? 'border-emerald-400 text-emerald-700 ring-2 ring-emerald-500/10' : 'border-slate-200 text-slate-700 hover:border-slate-300'
+        }`}
+      >
+        <Calendar size={13} className={from || to ? 'text-emerald-500' : 'text-slate-400'} />
+        <span className="whitespace-nowrap">{label}</span>
+        <ChevronDown size={13} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="absolute z-50 mt-2 left-0 bg-white border border-slate-200 rounded-2xl shadow-xl shadow-slate-200/60 p-3 w-[288px]">
+          <div className="w-full">
+            {/* Pilih bulan & tahun secara manual */}
+            <div className="flex items-center gap-1.5 mb-2">
+              <button
+                type="button"
+                onClick={() => setViewDate(new Date(year, month - 1, 1))}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                aria-label="Bulan sebelum"
+              >
+                <ChevronLeft size={15} />
+              </button>
+              <div className="flex-1 flex items-center gap-1.5">
+                <select
+                  value={month}
+                  onChange={e => setViewDate(new Date(year, Number(e.target.value), 1))}
+                  className="flex-1 min-w-0 px-2 py-1.5 text-[11px] font-black text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 cursor-pointer"
+                  aria-label="Pilih bulan"
+                >
+                  {BULAN_PENUH.map((nama, i) => (
+                    <option key={nama} value={i}>{nama}</option>
+                  ))}
+                </select>
+                <select
+                  value={year}
+                  onChange={e => setViewDate(new Date(Number(e.target.value), month, 1))}
+                  className="px-2 py-1.5 text-[11px] font-black text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 cursor-pointer"
+                  aria-label="Pilih tahun"
+                >
+                  {yearOptions.sort((a, b) => b - a).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewDate(new Date(year, month + 1, 1))}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                aria-label="Bulan seterusnya"
+              >
+                <ChevronRight size={15} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 mb-1">
+              {HARI_PENDEK.map(d => (
+                <div key={d} className="text-center text-[9px] font-black text-slate-300 uppercase tracking-wider py-1">{d}</div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-y-0.5">
+              {cells.map((day, i) => {
+                if (day === null) return <div key={`b${i}`} />;
+                const iso = toISODate(new Date(year, month, day));
+                const isStart = iso === activeFrom;
+                const isEnd = iso === activeTo;
+                const inRange = !!activeFrom && !!activeTo && iso > activeFrom && iso < activeTo;
+                const isToday = iso === todayISO;
+                return (
+                  <button
+                    key={iso}
+                    type="button"
+                    onClick={() => handleDayClick(day)}
+                    className={`h-8 text-[11px] font-bold transition-colors ${
+                      isStart || isEnd
+                        ? 'bg-emerald-600 text-white rounded-lg'
+                        : inRange
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : isToday
+                        ? 'text-emerald-600 ring-1 ring-inset ring-emerald-200 rounded-lg hover:bg-emerald-50'
+                        : 'text-slate-600 rounded-lg hover:bg-slate-100'
+                    }`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+              <p className="text-[10px] font-bold text-slate-400">
+                {pendingFrom ? `Mula ${formatDateLabel(pendingFrom)} — pilih tarikh akhir` : 'Klik tarikh mula & akhir'}
+              </p>
+              {(from || to || pendingFrom) && (
+                <button
+                  type="button"
+                  onClick={() => { onChange('', ''); setPendingFrom(''); }}
+                  className="text-[10px] font-black text-rose-500 hover:text-rose-700 uppercase tracking-wider"
+                >
+                  Kosongkan
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/*
+  Baki Awal — nilai setiap akaun Kunci Kira-Kira pada hari perniagaan mula
+  guna Monitacc. Dimasukkan SEKALI sahaja; tahun berikutnya bergolek sendiri
+  kerana Kunci Kira-Kira dikira secara kumulatif.
+
+  Set ini WAJIB seimbang (Aset = Liabiliti + Ekuiti). Kalau tidak, Kunci
+  Kira-Kira akan tersasar kerana baki bank di sana ialah angka penyeimbang —
+  set yang tak seimbang akan diserap senyap ke dalam baki bank.
+*/
+const OpeningBalanceView = ({
+  user,
+  openingBalances,
+  stockTakes,
+  onSaved,
+  showToast,
+}: {
+  user: UserType | null,
+  openingBalances: OpeningBalance[],
+  stockTakes: StockTake[],
+  onSaved: () => void,
+  showToast: (msg: string, type?: 'success' | 'error') => void,
+}) => {
+  const defaultDate = format(new Date(new Date().getFullYear() - 1, 11, 31), 'yyyy-MM-dd');
+
+  // Kaedah bayaran tersuai menjadi akaun Aset Semasa tambahan dalam borang ini
+  const { methods: customMethods, deleteMethod } = usePaymentMethods();
+  const groups = useMemo(() => obGroups(customMethods), [customMethods]);
+  const allCategories = useMemo(() => groups.flatMap(g => g.categories), [groups]);
+  const methodCategories = useMemo(() => customMethods.map(m => m.bs_category), [customMethods]);
+
+  const [asAtDate, setAsAtDate] = useState<string>(obDate(openingBalances) || defaultDate);
+  const [values, setValues] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    Object.fromEntries(OPENING_BALANCE_GROUPS.map(g => [g.key, true]))
+  );
+
+  // Stock take
+  const [stkDate, setStkDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const [stkAmount, setStkAmount] = useState('');
+  const [stkNote, setStkNote] = useState('');
+  const [stkSaving, setStkSaving] = useState(false);
+
+  useEffect(() => {
+    const map = obToMap(openingBalances);
+    const next: Record<string, string> = {};
+    allCategories.forEach(cat => {
+      const v = map[cat.toUpperCase()];
+      next[cat] = v ? String(v) : '';
+    });
+    setValues(next);
+    const d = obDate(openingBalances);
+    if (d) setAsAtDate(d);
+  }, [openingBalances, allCategories]);
+
+  const numericValues = useMemo(() => {
+    const out: Record<string, number> = {};
+    Object.entries(values).forEach(([k, v]) => { out[k] = parseFloat(v) || 0; });
+    return out;
+  }, [values]);
+
+  const check = useMemo(() => obCheck(numericValues, methodCategories), [numericValues, methodCategories]);
+  const hasAnyValue = Object.values(numericValues).some(v => v !== 0);
+
+  const groupTotal = (key: string) => {
+    const g = groups.find(x => x.key === key);
+    if (!g) return 0;
+    return g.categories.reduce((s, c) => s + (numericValues[c] || 0), 0);
+  };
+
+  const fmtRM = (v: number) =>
+    v.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // Cadangkan nilai Modal supaya set menjadi seimbang — pengguna kecil selalunya
+  // tahu semua baki kecuali berapa modal yang sepatutnya direkod.
+  const autoBalanceCapital = () => {
+    const current = numericValues['CAPITAL'] || 0;
+    const suggested = current + check.difference;
+    setValues(prev => ({ ...prev, CAPITAL: suggested ? String(Number(suggested.toFixed(2))) : '' }));
+  };
+
+  const handleSave = async () => {
+    if (!user) return;
+    if (!check.isBalanced) {
+      showToast('Baki awal belum seimbang. Betulkan perbezaan dahulu.', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      await apiSaveOpeningBalances(
+        String(user.id),
+        asAtDate,
+        allCategories.map(cat => ({ category: cat, amount: numericValues[cat] || 0 })),
+      );
+      showToast('Baki awal berjaya disimpan');
+      onSaved();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menyimpan baki awal', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddStockTake = async () => {
+    if (!user || !stkDate) return;
+    const amt = parseFloat(stkAmount);
+    if (isNaN(amt)) {
+      showToast('Masukkan nilai stok yang sah', 'error');
+      return;
+    }
+    setStkSaving(true);
+    try {
+      await apiSaveStockTake(String(user.id), stkDate, amt, stkNote.trim());
+      setStkAmount('');
+      setStkNote('');
+      showToast('Stok akhir berjaya disimpan');
+      onSaved();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal menyimpan stok akhir', 'error');
+    } finally {
+      setStkSaving(false);
+    }
+  };
+
+  // Memadam kaedah bayaran tidak mengubah transaksi yang sudah direkod — baki
+  // transaksi itu jatuh semula ke baris Bank, jadi pengguna perlu diberitahu.
+  const handleDeleteMethod = async (method: PaymentMethod) => {
+    if (!method.id) return;
+    const ok = confirm(
+      `Padam kaedah bayaran "${method.label}"?\n\n` +
+      'Transaksi lama yang menggunakan kaedah ini tidak akan dipadam, tetapi bakinya ' +
+      'akan kembali dikira sebagai BANK dalam Kunci Kira-Kira.'
+    );
+    if (!ok) return;
+
+    try {
+      await deleteMethod(method.id);
+      showToast(`Kaedah "${method.label}" dipadam`);
+    } catch (err: any) {
+      showToast(err.message || 'Gagal memadam kaedah bayaran', 'error');
+    }
+  };
+
+  const handleDeleteStockTake = async (id?: number) => {
+    if (!user || !id) return;
+    try {
+      await apiDeleteStockTake(String(user.id), id);
+      showToast('Stok akhir dipadam');
+      onSaved();
+    } catch (err: any) {
+      showToast(err.message || 'Gagal memadam', 'error');
+    }
+  };
+
+  const sortedStockTakes = [...stockTakes].sort((a, b) => b.as_at_date.localeCompare(a.as_at_date));
+
+  return (
+    <div className="p-4 md:p-6 pb-28 md:pl-64 md:pt-12 max-w-5xl mx-auto">
+      <div className="mb-6">
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Baki Awal</h2>
+        <p className="text-slate-500 text-sm font-medium mt-0.5">
+          Baki setiap akaun pada hari anda mula guna Monitacc
+        </p>
+      </div>
+
+      {/* Penerangan ringkas */}
+      <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-6 flex gap-3">
+        <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
+        <div className="text-xs text-blue-900 leading-relaxed space-y-1.5">
+          <p>
+            Kalau perniagaan anda sudah lama beroperasi sebelum guna Monitacc, sistem tidak tahu
+            baki bank, stok, hutang atau modal sedia ada. Isikan di sini <strong>sekali sahaja</strong> —
+            tahun-tahun berikutnya bergolek sendiri.
+          </p>
+          <p>
+            Set ini mesti <strong>seimbang</strong>: Jumlah Aset = Jumlah Liabiliti + Ekuiti.
+            Kalau tak tahu berapa Modal, isi semua yang lain dahulu kemudian tekan
+            <strong> Auto-Imbang Modal</strong>.
+          </p>
+        </div>
+      </div>
+
+      {/* Tarikh */}
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-5">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Baki Awal</label>
+        <p className="text-[11px] text-slate-500 mt-1 mb-2">
+          Biasanya sehari sebelum tahun kewangan pertama anda dalam sistem (cth 31/12/2025)
+        </p>
+        <input
+          type="date"
+          value={asAtDate}
+          onChange={e => setAsAtDate(e.target.value)}
+          className="px-3 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+        />
+      </div>
+
+      {/* Kaedah bayaran tersuai — setiap satu ialah akaun Aset Semasa di bawah */}
+      {customMethods.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-5">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kaedah Bayaran Anda</label>
+          <p className="text-[11px] text-slate-500 mt-1 mb-3">
+            Setiap kaedah ini ialah satu baris Aset Semasa dalam Kunci Kira-Kira.
+            Tambah kaedah baharu melalui butang <strong>+</strong> pada mana-mana borang transaksi.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {customMethods.map(m => (
+              <span key={m.code} className="inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 bg-violet-50 border border-violet-100 rounded-xl text-xs font-bold text-violet-700">
+                <Wallet size={12} />
+                {m.label}
+                <button
+                  type="button"
+                  onClick={() => handleDeleteMethod(m)}
+                  title="Padam kaedah bayaran"
+                  className="w-5 h-5 rounded-lg flex items-center justify-center text-violet-400 hover:text-rose-600 hover:bg-white transition-colors"
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Kumpulan akaun */}
+      <div className="space-y-4">
+        {groups.map(group => {
+          const open = openGroups[group.key];
+          const total = groupTotal(group.key);
+          return (
+            <div key={group.key} className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              <button
+                onClick={() => setOpenGroups(p => ({ ...p, [group.key]: !p[group.key] }))}
+                className="w-full px-4 md:px-5 py-3.5 flex items-center justify-between hover:bg-slate-50/60 transition-colors text-left"
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-black text-slate-900">{group.label}</p>
+                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">{group.hint}</p>
+                </div>
+                <div className="flex items-center gap-3 shrink-0 ml-3">
+                  <span className={`text-sm font-bold tabular-nums ${total ? 'text-slate-900' : 'text-slate-300'}`}>
+                    {fmtRM(total)}
+                  </span>
+                  <ChevronDown size={16} className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                </div>
+              </button>
+
+              {open && (
+                <div className="border-t border-slate-100 divide-y divide-slate-50">
+                  {group.categories.map(cat => (
+                    <div key={cat} className="px-4 md:px-5 py-2.5 flex items-center gap-3">
+                      <span className="text-[11px] font-bold text-slate-300 tabular-nums w-14 shrink-0">
+                        {getAccCode(cat)}
+                      </span>
+                      <span className="text-xs font-medium text-slate-600 flex-1 min-w-0 truncate">{cat}</span>
+                      <div className="relative shrink-0">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] font-bold text-slate-400">RM</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          inputMode="decimal"
+                          placeholder="0.00"
+                          value={values[cat] ?? ''}
+                          onChange={e => setValues(p => ({ ...p, [cat]: e.target.value }))}
+                          className="w-32 md:w-40 pl-9 pr-3 py-1.5 text-xs font-bold text-right text-slate-800 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 tabular-nums"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Semakan keseimbangan */}
+      <div className={`mt-5 rounded-2xl border p-4 md:p-5 ${
+        check.isBalanced ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'
+      }`}>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Jumlah Aset</p>
+            <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.assets)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Liabiliti</p>
+            <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.liabilities)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ekuiti</p>
+            <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.equity)}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Perbezaan</p>
+            <p className={`text-sm font-black tabular-nums ${check.isBalanced ? 'text-emerald-700' : 'text-amber-700'}`}>
+              {fmtRM(check.difference)}
+            </p>
+          </div>
+        </div>
+
+        {check.isBalanced ? (
+          <p className="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+            <CheckCircle2 size={14} /> Seimbang — sedia untuk disimpan
+          </p>
+        ) : (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5">
+            <p className="text-xs font-bold text-amber-800 flex items-center gap-1.5 flex-1">
+              <AlertTriangle size={14} />
+              Belum seimbang sebanyak RM {fmtRM(Math.abs(check.difference))}
+            </p>
+            <button
+              onClick={autoBalanceCapital}
+              className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-xs font-bold transition-colors shrink-0"
+            >
+              Auto-Imbang Modal
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-col sm:flex-row gap-2.5">
+        <button
+          onClick={handleSave}
+          disabled={saving || !check.isBalanced}
+          className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-xl text-sm font-bold transition-colors"
+        >
+          {saving ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} />}
+          Simpan Baki Awal
+        </button>
+        {hasAnyValue && (
+          <button
+            onClick={() => setValues(Object.fromEntries(allCategories.map(c => [c, ''])))}
+            className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-bold transition-colors"
+          >
+            Kosongkan Semua
+          </button>
+        )}
+      </div>
+
+      {/* ── Stok Akhir (Stock Take) ─────────────────────────────────── */}
+      <div className="mt-10">
+        <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">Stok Akhir (Stock Take)</h3>
+        <p className="text-slate-500 text-xs font-medium mt-0.5 mb-4">
+          Nilai stok fizikal pada hujung tempoh — digunakan dalam Kos Jualan
+        </p>
+
+        <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 mb-4 flex gap-3">
+          <Info size={16} className="text-blue-500 shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-900 leading-relaxed">
+            Kos Jualan dikira sebagai <strong>Stok Awal + Belian &minus; Stok Akhir</strong>.
+            Stok Akhir sesuatu bulan secara automatik menjadi Stok Awal bulan berikutnya, jadi
+            anda hanya perlu isi pada tarikh anda benar-benar mengira stok.
+          </p>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh</label>
+              <input
+                type="date"
+                value={stkDate}
+                onChange={e => setStkDate(e.target.value)}
+                className="mt-1.5 w-full px-3 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nilai Stok (RM)</label>
+              <input
+                type="number"
+                step="0.01"
+                inputMode="decimal"
+                placeholder="0.00"
+                value={stkAmount}
+                onChange={e => setStkAmount(e.target.value)}
+                className="mt-1.5 w-full px-3 py-2.5 text-sm font-bold text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 tabular-nums"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catatan</label>
+              <input
+                type="text"
+                placeholder="Pilihan"
+                value={stkNote}
+                onChange={e => setStkNote(e.target.value)}
+                className="mt-1.5 w-full px-3 py-2.5 text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+              />
+            </div>
+          </div>
+          <button
+            onClick={handleAddStockTake}
+            disabled={stkSaving}
+            className="mt-3 w-full sm:w-auto flex items-center justify-center gap-2 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold transition-colors"
+          >
+            {stkSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+            Simpan Stok Akhir
+          </button>
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          {sortedStockTakes.length === 0 ? (
+            <div className="px-5 py-10 flex flex-col items-center gap-2">
+              <Package size={20} className="text-slate-300" />
+              <p className="text-xs text-slate-400 font-medium">Belum ada rekod stok akhir</p>
+            </div>
+          ) : (
+            <div className="divide-y divide-slate-50">
+              {sortedStockTakes.map(s => (
+                <div key={s.id} className="px-4 md:px-5 py-3 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900">
+                      {format(parseISO(s.as_at_date), 'dd MMM yyyy')}
+                    </p>
+                    {s.note && <p className="text-[11px] text-slate-400 font-medium truncate">{s.note}</p>}
+                  </div>
+                  <span className="text-sm font-black text-slate-900 tabular-nums shrink-0">
+                    RM {fmtRM(s.amount)}
+                  </span>
+                  <button
+                    onClick={() => handleDeleteStockTake(s.id)}
+                    className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
+                    title="Padam"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
@@ -9471,6 +11081,9 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'active' | 'cancelled'>('all');
   const [selectedUser, setSelectedUser] = useState<UserType | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [affiliateFilter, setAffiliateFilter] = useState('all');
   const [confirmDelete, setConfirmDelete] = useState<UserType | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [showTopUp, setShowTopUp] = useState<UserType | null>(null);
@@ -9557,6 +11170,26 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
+  // Senarai affiliate unik (dari medan referred_by) untuk dropdown penapis
+  const isDirectRef = (ref: string) => !ref || ref === 'Tiada Rujukan' || ref === 'Terus' || ref === 'Direct';
+  const affiliateOptions = Array.from(
+    new Set(users.map(u => (u.referred_by || '').trim()).filter(ref => !isDirectRef(ref)))
+  ).sort((a, b) => a.localeCompare(b));
+
+  // Julat tarikh daftar yang dipilih dari kalendar (hari penuh: 00:00:00 hingga 23:59:59)
+  const dateFromMs = dateFrom ? new Date(`${dateFrom}T00:00:00`).getTime() : -Infinity;
+  const dateToMs = dateTo ? new Date(`${dateTo}T23:59:59.999`).getTime() : Infinity;
+  const hasDateFilter = !!dateFrom || !!dateTo;
+  const hasActiveFilter = !!searchQuery || activeTab !== 'all' || hasDateFilter || affiliateFilter !== 'all';
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setActiveTab('all');
+    setDateFrom('');
+    setDateTo('');
+    setAffiliateFilter('all');
+  };
+
   const filteredUsers = users.filter(u => {
     const matchesTab = activeTab === 'all' || u.status === activeTab;
     const q = searchQuery.toLowerCase();
@@ -9565,7 +11198,15 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       (u.email || '').toLowerCase().includes(q) ||
       (u.company_name || '').toLowerCase().includes(q) ||
       (u.phone || '').toLowerCase().includes(q);
-    return matchesTab && matchesSearch;
+
+    const created = u.created_at ? new Date(u.created_at).getTime() : NaN;
+    const matchesDate = !hasDateFilter || (!isNaN(created) && created >= dateFromMs && created <= dateToMs);
+
+    const ref = (u.referred_by || '').trim();
+    const matchesAffiliate = affiliateFilter === 'all'
+      || (affiliateFilter === '__direct__' ? isDirectRef(ref) : ref === affiliateFilter);
+
+    return matchesTab && matchesSearch && matchesDate && matchesAffiliate;
   });
 
   const planColor = (plan: string) => {
@@ -9574,6 +11215,13 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
     if (plan === 'Starter') return 'bg-emerald-100 text-emerald-700';
     return 'bg-slate-100 text-slate-500';
   };
+
+  // Tarikh mula langganan. plan_start ada nilai lalai untuk semua pengguna (termasuk yang
+  // masih percuma), jadi ia hanya bermakna bila pengguna benar-benar berlanggan pakej berbayar.
+  const isPaidPlan = (plan?: string) => !!plan && plan !== 'free' && plan !== 'Percuma';
+  const fmtDate = (iso?: string | null) =>
+    iso ? new Date(iso).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
+  const subscribeDate = (u: UserType) => (isPaidPlan(u.plan) ? fmtDate(u.plan_start) : null);
 
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-6xl mx-auto">
@@ -9651,13 +11299,54 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
         </div>
       </div>
 
+      {/* Penapis: Tarikh Daftar & Affiliate */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 mb-5">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarikh Daftar</label>
+          <DateRangeCalendar
+            from={dateFrom}
+            to={dateTo}
+            onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Affiliate / Rujukan</label>
+          <div className="relative">
+            <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+            <select
+              value={affiliateFilter}
+              onChange={e => setAffiliateFilter(e.target.value)}
+              className="appearance-none pl-8 pr-8 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all cursor-pointer max-w-[220px] truncate"
+            >
+              <option value="all">Semua Affiliate</option>
+              <option value="__direct__">Tiada Rujukan (Terus)</option>
+              {affiliateOptions.map(ref => (
+                <option key={ref} value={ref}>{ref}</option>
+              ))}
+            </select>
+            <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          </div>
+        </div>
+
+        {hasActiveFilter && (
+          <button
+            onClick={resetFilters}
+            className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-xl transition-colors"
+          >
+            <X size={13} />
+            Reset Penapis
+          </button>
+        )}
+      </div>
+
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{filteredUsers.length} pengguna dijumpai</p>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
-                const headers = ['#', 'Nama', 'Emel', 'Telefon', 'Syarikat', 'Pakej', 'Status', 'Rujukan', 'Tarikh Daftar'];
+                const headers = ['#', 'Nama', 'Emel', 'Telefon', 'Syarikat', 'Pakej', 'Status', 'Rujukan', 'Tarikh Daftar', 'Tarikh Subscribe', 'Tarikh Tamat'];
                 const rows = filteredUsers.map((u, i) => [
                   i + 1,
                   u.name || '',
@@ -9668,6 +11357,8 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                   u.status || '',
                   u.referred_by || 'Terus',
                   u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY') : '',
+                  isPaidPlan(u.plan) && u.plan_start ? new Date(u.plan_start).toLocaleDateString('ms-MY') : '',
+                  isPaidPlan(u.plan) && u.plan_end ? new Date(u.plan_end).toLocaleDateString('ms-MY') : '',
                 ]);
                 const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
                 const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
@@ -9746,6 +11437,24 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                       <p className="text-xs font-medium text-slate-600">
                         {u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                       </p>
+                      <p className={`text-[10px] font-bold mt-0.5 ${isDirectRef((u.referred_by || '').trim()) ? 'text-slate-300' : 'text-blue-500'}`}>
+                        {isDirectRef((u.referred_by || '').trim()) ? 'Terus' : u.referred_by}
+                      </p>
+                    </div>
+                    <div className="bg-slate-50 rounded-xl p-2.5 col-span-2">
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Tarikh Subscribe</p>
+                      {subscribeDate(u) ? (
+                        <p className="text-xs font-medium text-slate-600">
+                          {subscribeDate(u)}
+                          <span className="text-[10px] font-bold text-slate-300 ml-1.5">
+                            {fmtDate(u.plan_end) ? `→ ${fmtDate(u.plan_end)}` : '→ Tiada tamat'}
+                          </span>
+                        </p>
+                      ) : (
+                        <p className="text-xs font-medium text-slate-300">
+                          {isPaidPlan(u.plan) ? '—' : 'Belum subscribe'}
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -9799,6 +11508,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                     <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
                     <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pakej</th>
                     <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Daftar</th>
+                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Subscribe</th>
                     <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Tindakan</th>
                   </tr>
                 </thead>
@@ -9842,6 +11552,23 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                         <span className="text-xs text-slate-500 font-medium">
                           {u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </span>
+                        <div className={`text-[10px] font-bold mt-0.5 ${isDirectRef((u.referred_by || '').trim()) ? 'text-slate-300' : 'text-blue-500'}`}>
+                          {isDirectRef((u.referred_by || '').trim()) ? 'Terus' : u.referred_by}
+                        </div>
+                      </td>
+                      <td className="px-5 py-3.5">
+                        {subscribeDate(u) ? (
+                          <>
+                            <span className="text-xs text-slate-500 font-medium">{subscribeDate(u)}</span>
+                            <div className="text-[10px] font-bold text-slate-300 mt-0.5">
+                              {fmtDate(u.plan_end) ? `Tamat: ${fmtDate(u.plan_end)}` : 'Tiada tamat'}
+                            </div>
+                          </>
+                        ) : (
+                          <span className="text-xs text-slate-300 font-medium">
+                            {isPaidPlan(u.plan) ? '—' : 'Belum subscribe'}
+                          </span>
+                        )}
                       </td>
                       <td className="px-5 py-3.5">
                         <div className="flex items-center justify-end gap-2">
@@ -10383,7 +12110,7 @@ const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; perio
     features: [
       { text: '100 Imbasan Transaksi / bulan', included: true },
       { text: 'Unlimited Rekod Manual', included: true },
-      { text: '3× Imbasan Bank Statement', included: true },
+      { text: 'Tiada Imbasan Bank Statement', included: true },
       { text: 'Monitacc Assistant', included: true },
       { text: '1× Smart Analysis / bulan', included: true },
       { text: 'P&L Report + Balance Sheet', included: false },
@@ -10400,7 +12127,7 @@ const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; perio
     features: [
       { text: '250 Imbasan Transaksi / bulan', included: true },
       { text: 'Unlimited Rekod Manual', included: true },
-      { text: '9× Imbasan Bank Statement', included: true },
+      { text: 'Tiada Imbasan Bank Statement', included: true },
       { text: 'Monitacc Assistant', included: true },
       { text: '4× Smart Analysis / bulan', included: true },
       { text: 'P&L Report + Balance Sheet', included: false },
@@ -10919,6 +12646,31 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
 
   const [updateError, setUpdateError] = useState('');
 
+  // Senarai ejen berdaftar — untuk dropdown tukar affiliate
+  const [agents, setAgents] = useState<Affiliate[]>([]);
+  const [editingRefUser, setEditingRefUser] = useState<UserType | null>(null);
+  const [editRefValue, setEditRefValue] = useState('');
+  const [savingRef, setSavingRef] = useState(false);
+
+  useEffect(() => {
+    apiGetAffiliates().then(setAgents).catch(err => console.error('Gagal memuatkan senarai ejen:', err));
+  }, []);
+
+  const handleUpdateReferral = async () => {
+    if (!editingRefUser) return;
+    setSavingRef(true);
+    try {
+      await apiUpdateUserReferral(editingRefUser.id, editRefValue);
+      setEditingRefUser(null);
+      setEditRefValue('');
+      fetchUsers();
+    } catch (err: any) {
+      alert(err.message || 'Gagal kemaskini affiliate');
+    } finally {
+      setSavingRef(false);
+    }
+  };
+
   const handleUpdatePlan = async (userId: string) => {
     setUpdateError('');
     try {
@@ -11100,10 +12852,31 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                       )}
                     </td>
                     <td className="px-5 py-4">
-                      <div className="flex items-center gap-1.5">
-                        <div className={`w-1.5 h-1.5 rounded-full ${u.referred_by ? 'bg-blue-500' : 'bg-slate-200'}`} />
-                        <span className="text-xs font-medium text-slate-600">{u.referred_by || 'Direct'}</span>
-                      </div>
+                      {(() => {
+                        const ref = (u.referred_by || '').trim();
+                        const isDirect = !ref || ['tiada rujukan', 'terus', 'direct', '-'].includes(ref.toLowerCase());
+                        const isMatched = !isDirect && agents.some(a => normalizeReferralName(a.name) === normalizeReferralName(ref));
+                        return (
+                          <div className="flex items-center gap-1.5 group/ref">
+                            <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isDirect ? 'bg-slate-200' : isMatched ? 'bg-blue-500' : 'bg-amber-500'}`} />
+                            <span className={`text-xs font-medium ${isDirect ? 'text-slate-400' : isMatched ? 'text-slate-600' : 'text-amber-700'}`}>
+                              {isDirect ? 'Direct' : ref}
+                            </span>
+                            {!isDirect && !isMatched && (
+                              <span title="Nama ini tidak sepadan dengan mana-mana ejen — komisen tidak dikira">
+                                <AlertTriangle size={11} className="text-amber-500 shrink-0" />
+                              </span>
+                            )}
+                            <button
+                              onClick={() => { setEditingRefUser(u); setEditRefValue(isDirect ? '' : ref); }}
+                              title="Tukar affiliate"
+                              className="p-1 rounded-md text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 transition-colors opacity-0 group-hover/ref:opacity-100 focus:opacity-100"
+                            >
+                              <Pencil size={11} />
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex items-center justify-end gap-2">
@@ -11236,6 +13009,91 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal tukar affiliate */}
+      <AnimatePresence>
+        {editingRefUser && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => setEditingRefUser(null)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
+            >
+              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-slate-900 tracking-tight font-display">Tukar Affiliate</h3>
+                  <p className="text-xs text-slate-400 font-medium truncate">{editingRefUser.name || editingRefUser.email}</p>
+                </div>
+                <button onClick={() => setEditingRefUser(null)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 transition-colors">
+                  <X size={16} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Pilih Ejen Berdaftar</label>
+                  <select
+                    value={agents.some(a => normalizeReferralName(a.name) === normalizeReferralName(editRefValue)) ? editRefValue : (editRefValue ? '__custom__' : '')}
+                    onChange={e => { if (e.target.value !== '__custom__') setEditRefValue(e.target.value); }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 cursor-pointer"
+                  >
+                    <option value="">Tiada Rujukan (Direct)</option>
+                    {agents.map(a => (
+                      <option key={a.id} value={a.name}>{a.name}</option>
+                    ))}
+                    {editRefValue && !agents.some(a => normalizeReferralName(a.name) === normalizeReferralName(editRefValue)) && (
+                      <option value="__custom__">{editRefValue} (tiada ejen sepadan)</option>
+                    )}
+                  </select>
+                  {agents.length === 0 && (
+                    <p className="text-[10px] text-amber-600 font-medium mt-1.5">Tiada ejen berdaftar lagi. Tambah ejen di halaman Affiliated dahulu.</p>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Atau Taip Nama Sendiri</label>
+                  <input
+                    type="text"
+                    value={editRefValue}
+                    onChange={e => setEditRefValue(e.target.value)}
+                    placeholder="Kosongkan untuk Direct"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
+                  />
+                  {editRefValue.trim() && !agents.some(a => normalizeReferralName(a.name) === normalizeReferralName(editRefValue)) ? (
+                    <p className="text-[10px] text-amber-600 font-medium mt-1.5 flex items-center gap-1">
+                      <AlertTriangle size={11} /> Tiada ejen bernama ini — komisen tidak akan dikira.
+                    </p>
+                  ) : editRefValue.trim() ? (
+                    <p className="text-[10px] text-emerald-600 font-medium mt-1.5 flex items-center gap-1">
+                      <Check size={11} /> Sepadan dengan ejen berdaftar — komisen akan dikira.
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex gap-3 pt-1">
+                  <button
+                    onClick={() => setEditingRefUser(null)}
+                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-slate-200 transition-all"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleUpdateReferral}
+                    disabled={savingRef}
+                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all disabled:opacity-60"
+                  >
+                    {savingRef ? 'Menyimpan...' : 'Simpan'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -11336,7 +13194,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
       features: [
         '100 Imbasan Transaksi / bulan',
         'Unlimited Rekod Transaksi Manual',
-        '3× Imbasan Bank Statement',
+        'Tiada Imbasan Bank Statement',
         'Monitacc Assistant',
         '1× Smart Analysis',
       ],
@@ -11349,7 +13207,7 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
       features: [
         '250 Imbasan Transaksi / bulan',
         'Unlimited Rekod Transaksi Manual',
-        '9× Imbasan Bank Statement',
+        'Tiada Imbasan Bank Statement',
         'Monitacc Assistant',
         '4× Smart Analysis',
       ],
@@ -11746,6 +13604,107 @@ const AffiliateLoginView = ({ onLogin: _onLogin, onBack }: { onLogin: (affiliate
   );
 };
 
+// ── Link rujukan affiliate ──────────────────────────────────────────────────
+// Salin ke papan keratan dengan fallback untuk pelayar lama / konteks tanpa HTTPS
+// (navigator.clipboard hanya wujud dalam "secure context").
+async function salinKeKlipbod(teks: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(teks);
+      return true;
+    }
+  } catch { /* jatuh ke kaedah lama di bawah */ }
+
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = teks;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+// Paparan link rujukan seorang ejen + butang Salin & Kongsi (WhatsApp).
+const ReferralLinkBox = ({
+  agentName,
+  refCode,
+  variant = 'light',
+  compact = false,
+}: {
+  agentName: string;
+  refCode?: string | null;
+  variant?: 'light' | 'dark';
+  compact?: boolean;
+}) => {
+  const [copied, setCopied] = useState(false);
+
+  if (!refCode) {
+    return (
+      <p className={`text-[10px] font-medium ${variant === 'dark' ? 'text-slate-400' : 'text-slate-400'}`}>
+        Link belum dijana — jalankan migrasi pangkalan data terkini.
+      </p>
+    );
+  }
+
+  const link = buildReferralLink(refCode);
+  const paparan = displayReferralLink(refCode);
+  const mesejWhatsApp = `Salam! Saya ${agentName}. Jom cuba Monitacc — sistem perakaunan pintar untuk perniagaan anda. Daftar melalui link saya: ${link}`;
+
+  const handleCopy = async () => {
+    const ok = await salinKeKlipbod(link);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const gelap = variant === 'dark';
+
+  return (
+    <div className={`flex items-center gap-1.5 ${compact ? '' : 'mt-1'}`}>
+      <code
+        className={`font-mono truncate ${compact ? 'text-[10px] max-w-[180px]' : 'text-[11px] flex-1'} ${
+          gelap ? 'text-emerald-400' : 'text-slate-500'
+        }`}
+        title={link}
+      >
+        {paparan}
+      </code>
+      <button
+        type="button"
+        onClick={handleCopy}
+        title={copied ? 'Link disalin!' : 'Salin link rujukan'}
+        className={`p-1.5 rounded-lg transition-all shrink-0 ${
+          copied
+            ? 'bg-emerald-100 text-emerald-600'
+            : gelap
+            ? 'text-slate-400 hover:text-white hover:bg-white/10'
+            : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+        }`}
+      >
+        {copied ? <Check size={13} strokeWidth={3} /> : <Copy size={13} />}
+      </button>
+      <a
+        href={`https://wa.me/?text=${encodeURIComponent(mesejWhatsApp)}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Kongsi melalui WhatsApp"
+        className={`p-1.5 rounded-lg transition-all shrink-0 ${
+          gelap ? 'text-slate-400 hover:text-white hover:bg-white/10' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'
+        }`}
+      >
+        <Share2 size={13} />
+      </a>
+    </div>
+  );
+};
+
 const AffiliateDashboardView = ({ affiliate, onLogout }: { affiliate: any, onLogout: () => void }) => {
   const referrals = [
     { id: 'USR-8821', name: 'Ahmad Fauzi', plan: 'Ultimate', status: 'active', joined: '01/04/2026', commission: 15.00 },
@@ -11803,11 +13762,8 @@ const AffiliateDashboardView = ({ affiliate, onLogout }: { affiliate: any, onLog
               <Tag size={20} className="text-emerald-400" />
             </div>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Link Affiliate Anda</p>
-            <div className="flex items-center justify-between gap-2 mt-2">
-              <code className="text-[10px] font-mono text-emerald-400">monitacc.com/?ref={affiliate.special_id}</code>
-              <button className="p-1.5 hover:bg-white/10 rounded transition-colors">
-                <Copy size={14} />
-              </button>
+            <div className="mt-2">
+              <ReferralLinkBox agentName={affiliate.name} refCode={affiliate.ref_code} variant="dark" />
             </div>
           </div>
         </div>
@@ -12037,14 +13993,68 @@ const AffiliatedManagementView = () => {
   const [error, setError] = useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = useState<Affiliate | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({ name: '', email: '', phone: '', bank: '', account_no: '', referrals: 0, commission: 0, status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
+  const [addForm, setAddForm] = useState({ name: '', email: '', phone: '', bank: '', account_no: '', status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
   const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError] = useState('');
+  const [referredUsers, setReferredUsers] = useState<ReferredUser[]>([]);
+  const [confirmDeleteAgent, setConfirmDeleteAgent] = useState<Affiliate | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
-  useEffect(() => {
-    apiGetAffiliates()
-      .then(data => { setAffiliates(data); setLoading(false); })
+  const [editingAgent, setEditingAgent] = useState<Affiliate | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', phone: '', bank: '', account_no: '', status: 'Aktif', joined_date: '' });
+  const [editLoading, setEditLoading] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [syncReferrals, setSyncReferrals] = useState(true);
+
+  const loadData = () =>
+    Promise.all([apiGetAffiliates(), apiGetReferredUsers()])
+      .then(([agents, refs]) => { setAffiliates(agents); setReferredUsers(refs); setLoading(false); })
       .catch(err => { setError(err.message); setLoading(false); });
-  }, []);
+
+  useEffect(() => { loadData(); }, []);
+
+  // Penapis bulan & tahun. Kedua-duanya perlu dipilih barulah penapis aktif.
+  const [filterMonth, setFilterMonth] = useState('');
+  const [filterYear, setFilterYear] = useState('');
+  const monthFilter = filterMonth && filterYear ? `${filterYear}-${filterMonth}` : '';
+
+  // Senarai tahun: dari rujukan terawal (atau tahun semasa) hingga 2050
+  const yearOptions = (() => {
+    const nowYear = new Date().getFullYear();
+    const stamps = referredUsers
+      .flatMap(u => [u.created_at, u.plan_start])
+      .filter(Boolean)
+      .map(d => new Date(d as string).getFullYear())
+      .filter(y => !isNaN(y));
+    const earliest = Math.min(nowYear, ...(stamps.length ? stamps : [nowYear]));
+    const list: number[] = [];
+    for (let y = earliest; y <= 2050; y++) list.push(y);
+    return list;
+  })();
+
+  const monthLabel = (key: string) => {
+    const [y, m] = key.split('-').map(Number);
+    return `${BULAN_PENUH[m - 1]} ${y}`;
+  };
+
+  // Kiraan automatik: padankan nama ejen dengan medan "referred_by" pengguna
+  const earnings = new Map(affiliates.map(a => [a.id, calcAffiliateEarning(a.name, referredUsers, monthFilter || undefined)]));
+  const earningOf = (id: string) => earnings.get(id) || { referrals: [], payingUsers: [], totalReferrals: 0, newReferrals: 0, payingReferrals: 0, monthlyRevenue: 0, monthlyCommission: 0 };
+
+  const totalReferrals = affiliates.reduce((sum, a) => sum + earningOf(a.id).totalReferrals, 0);
+  const totalNewReferrals = affiliates.reduce((sum, a) => sum + earningOf(a.id).newReferrals, 0);
+  const totalCommission = affiliates.reduce((sum, a) => sum + earningOf(a.id).monthlyCommission, 0);
+
+  // Nama rujukan yang ditaip pengguna tetapi tiada ejen sepadan — perlu perhatian admin
+  const agentNameKeys = new Set(affiliates.map(a => normalizeReferralName(a.name)));
+  const unmatchedRefs = Array.from(
+    referredUsers.reduce((map, u) => {
+      const key = normalizeReferralName(u.referred_by);
+      if (!agentNameKeys.has(key)) map.set(key, { label: (u.referred_by || '').trim(), count: (map.get(key)?.count || 0) + 1 });
+      return map;
+    }, new Map<string, { label: string; count: number }>()).values()
+  );
 
   const togglePaidStatus = async (id: string) => {
     const agent = affiliates.find(a => a.id === id);
@@ -12058,15 +14068,132 @@ const AffiliatedManagementView = () => {
     }
   };
 
+  const openEditAgent = (agent: Affiliate) => {
+    setEditingAgent(agent);
+    setEditError('');
+    setSyncReferrals(true);
+    setEditForm({
+      name: agent.name || '',
+      email: agent.email || '',
+      phone: agent.phone || '',
+      bank: agent.bank || '',
+      account_no: agent.account_no || '',
+      status: agent.status || 'Aktif',
+      joined_date: agent.joined_date || '',
+    });
+  };
+
+  const handleUpdateAffiliate = async () => {
+    if (!editingAgent) return;
+    setEditError('');
+    const nama = editForm.name.trim();
+    const emel = editForm.email.trim().toLowerCase();
+
+    if (!nama) { setEditError('Nama penuh wajib diisi.'); return; }
+    if (!emel) { setEditError('Emel wajib diisi kerana ia pengenalan unik setiap ejen.'); return; }
+    const lain = affiliates.filter(a => a.id !== editingAgent.id);
+    if (lain.some(a => (a.email || '').trim().toLowerCase() === emel)) {
+      setEditError('Emel ini sudah digunakan oleh ejen lain. Sila guna emel berbeza.');
+      return;
+    }
+    if (lain.some(a => normalizeReferralName(a.name) === normalizeReferralName(nama))) {
+      setEditError(`Sudah ada ejen bernama "${nama}". Sila guna nama yang berbeza.`);
+      return;
+    }
+
+    // Rujukan sedia ada padan dengan NAMA LAMA — perlu dikemas kini jika nama bertukar
+    const namaBerubah = normalizeReferralName(editingAgent.name) !== normalizeReferralName(nama);
+    const rujukanLama = earningOf(editingAgent.id).referrals;
+
+    setEditLoading(true);
+    try {
+      await apiUpdateAffiliate(editingAgent.id, {
+        name: nama,
+        email: emel,
+        phone: editForm.phone.trim(),
+        bank: editForm.bank.trim(),
+        account_no: editForm.account_no.trim(),
+        status: editForm.status,
+        joined_date: editForm.joined_date,
+      });
+
+      if (namaBerubah && syncReferrals && rujukanLama.length > 0) {
+        await Promise.all(rujukanLama.map(u => apiUpdateUserReferral(u.id, nama)));
+      }
+
+      await loadData();
+      setSelectedAgent(prev => (prev?.id === editingAgent.id ? { ...prev, name: nama, email: emel } : prev));
+      setEditingAgent(null);
+    } catch (err: any) {
+      const msg = err?.message || 'Gagal mengemas kini ejen';
+      if (msg.includes('affiliates_email_key')) setEditError('Emel ini sudah wujud dalam senarai ejen. Sila guna emel berbeza.');
+      else if (msg.toLowerCase().includes('row-level security') || msg.includes('permission denied')) setEditError('Tiada kebenaran. Pastikan anda log masuk sebagai admin.');
+      else setEditError(msg);
+    } finally {
+      setEditLoading(false);
+    }
+  };
+
+  const handleDeleteAffiliate = async () => {
+    if (!confirmDeleteAgent) return;
+    setDeleteLoading(true);
+    setDeleteError('');
+    try {
+      await apiDeleteAffiliate(confirmDeleteAgent.id);
+      setAffiliates(prev => prev.filter(a => a.id !== confirmDeleteAgent.id));
+      setSelectedAgent(prev => (prev?.id === confirmDeleteAgent.id ? null : prev));
+      setConfirmDeleteAgent(null);
+    } catch (err: any) {
+      setDeleteError(err?.message || 'Gagal memadam ejen. Sila cuba lagi.');
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const handleAddAffiliate = async () => {
+    setAddError('');
+    const nama = addForm.name.trim();
+    const emel = addForm.email.trim().toLowerCase();
+
+    // Semakan awal supaya pengguna dapat mesej jelas, bukan ralat pangkalan data
+    if (!nama) {
+      setAddError('Nama penuh wajib diisi — ia digunakan untuk memadankan rujukan pengguna.');
+      return;
+    }
+    if (!emel) {
+      setAddError('Emel wajib diisi. Setiap ejen mesti ada emel berbeza kerana ia digunakan sebagai pengenalan unik.');
+      return;
+    }
+    if (affiliates.some(a => (a.email || '').trim().toLowerCase() === emel)) {
+      const pemilik = affiliates.find(a => (a.email || '').trim().toLowerCase() === emel);
+      setAddError(`Emel ini sudah digunakan oleh ejen "${pemilik?.name || '-'}". Sila guna emel lain.`);
+      return;
+    }
+    if (affiliates.some(a => normalizeReferralName(a.name) === normalizeReferralName(nama))) {
+      setAddError(`Sudah ada ejen bernama "${nama}". Nama yang sama akan mengelirukan pengiraan komisen — sila guna nama yang berbeza.`);
+      return;
+    }
+
     setAddLoading(true);
     try {
-      const newAffiliate = await apiAddAffiliate({ ...addForm, is_paid: false });
+      // referrals & commission sentiasa 0 dalam pangkalan data — nilai sebenar dikira automatik
+      const newAffiliate = await apiAddAffiliate({ ...addForm, name: nama, email: emel, referrals: 0, commission: 0, is_paid: false });
       setAffiliates(prev => [newAffiliate, ...prev]);
       setShowAddModal(false);
-      setAddForm({ name: '', email: '', phone: '', bank: '', account_no: '', referrals: 0, commission: 0, status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
+      setAddError('');
+      setAddForm({ name: '', email: '', phone: '', bank: '', account_no: '', status: 'Aktif', joined_date: new Date().toISOString().split('T')[0] });
     } catch (err: any) {
-      alert(err.message);
+      const msg = err?.message || 'Gagal menyimpan ejen';
+      // Terjemah ralat Postgres kepada bahasa yang difahami
+      if (msg.includes('affiliates_email_key')) {
+        setAddError('Emel ini sudah wujud dalam senarai ejen. Sila guna emel yang berbeza.');
+      } else if (msg.includes('duplicate key')) {
+        setAddError('Rekod ejen ini sudah wujud. Sila semak senarai ejen sedia ada.');
+      } else if (msg.toLowerCase().includes('row-level security') || msg.includes('permission denied')) {
+        setAddError('Tiada kebenaran untuk menambah ejen. Pastikan anda log masuk sebagai admin.');
+      } else {
+        setAddError(msg);
+      }
     } finally {
       setAddLoading(false);
     }
@@ -12096,14 +14223,92 @@ const AffiliatedManagementView = () => {
             Komisen adalah bersifat <span className="font-bold">Lifetime</span> — ejen akan terus menerima komisen selagi pengguna yang dirujuk kekal melanggan.
             <span className="italic opacity-75 ml-1">*Pakej Percuma tidak layak untuk komisen.</span>
           </p>
+          <p className="text-xs text-emerald-700 font-medium leading-relaxed mt-2 flex items-start gap-1.5">
+            <Link2 size={13} className="shrink-0 mt-0.5" />
+            <span>
+              Setiap ejen ada <span className="font-bold">link rujukan sendiri</span> (di bawah nama ejen).
+              Pengguna yang klik link itu terus dibawa ke borang pendaftaran dengan nama ejen sudah terisi &amp; terkunci —
+              rujukan dikira automatik tanpa risiko salah taip.
+            </span>
+          </p>
         </div>
+      </div>
+
+      {/* Penapis bulan & tahun */}
+      <div className="flex flex-wrap items-center gap-3 mb-6">
+        <div className="flex items-center gap-2">
+          <Calendar size={15} className="text-slate-400" />
+          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Papar Untuk</label>
+        </div>
+
+        <div className="relative">
+          <select
+            value={filterMonth}
+            onChange={e => setFilterMonth(e.target.value)}
+            className={`appearance-none pl-3 pr-8 py-2.5 text-xs font-bold bg-white border rounded-xl outline-none transition-all cursor-pointer ${
+              monthFilter ? 'border-emerald-400 text-emerald-700 ring-2 ring-emerald-500/10' : 'border-slate-200 text-slate-700'
+            }`}
+          >
+            <option value="">Semua Bulan</option>
+            {BULAN_PENUH.map((nama, i) => (
+              <option key={nama} value={String(i + 1).padStart(2, '0')}>{nama}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
+        <div className="relative">
+          <select
+            value={filterYear}
+            onChange={e => setFilterYear(e.target.value)}
+            className={`appearance-none pl-3 pr-8 py-2.5 text-xs font-bold bg-white border rounded-xl outline-none transition-all cursor-pointer ${
+              monthFilter ? 'border-emerald-400 text-emerald-700 ring-2 ring-emerald-500/10' : 'border-slate-200 text-slate-700'
+            }`}
+          >
+            <option value="">Semua Tahun</option>
+            {yearOptions.map(y => (
+              <option key={y} value={String(y)}>{y}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+        </div>
+
+        {(filterMonth || filterYear) && (
+          <button
+            onClick={() => { setFilterMonth(''); setFilterYear(''); }}
+            className="flex items-center gap-1.5 px-3 py-2.5 text-xs font-bold text-slate-500 hover:text-rose-600 bg-slate-100 hover:bg-rose-50 rounded-xl transition-colors"
+          >
+            <X size={13} />
+            Reset
+          </button>
+        )}
+
+        <p className={`text-[11px] font-medium ${(filterMonth || filterYear) && !monthFilter ? 'text-amber-600' : 'text-slate-400'}`}>
+          {monthFilter
+            ? `Komisen dikira untuk langganan yang aktif dalam ${monthLabel(monthFilter)}.`
+            : (filterMonth || filterYear)
+            ? 'Sila pilih bulan DAN tahun untuk menapis.'
+            : 'Komisen dikira berdasarkan langganan yang aktif sekarang.'}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
         {[
-          { label: 'Jumlah Ejen', value: affiliates.length, icon: Users, color: 'blue' },
-          { label: 'Jumlah Rujukan', value: affiliates.reduce((sum, a) => sum + a.referrals, 0), icon: TrendingUp, color: 'emerald' },
-          { label: 'Jumlah Komisen (RM)', value: affiliates.reduce((sum, a) => sum + Number(a.commission), 0).toLocaleString(undefined, { minimumFractionDigits: 2 }), icon: DollarSign, color: 'amber' },
+          { label: 'Jumlah Ejen', value: affiliates.length, sub: '', icon: Users, color: 'blue' },
+          {
+            label: 'Jumlah Rujukan',
+            value: totalReferrals,
+            sub: monthFilter ? `${totalNewReferrals} baru dalam ${monthLabel(monthFilter)}` : '',
+            icon: TrendingUp,
+            color: 'emerald',
+          },
+          {
+            label: monthFilter ? `Komisen ${monthLabel(monthFilter)} (RM)` : 'Komisen Sebulan (RM)',
+            value: totalCommission.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+            sub: '',
+            icon: DollarSign,
+            color: 'amber',
+          },
         ].map((item, i) => (
           <div key={i} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
             <div className={`w-10 h-10 rounded-xl bg-${item.color}-50 text-${item.color}-600 flex items-center justify-center mb-4`}>
@@ -12111,6 +14316,7 @@ const AffiliatedManagementView = () => {
             </div>
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{item.label}</p>
             <p className="text-2xl font-bold text-slate-900 tracking-tight font-display">{item.value}</p>
+            {item.sub && <p className="text-[10px] font-bold text-emerald-600 mt-1">{item.sub}</p>}
           </div>
         ))}
       </div>
@@ -12136,23 +14342,35 @@ const AffiliatedManagementView = () => {
               <tr>
                 <th className="px-4 py-4">Nama Ejen</th>
                 <th className="px-4 py-4">Rujukan</th>
-                <th className="px-4 py-4">Komisen (RM)</th>
+                <th className="px-4 py-4">{monthFilter ? `Komisen ${monthLabel(monthFilter)} (RM)` : 'Komisen Sebulan (RM)'}</th>
                 <th className="px-4 py-4">Status</th>
                 <th className="px-4 py-4">Tarikh Sertai</th>
                 <th className="px-4 py-4 text-right">Tindakan</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {affiliates.map((agent) => (
+              {affiliates.map((agent) => {
+                const e = earningOf(agent.id);
+                return (
                 <tr key={agent.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-5">
                     <div>
                       <p className="text-sm font-bold text-slate-900">{agent.name}</p>
                       <p className="text-[10px] text-slate-400 font-medium">{agent.email}</p>
+                      <ReferralLinkBox agentName={agent.name} refCode={agent.ref_code} compact />
                     </div>
                   </td>
-                  <td className="px-4 py-5 text-sm font-bold text-slate-700">{agent.referrals}</td>
-                  <td className="px-4 py-5 text-sm font-mono text-emerald-600 font-bold">{Number(agent.commission).toFixed(2)}</td>
+                  <td className="px-4 py-5">
+                    <p className="text-sm font-bold text-slate-700">{e.totalReferrals}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">{e.payingReferrals} berbayar</p>
+                    {monthFilter && e.newReferrals > 0 && (
+                      <p className="text-[10px] text-emerald-600 font-bold">+{e.newReferrals} baru</p>
+                    )}
+                  </td>
+                  <td className="px-4 py-5">
+                    <p className="text-sm font-mono text-emerald-600 font-bold">{e.monthlyCommission.toFixed(2)}</p>
+                    <p className="text-[10px] text-slate-400 font-medium">10% × RM {e.monthlyRevenue.toFixed(2)}</p>
+                  </td>
                   <td className="px-4 py-5">
                     <div className="flex flex-col gap-1">
                       <span className={`px-2 py-1 rounded-md text-[9px] font-bold uppercase tracking-wider w-fit ${
@@ -12181,17 +14399,56 @@ const AffiliatedManagementView = () => {
                     <button
                       onClick={() => setSelectedAgent(agent)}
                       className="p-2 text-slate-400 hover:text-emerald-600 transition-colors"
+                      title="Lihat butiran"
                     >
                       <Eye size={16} />
                     </button>
+                    <button
+                      onClick={() => openEditAgent(agent)}
+                      className="p-2 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                      title="Edit ejen"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => setConfirmDeleteAgent(agent)}
+                      className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                      title="Padam ejen"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
         )}
       </div>
+
+      {/* Nama rujukan yang tidak sepadan dengan mana-mana ejen */}
+      {!loading && unmatchedRefs.length > 0 && (
+        <div className="mt-6 bg-amber-50 border border-amber-200 rounded-2xl p-5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <h4 className="text-sm font-bold text-amber-900 mb-1">Nama Rujukan Tanpa Ejen Berdaftar</h4>
+              <p className="text-xs text-amber-700 font-medium leading-relaxed mb-3">
+                Pengguna berikut menaip nama rujukan yang tidak sepadan dengan mana-mana ejen dalam senarai.
+                Komisen tidak dikira untuk mereka. Daftarkan ejen dengan <span className="font-bold">nama yang sama persis</span> untuk mula mengira.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {unmatchedRefs.map(r => (
+                  <span key={r.label} className="px-2.5 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">
+                    {r.label} <span className="text-amber-500 font-medium">· {r.count} pengguna</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AnimatePresence>
         {showAddModal && (
@@ -12203,21 +14460,27 @@ const AffiliatedManagementView = () => {
                 <button onClick={() => setShowAddModal(false)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all"><X size={18} /></button>
               </div>
               <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-3">
+                  <p className="text-[11px] text-emerald-800 font-medium leading-relaxed">
+                    <span className="font-bold">Penting:</span> Nama penuh ejen mesti sama persis dengan nama rujukan yang pengguna taip semasa mendaftar.
+                    Jumlah rujukan dan komisen akan dikira automatik — tidak perlu isi manual.
+                  </p>
+                </div>
                 {[
-                  { label: 'Nama Penuh', key: 'name', type: 'text' },
-                  { label: 'Emel', key: 'email', type: 'email' },
-                  { label: 'No. Telefon', key: 'phone', type: 'text' },
-                  { label: 'Bank', key: 'bank', type: 'text' },
-                  { label: 'No. Akaun Bank', key: 'account_no', type: 'text' },
-                  { label: 'Jumlah Rujukan', key: 'referrals', type: 'number' },
-                  { label: 'Komisen (RM)', key: 'commission', type: 'number' },
-                ].map(({ label, key, type }) => (
+                  { label: 'Nama Penuh (nama rujukan)', key: 'name', type: 'text', required: true },
+                  { label: 'Emel', key: 'email', type: 'email', required: true },
+                  { label: 'No. Telefon', key: 'phone', type: 'text', required: false },
+                  { label: 'Bank', key: 'bank', type: 'text', required: false },
+                  { label: 'No. Akaun Bank', key: 'account_no', type: 'text', required: false },
+                ].map(({ label, key, type, required }) => (
                   <div key={key}>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{label}</label>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      {label} {required && <span className="text-rose-500">*</span>}
+                    </label>
                     <input
                       type={type}
                       value={(addForm as any)[key]}
-                      onChange={e => setAddForm(prev => ({ ...prev, [key]: type === 'number' ? Number(e.target.value) : e.target.value }))}
+                      onChange={e => setAddForm(prev => ({ ...prev, [key]: e.target.value }))}
                       className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                     />
                   </div>
@@ -12233,8 +14496,14 @@ const AffiliatedManagementView = () => {
                   <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tarikh Sertai</label>
                   <input type="date" value={addForm.joined_date} onChange={e => setAddForm(prev => ({ ...prev, joined_date: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500" />
                 </div>
+                {addError && (
+                  <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <AlertCircle size={15} className="text-rose-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-700 font-medium leading-relaxed">{addError}</p>
+                  </div>
+                )}
                 <div className="flex gap-3 pt-2">
-                  <button onClick={() => setShowAddModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Batal</button>
+                  <button onClick={() => { setShowAddModal(false); setAddError(''); }} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all">Batal</button>
                   <button onClick={handleAddAffiliate} disabled={addLoading} className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60">
                     {addLoading ? 'Menyimpan...' : 'Simpan Ejen'}
                   </button>
@@ -12259,7 +14528,7 @@ const AffiliatedManagementView = () => {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+              className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
             >
               <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
                 <div className="flex items-center gap-4">
@@ -12279,7 +14548,7 @@ const AffiliatedManagementView = () => {
                 </button>
               </div>
               
-              <div className="p-8 space-y-8">
+              <div className="p-8 space-y-8 max-h-[75vh] overflow-y-auto">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Nama Penuh</p>
@@ -12303,6 +14572,19 @@ const AffiliatedManagementView = () => {
                   </div>
                 </div>
 
+                <div className="bg-slate-900 rounded-2xl p-6 space-y-3">
+                  <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Link2 size={14} className="text-emerald-400" />
+                    Link Rujukan Peribadi
+                  </h4>
+                  <p className="text-[11px] text-slate-400 font-medium leading-relaxed">
+                    Kongsikan link ini kepada ejen. Sesiapa yang mendaftar melaluinya akan
+                    dikira automatik sebagai rujukan <span className="font-bold text-slate-200">{selectedAgent.name}</span> —
+                    tiada lagi salah taip nama.
+                  </p>
+                  <ReferralLinkBox agentName={selectedAgent.name} refCode={selectedAgent.ref_code} variant="dark" />
+                </div>
+
                 <div className="bg-slate-50 rounded-2xl p-6 border border-slate-100 space-y-4">
                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
                     <CreditCard size={14} className="text-emerald-500" />
@@ -12323,15 +14605,109 @@ const AffiliatedManagementView = () => {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
                     <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Jumlah Rujukan</p>
-                    <p className="text-xl font-bold text-emerald-900">{selectedAgent.referrals} Pengguna</p>
+                    <p className="text-xl font-bold text-emerald-900">{earningOf(selectedAgent.id).totalReferrals} Pengguna</p>
+                    <p className="text-[10px] text-emerald-600 font-medium mt-0.5">{earningOf(selectedAgent.id).payingReferrals} berbayar & aktif</p>
                   </div>
                   <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Komisen Terkumpul</p>
-                    <p className="text-xl font-bold text-blue-900">RM {Number(selectedAgent.commission).toFixed(2)}</p>
+                    <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">
+                      {monthFilter ? `Komisen ${monthLabel(monthFilter)}` : 'Komisen Sebulan'}
+                    </p>
+                    <p className="text-xl font-bold text-blue-900">RM {earningOf(selectedAgent.id).monthlyCommission.toFixed(2)}</p>
+                    <p className="text-[10px] text-blue-600 font-medium mt-0.5">10% × RM {earningOf(selectedAgent.id).monthlyRevenue.toFixed(2)} sebulan</p>
                   </div>
                 </div>
 
+                {/* Senarai pengguna yang merujuk ejen ini */}
+                <div>
+                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 mb-3">
+                    <Users size={14} className="text-emerald-500" />
+                    Pengguna Yang Dirujuk ({earningOf(selectedAgent.id).totalReferrals})
+                  </h4>
+                  {earningOf(selectedAgent.id).totalReferrals === 0 ? (
+                    <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 text-center">
+                      <p className="text-xs text-slate-400 font-medium">
+                        Tiada pengguna menaip "{selectedAgent.name}" sebagai nama rujukan lagi.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="border border-slate-100 rounded-2xl max-h-64 overflow-y-auto overflow-x-auto">
+                      <table className="w-full text-left min-w-[620px]">
+                        <thead className="bg-slate-50 text-[9px] font-bold text-slate-500 uppercase tracking-wider sticky top-0">
+                          <tr>
+                            <th className="px-3 py-2.5">Pengguna</th>
+                            <th className="px-3 py-2.5">Pakej</th>
+                            <th className="px-3 py-2.5">Status</th>
+                            <th className="px-3 py-2.5 whitespace-nowrap">Buka Akaun</th>
+                            <th className="px-3 py-2.5 whitespace-nowrap">Mula Langgan</th>
+                            <th className="px-3 py-2.5 text-right">Komisen</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {earningOf(selectedAgent.id).referrals.map(u => {
+                            const price = PLAN_PRICES[u.plan || 'free'] || 0;
+                            const isActive = (u.status || 'active') === 'active';
+                            // Ikut bulan yang ditapis: layak komisen jika tersenarai dalam payingUsers
+                            const layak = earningOf(selectedAgent.id).payingUsers.some(p => p.id === u.id);
+                            const komisen = layak ? price * AFFILIATE_COMMISSION_RATE : 0;
+                            return (
+                              <tr key={u.id} className="hover:bg-slate-50/60">
+                                <td className="px-3 py-2.5">
+                                  <p className="text-xs font-bold text-slate-900">{u.name || '-'}</p>
+                                  <p className="text-[10px] text-slate-400 font-medium">{u.email}</p>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${price > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {u.plan || 'Free'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5">
+                                  <span className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                    {isActive ? 'Aktif' : 'Batal'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 whitespace-nowrap">
+                                  <span className="text-[11px] font-medium text-slate-500">
+                                    {u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-2.5 whitespace-nowrap">
+                                  {u.plan_start ? (
+                                    <span className="text-[11px] font-medium text-slate-700">
+                                      {new Date(u.plan_start).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                    </span>
+                                  ) : (
+                                    <span className="text-[11px] font-medium text-slate-300">{price > 0 ? 'Tiada rekod' : '—'}</span>
+                                  )}
+                                </td>
+                                <td className="px-3 py-2.5 text-right">
+                                  <span className={`text-xs font-mono font-bold ${komisen > 0 ? 'text-emerald-600' : 'text-slate-300'}`}>
+                                    {komisen > 0 ? `RM ${komisen.toFixed(2)}` : '—'}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex gap-3 pt-4">
+                  <button
+                    onClick={() => { openEditAgent(selectedAgent); setSelectedAgent(null); }}
+                    title="Edit ejen"
+                    className="px-5 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteAgent(selectedAgent)}
+                    title="Padam ejen"
+                    className="px-5 py-4 bg-rose-50 text-rose-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-100 transition-all"
+                  >
+                    <Trash2 size={16} />
+                  </button>
                   <button
                     onClick={() => setSelectedAgent(null)}
                     className="flex-1 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
@@ -12350,6 +14726,187 @@ const AffiliatedManagementView = () => {
                     }`}
                   >
                     {selectedAgent.is_paid ? 'Tanda Belum Bayar' : 'Tanda Sudah Bayar'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal edit ejen */}
+      <AnimatePresence>
+        {editingAgent && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => !editLoading && setEditingAgent(null)}
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold tracking-tight font-display">Edit Ejen Affiliated</h3>
+                  <p className="text-xs text-slate-400 font-medium truncate">{editingAgent.name}</p>
+                </div>
+                <button onClick={() => setEditingAgent(null)} className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center hover:bg-white/20 transition-all shrink-0">
+                  <X size={18} />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+                {[
+                  { label: 'Nama Penuh (nama rujukan)', key: 'name', type: 'text', required: true },
+                  { label: 'Emel', key: 'email', type: 'email', required: true },
+                  { label: 'No. Telefon', key: 'phone', type: 'text', required: false },
+                  { label: 'Bank', key: 'bank', type: 'text', required: false },
+                  { label: 'No. Akaun Bank', key: 'account_no', type: 'text', required: false },
+                ].map(({ label, key, type, required }) => (
+                  <div key={key}>
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                      {label} {required && <span className="text-rose-500">*</span>}
+                    </label>
+                    <input
+                      type={type}
+                      value={(editForm as any)[key]}
+                      onChange={e => setEditForm(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+                ))}
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status</label>
+                  <select
+                    value={editForm.status}
+                    onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  >
+                    <option>Aktif</option>
+                    <option>Tidak Aktif</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Tarikh Sertai</label>
+                  <input
+                    type="date"
+                    value={editForm.joined_date}
+                    onChange={e => setEditForm(prev => ({ ...prev, joined_date: e.target.value }))}
+                    className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Nama bertukar & ada rujukan sedia ada — tawarkan kemas kini serentak */}
+                {normalizeReferralName(editingAgent.name) !== normalizeReferralName(editForm.name)
+                  && editForm.name.trim() !== ''
+                  && earningOf(editingAgent.id).totalReferrals > 0 && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                        Ejen ini ada <span className="font-bold">{earningOf(editingAgent.id).totalReferrals} rujukan</span> yang masih terikat pada nama lama
+                        <span className="font-bold"> "{editingAgent.name}"</span>. Jika tidak dikemas kini, komisen akan berhenti dikira.
+                      </p>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer pl-6">
+                      <input
+                        type="checkbox"
+                        checked={syncReferrals}
+                        onChange={e => setSyncReferrals(e.target.checked)}
+                        className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
+                      />
+                      <span className="text-xs font-bold text-amber-900">Kemas kini rujukan pengguna kepada nama baru</span>
+                    </label>
+                  </div>
+                )}
+
+                {editError && (
+                  <div className="flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <AlertCircle size={15} className="text-rose-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-700 font-medium leading-relaxed">{editError}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setEditingAgent(null)}
+                    disabled={editLoading}
+                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-200 transition-all disabled:opacity-60"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleUpdateAffiliate}
+                    disabled={editLoading}
+                    className="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60"
+                  >
+                    {editLoading ? 'Menyimpan...' : 'Simpan Perubahan'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Pengesahan padam ejen */}
+      <AnimatePresence>
+        {confirmDeleteAgent && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              onClick={() => !deleteLoading && setConfirmDeleteAgent(null)}
+              className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden"
+            >
+              <div className="p-6">
+                <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center mb-4">
+                  <Trash2 size={22} className="text-rose-500" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display mb-1">Padam Ejen?</h3>
+                <p className="text-sm text-slate-500 font-medium leading-relaxed">
+                  Ejen <span className="font-bold text-slate-900">{confirmDeleteAgent.name}</span> akan dipadam terus dari sistem. Tindakan ini tidak boleh dibatalkan.
+                </p>
+
+                {earningOf(confirmDeleteAgent.id).totalReferrals > 0 && (
+                  <div className="mt-4 flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+                    <AlertTriangle size={15} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 font-medium leading-relaxed">
+                      Ejen ini mempunyai <span className="font-bold">{earningOf(confirmDeleteAgent.id).totalReferrals} rujukan</span> bernilai
+                      <span className="font-bold"> RM {earningOf(confirmDeleteAgent.id).monthlyCommission.toFixed(2)}</span> sebulan.
+                      Akaun pengguna mereka <span className="font-bold">tidak akan dipadam</span>, tetapi nama rujukan itu akan jadi tiada padanan dan komisen berhenti dikira.
+                    </p>
+                  </div>
+                )}
+
+                {deleteError && (
+                  <div className="mt-4 flex items-start gap-2 p-3 bg-rose-50 border border-rose-200 rounded-xl">
+                    <AlertCircle size={15} className="text-rose-500 shrink-0 mt-0.5" />
+                    <p className="text-xs text-rose-700 font-medium leading-relaxed">{deleteError}</p>
+                  </div>
+                )}
+
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setConfirmDeleteAgent(null)}
+                    disabled={deleteLoading}
+                    className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-slate-200 transition-all disabled:opacity-60"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    onClick={handleDeleteAffiliate}
+                    disabled={deleteLoading}
+                    className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-rose-700 transition-all shadow-lg shadow-rose-100 disabled:opacity-60"
+                  >
+                    {deleteLoading ? 'Memadam...' : 'Ya, Padam'}
                   </button>
                 </div>
               </div>
@@ -12895,6 +15452,7 @@ const DuplicateWarningModal = ({ data, existing, onCancel, onConfirm }: { data: 
 
 const PROTECTED_VIEWS: AppView[] = [
   'dashboard', 'sales', 'scan', 'records', 'reports', 'ledger',
+  'opening-balance',
   'reconcile', 'ai-analysis', 'profile', 'user-management', 'categories',
   'plans', 'token-usage', 'faq', 'terms', 'choose-plan', 'welcome',
 ];
@@ -12905,9 +15463,15 @@ export default function App() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isAffiliateAuthenticated, setIsAffiliateAuthenticated] = useState(false);
   const [currentAffiliate, setCurrentAffiliate] = useState<any | null>(null);
+  // Kod rujukan daripada link affiliate (?ref=...). Disimpan supaya kekal walaupun
+  // pengguna melayari halaman lain sebelum menyiapkan pendaftaran.
+  const [referralCode, setReferralCode] = useState<string | null>(null);
   const [records, setRecords] = useState<TransactionRecord[]>([]);
   const [sales, setSales] = useState<any[]>([]);
   const [categoryMappings, setCategoryMappings] = useState<Record<string, 'SALES' | 'COGS' | 'EXPENSE' | 'OTHER_INCOME' | 'TAXATION' | 'ASSET_LIABILITY'>>({});
+  const [openingBalances, setOpeningBalances] = useState<OpeningBalance[]>([]);
+  const [stockTakes, setStockTakes] = useState<StockTake[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
 
@@ -12915,6 +15479,26 @@ export default function App() {
 
   useEffect(() => {
     const pathname = window.location.pathname;
+
+    // ── Link affiliate: /?ref=kod ─────────────────────────────────────────────
+    // Kod disimpan dalam sessionStorage supaya ia bertahan sepanjang sesi
+    // pelayar (contoh: pengguna lihat halaman utama dahulu sebelum mendaftar),
+    // kemudian dibuang daripada URL supaya alamat kekal kemas.
+    const searchParams = new URLSearchParams(window.location.search);
+    const refFromUrl = (searchParams.get(REFERRAL_QUERY_KEY) || '').trim();
+    let capturedRef: string | null = null;
+
+    if (refFromUrl) {
+      capturedRef = refFromUrl;
+      try { sessionStorage.setItem('monitacc_ref_code', refFromUrl); } catch { /* mod peribadi */ }
+      searchParams.delete(REFERRAL_QUERY_KEY);
+      const sisa = searchParams.toString();
+      window.history.replaceState({}, '', pathname + (sisa ? `?${sisa}` : ''));
+    } else {
+      try { capturedRef = sessionStorage.getItem('monitacc_ref_code'); } catch { capturedRef = null; }
+    }
+    if (capturedRef) setReferralCode(capturedRef);
+
     const isAdminLoginPath = window.location.hash === '#admin' || pathname === '/admin/login' || pathname === '/admin';
     if (isAdminLoginPath) {
       window.history.replaceState({}, '', '/admin/login');
@@ -12957,6 +15541,9 @@ export default function App() {
         } else if (pathname === '/admin/dashboard') {
           window.history.replaceState({}, '', '/admin/login');
           setView('admin-auth');
+        } else if (refFromUrl) {
+          // Pelawat baru datang melalui link affiliate — terus ke borang pendaftaran
+          setView('auth');
         }
       } catch (err) {
         console.error('Session restore error:', err);
@@ -13078,6 +15665,43 @@ export default function App() {
     setTimeout(() => setToast({ show: false, message: '', type: 'success' }), 3000);
   };
 
+  // Baki awal, stock take & kaedah bayaran diambil berasingan daripada dashboard
+  // kerana ia jarang berubah dan tidak perlu dimuat semula setiap kali paparan
+  // bertukar.
+  const fetchAccountingSetup = useCallback(async () => {
+    if (!user) return;
+    try {
+      const [balances, takes, methods] = await Promise.all([
+        apiGetOpeningBalances(String(user.id)),
+        apiGetStockTakes(String(user.id)),
+        apiGetPaymentMethods(String(user.id)),
+      ]);
+      setOpeningBalances(balances);
+      setStockTakes(takes);
+      setPaymentMethods(methods);
+    } catch (err) {
+      console.error('Error fetching opening balances / stock takes / payment methods:', err);
+    }
+  }, [user]);
+
+  // Kaedah bayaran dikongsi ke seluruh aplikasi melalui context — borang rekod,
+  // borang jualan, Baki Awal dan Kunci Kira-Kira semuanya membacanya dari sini.
+  const paymentMethodsValue = useMemo<PaymentMethodsContextValue>(() => ({
+    methods: paymentMethods,
+    options: allPaymentMethods(paymentMethods),
+    addMethod: async (label: string) => {
+      if (!user) throw new Error('Sila log masuk dahulu');
+      const created = await apiAddPaymentMethod(String(user.id), label);
+      setPaymentMethods(prev => [...prev, created]);
+      return created;
+    },
+    deleteMethod: async (id: number) => {
+      if (!user) return;
+      await apiDeletePaymentMethod(String(user.id), id);
+      setPaymentMethods(prev => prev.filter(m => m.id !== id));
+    },
+  }), [paymentMethods, user]);
+
   useEffect(() => {
     if (user) {
       fetchData();
@@ -13087,6 +15711,10 @@ export default function App() {
       setTriggerAddSale(0);
     }
   }, [user, view]);
+
+  useEffect(() => {
+    if (user) fetchAccountingSetup();
+  }, [user, fetchAccountingSetup]);
 
   const fetchData = async (retries = 3, delay = 1000) => {
     if (!user) {
@@ -13138,6 +15766,8 @@ export default function App() {
     setSales([]);
     setStats(null);
     setSalesStats(null);
+    setOpeningBalances([]);
+    setStockTakes([]);
     setView('landing');
   };
 
@@ -13145,6 +15775,11 @@ export default function App() {
     setUser(userData);
     const planToProcess = pendingPlan;
     setPendingPlan(null);
+
+    // Kod rujukan sudah digunakan — buang supaya pendaftaran seterusnya pada
+    // pelayar yang sama tidak tersalah dikira kepada ejen yang sama.
+    setReferralCode(null);
+    try { sessionStorage.removeItem('monitacc_ref_code'); } catch { /* mod peribadi */ }
 
     if (planToProcess && planToProcess !== 'Percuma') {
       try {
@@ -13435,6 +16070,7 @@ export default function App() {
   }
 
   return (
+    <PaymentMethodsContext.Provider value={paymentMethodsValue}>
     <div className="min-h-screen bg-slate-50">
       {connectionError && (
         <div className="fixed top-0 left-0 right-0 z-[9999] bg-rose-600 text-white p-3 flex items-center justify-between shadow-lg">
@@ -13481,7 +16117,7 @@ export default function App() {
             transition={{ duration: 0.2 }}
           >
             {view === 'landing' && <LandingPage onStart={(plan) => { if (plan) setPendingPlan(plan); setView('auth'); }} onAffiliateLogin={() => setView('affiliate-auth')} />}
-            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} initialPlan={pendingPlan} onBack={() => setView('landing')} />}
+            {view === 'auth' && <AuthView onAuthSuccess={handleAuthSuccess} initialPlan={pendingPlan} refCode={referralCode} onBack={() => setView('landing')} />}
             {view === 'choose-plan' && <ChoosePlanView user={user} onComplete={() => setView('welcome')} />}
             {view === 'welcome' && <WelcomeView user={user} onComplete={() => setView('dashboard')} />}
             {view === 'dashboard' && <Dashboard stats={stats} records={records} sales={sales} user={user} setView={setView} salesStats={salesStats} onAddSale={() => { setTriggerAddSale(prev => prev + 1); setView('sales'); }} onScan={() => setView('scan')} onFileSelect={(file) => {
@@ -13542,12 +16178,23 @@ export default function App() {
                 user={user} 
                 categoryMappings={categoryMappings}
                 setCategoryMappings={setCategoryMappings}
-                onCategoryClick={(cat, month, year) => { 
-                  setSelectedLedgerCategory(cat); 
+                openingBalances={openingBalances}
+                stockTakes={stockTakes}
+                onCategoryClick={(cat, month, year) => {
+                  setSelectedLedgerCategory(cat);
                   setSelectedLedgerMonth(month);
                   setSelectedLedgerYear(year);
-                  setView('ledger'); 
-                }} 
+                  setView('ledger');
+                }}
+              />
+            )}
+            {view === 'opening-balance' && (
+              <OpeningBalanceView
+                user={user}
+                openingBalances={openingBalances}
+                stockTakes={stockTakes}
+                onSaved={fetchAccountingSetup}
+                showToast={showToast}
               />
             )}
             {view === 'ledger' && (
@@ -13877,9 +16524,12 @@ export default function App() {
                   {(() => {
                     const planKey = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
                     const receiptLimit = PLAN_SCAN_LIMITS[planKey] ?? 5;
-                    const pdfLimit = PLAN_PDF_LIMITS[planKey] ?? 1;
-                    const receiptRemaining = Math.max(0, receiptLimit - fabUsage.receipt);
-                    const pdfRemaining = Math.max(0, pdfLimit - fabUsage.pdf);
+                    // Starter & Growth: satu kuota dikongsi antara imbasan resit & PDF resit
+                    const sharesScanPool = usesSharedScanPool(planKey);
+                    const pdfLimit = sharesScanPool ? receiptLimit : (PLAN_PDF_LIMITS[planKey] ?? 1);
+                    const scanUsed = sharesScanPool ? fabUsage.receipt + fabUsage.pdf : fabUsage.receipt;
+                    const receiptRemaining = Math.max(0, receiptLimit - scanUsed);
+                    const pdfRemaining = Math.max(0, pdfLimit - (sharesScanPool ? scanUsed : fabUsage.pdf));
 
                     const dailyCounts = getTodayEntryCounts();
                     const incomeRemaining = isFreePlan ? Math.max(0, FREE_DAILY_LIMIT_PER_TYPE - dailyCounts.income) : Infinity;
@@ -13950,7 +16600,9 @@ export default function App() {
                           <div className="text-right">
                             <span className="text-xs font-semibold text-slate-700 block">Muat Naik</span>
                             <span className="text-[9px] text-slate-400 font-medium">
-                              {isFinite(pdfLimit) ? `PDF: ${pdfRemaining}/${pdfLimit}` : 'Unlimited'} | Resit: {isFinite(receiptLimit) ? `${receiptRemaining}/${receiptLimit}` : 'Unlimited'}
+                              {sharesScanPool
+                                ? (isFinite(receiptLimit) ? `Baki: ${receiptRemaining}/${receiptLimit} (resit + PDF)` : 'Unlimited')
+                                : <>{isFinite(pdfLimit) ? `PDF: ${pdfRemaining}/${pdfLimit}` : 'Unlimited'} | Resit: {isFinite(receiptLimit) ? `${receiptRemaining}/${receiptLimit}` : 'Unlimited'}</>}
                             </span>
                           </div>
                           <div className="w-9 h-9 bg-sky-500 text-white rounded-xl flex items-center justify-center shadow-sm">
@@ -13977,5 +16629,6 @@ export default function App() {
         </div>
       )}
     </div>
+    </PaymentMethodsContext.Provider>
   );
 }
