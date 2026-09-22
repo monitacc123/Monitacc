@@ -12,17 +12,18 @@ const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
 
 // Models for analysis tasks (quality priority)
 const ANALYSIS_MODELS = [
+  { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
+  { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
   { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
-  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
-  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
 ];
 
 // Models for scan/OCR tasks (speed priority)
 const SCAN_MODELS = [
+  { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
+  { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
   { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
-  { model: "gemini-2.0-flash", url: `${KIE_BASE}/gemini-2.0-flash/v1/chat/completions` },
-  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
 ];
+
 
 function getConfig() {
   if (!KIE_API_KEY) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
