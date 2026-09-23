@@ -47,31 +47,50 @@ const KIE_BASE = "https://api.kie.ai";
 const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
 
 /*
-  Senarai model. Hanya siri gemini-3 disenaraikan kerana ia sahaja yang
-  berfungsi di kie.ai.
+  Senarai model kie.ai. Dikemas kini 23 September 2026 selepas KEDUA-DUA
+  model lama mati pada hari yang sama:
+    - gemini-3-flash -> 422 "The channel is not supported". Ia masih
+      berfungsi jam 10:38 pagi (4.7s), sudah mati menjelang 4 petang, dan
+      hilang terus dari katalog kie.ai.
+    - gemini-3-pro   -> 500 "internal error" selepas menunggu 47 saat.
 
-  Siri gemini-2.5 dibuang sepenuhnya pada 23 September 2026 selepas diuji
-  semula terhadap API live:
-    - gemini-2.5-pro   -> 500 "server is currently being maintained" (4.1s)
-    - gemini-2.5-flash -> 422 "The channel is not supported" (1.5s)
-  Kod 422 bermakna kie.ai sudah menanggalkan model itu, jadi ia takkan
-  pulih. Sebelum ini kedua-duanya dikekalkan sebagai sandaran terakhir
-  atas andaian ia "gagal dalam 0.4s jadi tidak melambatkan apa-apa" —
-  andaian itu salah: ukuran sebenar 1.5-4.1s, dan sandaran yang tidak
-  pernah berjaya hanya menambah masa menunggu pengguna sebelum ralat.
-  gemini-2.0-flash telah ditanggalkan lebih awal atas sebab yang sama.
+  PENTING: akhiran "-openai" bukan hiasan. Nama biasa (gemini-3-6-flash)
+  balas 422 "The model is not supported"; hanya varian "-openai" membuka
+  laluan serasi-OpenAI yang digunakan oleh kod ini.
+
+  Dipilih selepas menguji KESEMUA 31 model jenis "Chat" dalam katalog rasmi
+  kie.ai (GET /api/v1/models — 205 model, guna ini untuk cari ganti pada
+  masa hadapan, jangan meneka nama). Lima sahaja yang hidup. Ukuran:
+
+    imbasan (imej + prompt sebenar, 3 cubaan):
+      gemini-3-7-flash-openai  6.8s  3/3
+      gemini-3-6-flash-openai  9.0s  3/3
+
+    analisis (max_tokens 32000 + json_object, 3 cubaan):
+      gemini-3-6-flash-openai  7.5s  3/3
+      gemini-3-7-flash-openai  29.5s 1/3   <- goyah pada panggilan berat
+
+  gemini-3-6 didahulukan pada KEDUA-DUA senarai: ia satu-satunya yang kekal
+  stabil pada panggilan berat, dan 3-7 hanya menang 2 saat pada imbasan
+  ringan. Harga kedua-duanya sama (45 kredit/1J token input, 225/1J output).
+
+  Tidak dipilih:
+    - gemini-3-5-flash-openai : dua kali ganda harga (90/540), gagal 1/3
+    - gemini-3-8-flash-openai : balas KOSONG pada ujian baca imej (34.9s)
+    - gpt-5-2                 : boleh baca imej tetapi 14.3s dan lebih mahal
+    - semua Claude/Grok/GPT lain : 422, tiada pada akaun ini
 */
 
 // Models for analysis tasks (quality priority)
 const ANALYSIS_MODELS = [
-  { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
-  { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
+  { model: "gemini-3-6-flash-openai", url: `${KIE_BASE}/gemini-3-6-flash-openai/v1/chat/completions` },
+  { model: "gemini-3-7-flash-openai", url: `${KIE_BASE}/gemini-3-7-flash-openai/v1/chat/completions` },
 ];
 
 // Models for scan/OCR tasks (speed priority)
 const SCAN_MODELS = [
-  { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
-  { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
+  { model: "gemini-3-6-flash-openai", url: `${KIE_BASE}/gemini-3-6-flash-openai/v1/chat/completions` },
+  { model: "gemini-3-7-flash-openai", url: `${KIE_BASE}/gemini-3-7-flash-openai/v1/chat/completions` },
 ];
 
 function getConfig() {
