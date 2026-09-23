@@ -3,6 +3,42 @@ import { extractTextFromPdf } from "./pdfExtractor";
 import { apiLogAiUsage, apiGetUserTokenUsage } from "./api";
 import { detectStatementPeriod, applyStatementYear } from "./statementPeriod";
 
+/*
+  Bahasa jawapan AI. Pengguna memilih bahasa dalam antara muka, dan pilihan itu
+  dihantar ke sini supaya analisis AI keluar dalam bahasa yang sama — bukan
+  sentiasa Bahasa Melayu.
+*/
+export type AiLang = "ms" | "en" | "zh";
+
+const AI_LANG_INSTRUCTION: Record<AiLang, string> = {
+  ms: "Sila berikan jawapan dalam Bahasa Melayu.",
+  en: "Please answer in English.",
+  zh: "请用简体中文回答。",
+};
+
+// Mesej sandaran bila kuota habis — perlu diterjemah juga kerana ia
+// dipaparkan terus kepada pengguna tanpa melalui AI.
+const AI_QUOTA_MESSAGES: Record<AiLang, { outTitle: string; outDesc: string; busyTitle: string; busyDesc: string }> = {
+  ms: {
+    outTitle: "Had Token Habis",
+    outDesc: "Kuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up.",
+    busyTitle: "Had Quota Dicapai",
+    busyDesc: "Analisis AI sedang berehat sebentar. Sila cuba lagi dalam beberapa minit.",
+  },
+  en: {
+    outTitle: "Token Limit Reached",
+    outDesc: "Your AI quota is used up. Please upgrade your plan or contact the admin for a top up.",
+    busyTitle: "Rate Limit Reached",
+    busyDesc: "AI analysis is resting for a moment. Please try again in a few minutes.",
+  },
+  zh: {
+    outTitle: "Token 额度已用完",
+    outDesc: "您的 AI 额度已用完。请升级配套或联系管理员充值。",
+    busyTitle: "已达使用上限",
+    busyDesc: "AI 分析暂时休息中，请几分钟后再试。",
+  },
+};
+
 const insightsCache = new Map<string, { data: DashboardInsight[], timestamp: number }>();
 const analysisCache = new Map<string, { data: string, timestamp: number }>();
 const CACHE_DURATION = 1000 * 60 * 15;
@@ -10,20 +46,33 @@ const CACHE_DURATION = 1000 * 60 * 15;
 const KIE_BASE = "https://api.kie.ai";
 const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
 
+/*
+  Senarai model. Hanya siri gemini-3 disenaraikan kerana ia sahaja yang
+  berfungsi di kie.ai.
+
+  Siri gemini-2.5 dibuang sepenuhnya pada 23 September 2026 selepas diuji
+  semula terhadap API live:
+    - gemini-2.5-pro   -> 500 "server is currently being maintained" (4.1s)
+    - gemini-2.5-flash -> 422 "The channel is not supported" (1.5s)
+  Kod 422 bermakna kie.ai sudah menanggalkan model itu, jadi ia takkan
+  pulih. Sebelum ini kedua-duanya dikekalkan sebagai sandaran terakhir
+  atas andaian ia "gagal dalam 0.4s jadi tidak melambatkan apa-apa" —
+  andaian itu salah: ukuran sebenar 1.5-4.1s, dan sandaran yang tidak
+  pernah berjaya hanya menambah masa menunggu pengguna sebelum ralat.
+  gemini-2.0-flash telah ditanggalkan lebih awal atas sebab yang sama.
+*/
+
 // Models for analysis tasks (quality priority)
 const ANALYSIS_MODELS = [
   { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
   { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
-  { model: "gemini-2.5-pro",   url: `${KIE_BASE}/gemini-2.5-pro/v1/chat/completions` },
 ];
 
 // Models for scan/OCR tasks (speed priority)
 const SCAN_MODELS = [
   { model: "gemini-3-flash",   url: `${KIE_BASE}/gemini-3-flash/v1/chat/completions` },
   { model: "gemini-3-pro",     url: `${KIE_BASE}/gemini-3-pro/v1/chat/completions` },
-  { model: "gemini-2.5-flash", url: `${KIE_BASE}/gemini-2.5-flash/v1/chat/completions` },
 ];
-
 
 function getConfig() {
   if (!KIE_API_KEY) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
@@ -40,6 +89,10 @@ async function trySingleModel(
   messages: { role: string; content: any }[],
   jsonMode: boolean,
   maxTokens: number = 8192,
+  // Model terakhir dalam rantaian diberi timeout penuh kerana tiada lagi
+  // sandaran selepasnya. Model sebelumnya diberi timeout lebih pendek supaya
+  // kegagalan cepat berpindah, bukan menahan pengguna 90 saat setiap satu.
+  isLastModel: boolean = true,
 ): Promise<ChatResult> {
   const { apiKey } = getConfig();
   const hasImage = messages.some(m =>
@@ -57,7 +110,13 @@ async function trySingleModel(
   }
 
   const controller = new AbortController();
-  const timeoutMs = hasImage ? 90000 : 60000;
+  /*
+    45s dipilih (bukan 35s) kerana ukuran terhadap kie.ai pada 23 Sep 2026
+    merekodkan panggilan imej yang BERJAYA selewat 35.2s. Memotong lebih awal
+    akan membunuh imbasan yang sebenarnya akan menjadi.
+  */
+  const timeoutPenuh = hasImage ? 90000 : 60000;
+  const timeoutMs = isLastModel ? timeoutPenuh : (hasImage ? 45000 : 30000);
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   let res: Response;
@@ -95,6 +154,30 @@ async function trySingleModel(
   return { content, tokensUsed };
 }
 
+// Berapa kali model yang SAMA dicuba semula bila kie.ai balas ralat pelayan.
+// 1 sahaja: kalau dua-dua kali gagal, model itu memang bermasalah ketika itu
+// dan lebih baik berpindah daripada terus menahan pengguna.
+const TRANSIENT_RETRIES = 1;
+const TRANSIENT_DELAY_MS = 800;
+
+/*
+  Kenal pasti ralat pelayan sementara yang berbaloi dicuba semula.
+
+  kie.ai melaporkan 5xx dalam DUA bentuk berbeza:
+    - status HTTP sebenar      -> "API error 500: ..."
+    - HTTP 200 tetapi kod dalam badan JSON -> "Model error 500: ..."
+  Kedua-duanya dijadikan mesej Error oleh trySingleModel di atas.
+
+  Timeout SENGAJA tidak dianggap sementara: mencuba semula panggilan yang
+  sudah menunggu 45-90 saat hanya menggandakan masa menunggu pengguna.
+*/
+function isTransientServerError(err: any): boolean {
+  const msg = String(err?.message || "");
+  if (!msg.startsWith("API error ") && !msg.startsWith("Model error ")) return false;
+  const kod = parseInt(msg.split("error ")[1], 10);
+  return kod >= 500 && kod < 600;
+}
+
 async function chatCompletion(
   messages: { role: string; content: any }[],
   jsonMode = false,
@@ -102,13 +185,32 @@ async function chatCompletion(
   maxTokens = 8192,
 ): Promise<ChatResult> {
   let lastError: any;
-  for (const modelEntry of models) {
-    try {
-      const result = await trySingleModel(modelEntry, messages, jsonMode, maxTokens);
-      if (result.content) return result;
-    } catch (err: any) {
-      console.warn(`Model ${modelEntry.model} failed:`, err?.message);
-      lastError = err;
+  for (let i = 0; i < models.length; i++) {
+    const modelEntry = models[i];
+    const isLastModel = i === models.length - 1;
+
+    // Cuba model yang sama sekali lagi bila kie.ai balas ralat pelayan.
+    // Ukuran 23 Sep 2026: daripada 4 panggilan berturut-turut, 2 balas 500
+    // dalam masa 8.6s dan 33.5s, sementara panggilan lain berjaya dalam 11.9s.
+    // Ralat 500 mereka bersifat sementara, jadi mencuba semula model yang
+    // sama lebih cepat DAN lebih berkemungkinan berjaya daripada terus
+    // melompat ke model seterusnya.
+    for (let cuba = 0; cuba <= TRANSIENT_RETRIES; cuba++) {
+      try {
+        const result = await trySingleModel(modelEntry, messages, jsonMode, maxTokens, isLastModel);
+        if (result.content) return result;
+        break; // balasan kosong: model ini tidak membantu, terus ke model lain
+      } catch (err: any) {
+        lastError = err;
+        const bolehCubaLagi = cuba < TRANSIENT_RETRIES && isTransientServerError(err);
+        console.warn(
+          `Model ${modelEntry.model} failed (cubaan ${cuba + 1}):`,
+          err?.message,
+          bolehCubaLagi ? "— cuba semula" : "",
+        );
+        if (!bolehCubaLagi) break;
+        await new Promise(resolve => setTimeout(resolve, TRANSIENT_DELAY_MS));
+      }
     }
   }
   throw lastError || new Error("Semua model AI tidak tersedia.");
@@ -1159,10 +1261,12 @@ ${pdfText.slice(0, 15000)}`;
   }
 }
 
-export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string, plan?: string): Promise<string> {
+export async function analyzeFinancials(records: any[], sales: any[], isConcise: boolean = false, userId?: string, plan?: string, lang: AiLang = "ms"): Promise<string> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
-  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${isConcise}`;
+  // Bahasa MESTI ada dalam kunci cache — kalau tidak, tukar bahasa akan
+  // memulangkan jawapan lama dalam bahasa sebelumnya.
+  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${isConcise}-${lang}`;
 
   const cached = analysisCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -1177,7 +1281,7 @@ export async function analyzeFinancials(records: any[], sales: any[], isConcise:
 ${isConcise
   ? "Berikan ringkasan yang sangat padat dan ringkas (bullet points sahaja) tentang prestasi dan 1 cadangan utama."
   : "Berikan ringkasan prestasi perniagaan, kenal pasti trend, dan berikan 3 cadangan tindakan yang boleh diambil."}
-Sila berikan jawapan dalam Bahasa Melayu. Format maklum balas dalam Markdown.
+${AI_LANG_INSTRUCTION[lang]} Format maklum balas dalam Markdown.
 
 Data Transaksi:
 ${JSON.stringify(records.map(r => ({ type: r.type, category: r.category, amount: r.amount, date: r.date, description: r.description })))}
@@ -1211,12 +1315,15 @@ export interface DashboardInsight {
   type: "improvement" | "attention" | "positive";
   title: string;
   description: string;
+  // Ditanda true bila insight ini ialah mesej kuota, bukan analisis sebenar.
+  // Guna bendera ini — JANGAN bandingkan tajuk, kerana tajuk berubah ikut bahasa.
+  quota?: boolean;
 }
 
-export async function getDashboardInsights(records: any[], sales: any[], userId?: string, plan?: string): Promise<DashboardInsight[]> {
+export async function getDashboardInsights(records: any[], sales: any[], userId?: string, plan?: string, lang: AiLang = "ms"): Promise<DashboardInsight[]> {
   const latestRecordDate = records.length > 0 ? records[0].date : "";
   const latestSaleDate = sales.length > 0 ? sales[0].date : "";
-  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}`;
+  const cacheKey = `${records.length}-${sales.length}-${latestRecordDate}-${latestSaleDate}-${lang}`;
 
   const cached = insightsCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
@@ -1229,7 +1336,7 @@ export async function getDashboardInsights(records: any[], sales: any[], userId?
     }
     const prompt = `Analisa data kewangan berikut dan berikan 3-4 cadangan ringkas (insights) untuk papan pemuka (dashboard).
 Setiap cadangan mesti mempunyai jenis: 'improvement', 'attention', atau 'positive'.
-Berikan jawapan dalam Bahasa Melayu.
+${AI_LANG_INSTRUCTION[lang]}
 
 Data Transaksi:
 ${JSON.stringify(records.slice(0, 20).map(r => ({ type: r.type, category: r.category, amount: r.amount, date: r.date })))}
@@ -1253,19 +1360,12 @@ Return a JSON array. Each item must have: type (improvement/attention/positive),
     return Array.isArray(result) ? result : [];
   } catch (error: any) {
     console.error("Error getting dashboard insights:", error);
+    const msg = AI_QUOTA_MESSAGES[lang] || AI_QUOTA_MESSAGES.ms;
     if (error?.message?.startsWith("KUOTA_HABIS:")) {
-      return [{
-        type: "attention",
-        title: "Had Token Habis",
-        description: "Kuota AI anda telah habis. Sila naik taraf pelan atau hubungi admin untuk top up.",
-      }];
+      return [{ type: "attention", title: msg.outTitle, description: msg.outDesc, quota: true }];
     }
     if (error?.message?.includes("429")) {
-      return [{
-        type: "attention",
-        title: "Had Quota Dicapai",
-        description: "Analisis AI sedang berehat sebentar. Sila cuba lagi dalam beberapa minit.",
-      }];
+      return [{ type: "attention", title: msg.busyTitle, description: msg.busyDesc, quota: true }];
     }
     return [];
   }
