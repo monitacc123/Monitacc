@@ -15887,10 +15887,19 @@ export default function App() {
           ...recordData,
           category: recordData.category.trim().toUpperCase(),
         };
-        // Strip oversized image_url to prevent payload failures
-        if (saveData.image_url && saveData.image_url.length > 500000) {
-          saveData.image_url = '';
+              // Muat naik lampiran ke storage dan simpan URL sahaja (base64 besar akan terbuang)
+        if (saveData.image_url && saveData.image_url.startsWith('data:')) {
+          try {
+            saveData.image_url = await apiUploadReceiptFile(String(user?.id), saveData.image_url, saveData.image_url.startsWith('data:application/pdf') ? 'pdf' : 'receipt');
+          } catch (err) {
+            console.error('Error uploading attachment:', err);
+            if (saveData.image_url.length > 500000) {
+              saveData.image_url = '';
+              showToast('Lampiran gagal dimuat naik. Rekod disimpan tanpa lampiran.', 'error');
+            }
+          }
         }
+
         await apiSaveRecord(String(user?.id), saveData);
         justSaved.push(recordData);
       } catch (err) {
