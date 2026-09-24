@@ -79,19 +79,51 @@ const KIE_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
     - gemini-3-8-flash-openai : balas KOSONG pada ujian baca imej (34.9s)
     - gpt-5-2                 : boleh baca imej tetapi 14.3s dan lebih mahal
     - semua Claude/Grok/GPT lain : 422, tiada pada akaun ini
+
+  KEMAS KINI 24 September 2026: gemini-3-6, 3-7 dan 3-8 kini LAMBAT-GAGAL —
+  setiap panggilan menunggu 33-41s (sekali tergantung 100s) sebelum balas
+  500. Dengan cubaan semula, imbasan tersangkut ~2.5 minit lalu gagal juga.
+  Ukuran semula pada hari yang sama (resit sebenar, 2-3 cubaan):
+
+    imbasan:  gemini-3-5-flash-openai  5.0-24s  semua berjaya, bacaan tepat
+              gpt-5-2                  14-18s   semua berjaya, bacaan tepat
+    analisis: gpt-5-2                  8.2-8.7s 2/2
+              gemini-3-5-flash-openai  8.1-31s  2/2
+
+  Harga 3-5 dan gpt-5-2 lebih tinggi, tetapi kos seimbasan masih pecahan
+  kredit. 3-6/3-7 dikekalkan di hujung sebagai sandaran kalau pulih.
 */
+
+const kieModel = (model: string) => ({ model, url: `${KIE_BASE}/${model}/v1/chat/completions` });
 
 // Models for analysis tasks (quality priority)
 const ANALYSIS_MODELS = [
-  { model: "gemini-3-6-flash-openai", url: `${KIE_BASE}/gemini-3-6-flash-openai/v1/chat/completions` },
-  { model: "gemini-3-7-flash-openai", url: `${KIE_BASE}/gemini-3-7-flash-openai/v1/chat/completions` },
+  kieModel("gpt-5-2"),
+  kieModel("gemini-3-5-flash-openai"),
+  kieModel("gemini-3-6-flash-openai"),
+  kieModel("gemini-3-7-flash-openai"),
 ];
 
 // Models for scan/OCR tasks (speed priority)
 const SCAN_MODELS = [
-  { model: "gemini-3-6-flash-openai", url: `${KIE_BASE}/gemini-3-6-flash-openai/v1/chat/completions` },
-  { model: "gemini-3-7-flash-openai", url: `${KIE_BASE}/gemini-3-7-flash-openai/v1/chat/completions` },
+  kieModel("gemini-3-5-flash-openai"),
+  kieModel("gpt-5-2"),
+  kieModel("gemini-3-6-flash-openai"),
+  kieModel("gemini-3-7-flash-openai"),
 ];
+
+/*
+  "Pemutus litar": model yang baru gagal (timeout atau ralat pelayan)
+  dilangkau selama 10 minit dalam sesi pelayar ini. Tanpa ini, SETIAP
+  imbasan akan menunggu model rosak yang sama 30-45s dahulu sebelum
+  berpindah ke model yang sihat.
+*/
+const MODEL_COOLDOWN_MS = 10 * 60 * 1000;
+const modelGagalSehingga = new Map<string, number>();
+
+function modelSedangRehat(model: string): boolean {
+  return (modelGagalSehingga.get(model) || 0) > Date.now();
+}
 
 function getConfig() {
   if (!KIE_API_KEY) throw new Error("GEMINI_API_KEY tidak dikonfigurasi.");
@@ -178,6 +210,8 @@ async function trySingleModel(
 // dan lebih baik berpindah daripada terus menahan pengguna.
 const TRANSIENT_RETRIES = 1;
 const TRANSIENT_DELAY_MS = 800;
+// Cubaan semula hanya untuk ralat yang datang cepat (tersadung sekejap).
+const FAST_FAIL_MS = 10000;
 
 /*
   Kenal pasti ralat pelayan sementara yang berbaloi dicuba semula.
@@ -204,9 +238,13 @@ async function chatCompletion(
   maxTokens = 8192,
 ): Promise<ChatResult> {
   let lastError: any;
-  for (let i = 0; i < models.length; i++) {
-    const modelEntry = models[i];
-    const isLastModel = i === models.length - 1;
+  // Langkau model yang sedang "rehat". Kalau SEMUA sedang rehat, cuba juga
+  // kesemuanya — lebih baik mencuba daripada terus menolak pengguna.
+  const sihat = models.filter(m => !modelSedangRehat(m.model));
+  const giliran = sihat.length > 0 ? sihat : models;
+  for (let i = 0; i < giliran.length; i++) {
+    const modelEntry = giliran[i];
+    const isLastModel = i === giliran.length - 1;
 
     // Cuba model yang sama sekali lagi bila kie.ai balas ralat pelayan.
     // Ukuran 23 Sep 2026: daripada 4 panggilan berturut-turut, 2 balas 500
@@ -215,13 +253,24 @@ async function chatCompletion(
     // sama lebih cepat DAN lebih berkemungkinan berjaya daripada terus
     // melompat ke model seterusnya.
     for (let cuba = 0; cuba <= TRANSIENT_RETRIES; cuba++) {
+      const mula = Date.now();
       try {
         const result = await trySingleModel(modelEntry, messages, jsonMode, maxTokens, isLastModel);
-        if (result.content) return result;
+        if (result.content) {
+          modelGagalSehingga.delete(modelEntry.model);
+          return result;
+        }
         break; // balasan kosong: model ini tidak membantu, terus ke model lain
       } catch (err: any) {
         lastError = err;
-        const bolehCubaLagi = cuba < TRANSIENT_RETRIES && isTransientServerError(err);
+        const gagalCepat = Date.now() - mula < FAST_FAIL_MS;
+        // Ralat 500 yang datang selepas 30s+ bermaksud model itu sedang
+        // rosak, bukan tersadung sekejap — mencuba semula cuma menggandakan
+        // masa menunggu. Rehatkan dan terus ke model seterusnya.
+        const bolehCubaLagi = cuba < TRANSIENT_RETRIES && isTransientServerError(err) && gagalCepat;
+        if (!bolehCubaLagi && (isTransientServerError(err) || String(err?.message).startsWith("Timeout"))) {
+          modelGagalSehingga.set(modelEntry.model, Date.now() + MODEL_COOLDOWN_MS);
+        }
         console.warn(
           `Model ${modelEntry.model} failed (cubaan ${cuba + 1}):`,
           err?.message,
