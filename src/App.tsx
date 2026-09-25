@@ -20,9 +20,11 @@ import {
   Line,
   Legend,
 } from 'recharts';
-import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear } from 'date-fns';
+import { format, isSameDay, isSameWeek, isSameMonth, isSameYear, parseISO, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachMonthOfInterval, startOfYear, endOfYear, differenceInCalendarDays } from 'date-fns';
 import { analyzeDocument, extractBankTransactions, analyzeFinancials, getDashboardInsights, type DashboardInsight } from './services/geminiService';
 import { Record as TransactionRecord, Sale, Stats, AppView, User as UserType, OpeningBalance, StockTake } from './types';
+import { useLang } from './i18n/LanguageContext';
+import { LANGUAGES } from './i18n/translations';
 
 function safeParseDate(dateStr: string): Date {
   if (!dateStr) return new Date(0);
@@ -102,7 +104,7 @@ import {
   apiAddPaymentMethod,
   apiDeletePaymentMethod,
 } from './services/api';
-import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST, OPENING_BALANCE_GROUPS } from './constants/categories';
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, COGS_CATEGORIES, ASSET_LIABILITY_CATEGORIES, ALL_CATEGORIES, CHART_OF_ACCOUNTS, BANK_LIST, OPENING_BALANCE_GROUPS, CONTRA_EQUITY_CATEGORIES } from './constants/categories';
 import {
   type PaymentMethod,
   BUILTIN_PAYMENT_METHODS,
@@ -773,9 +775,41 @@ const generatePDFReport = (
 
 // --- Components ---
 
-const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin }: { activeView: AppView, setView: (v: AppView) => void, user: UserType | null, isAdminAuthenticated: boolean, onLogoutAdmin: () => void }) => {
+/*
+  Pemilih bahasa — dipakai bersama oleh sistem pengguna dan sistem admin.
+  Tiga butang kecil supaya muat dalam sidebar dan kad Akaun tanpa dropdown.
+*/
+const LanguageSwitcher = ({ compact = false }: { compact?: boolean }) => {
+  const { lang, setLang, t } = useLang();
+  return (
+    <div>
+      {!compact && (
+        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 px-1">{t('lang.label')}</p>
+      )}
+      <div className="flex items-center gap-1 bg-slate-100 rounded-xl p-1">
+        {LANGUAGES.map(l => (
+          <button
+            key={l.code}
+            onClick={() => setLang(l.code)}
+            title={l.label}
+            className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all ${
+              lang === l.code ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            {l.short}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin, previewAsUser = false, onPreviewUser, onExitPreview }: { activeView: AppView, setView: (v: AppView) => void, user: UserType | null, isAdminAuthenticated: boolean, onLogoutAdmin: () => void, previewAsUser?: boolean, onPreviewUser?: () => void, onExitPreview?: () => void }) => {
+  const { t } = useLang();
   if (['landing', 'auth', 'welcome', 'admin-auth', 'affiliate-auth', 'affiliate-dashboard'].includes(activeView)) return null;
-  const isAdmin = user?.role === 'admin' || isAdminAuthenticated;
+  // Semasa mod pratonton, admin sengaja dilayan sebagai pengguna biasa supaya
+  // menu sisi bertukar ke menu pengguna — itulah maksud "Lihat Versi User".
+  const isAdmin = (user?.role === 'admin' || isAdminAuthenticated) && !previewAsUser;
 
   const [navVisible, setNavVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -795,25 +829,25 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   }, []);
 
   const userNavItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, premium: null },
-    { id: 'sales', label: 'Jualan', icon: ShoppingCart, premium: null },
-    { id: 'records', label: 'Transaksi', icon: FileText, premium: null },
-    { id: 'reports', label: 'Laporan', icon: PieChart, premium: null },
-    { id: 'ledger', label: 'Lejar', icon: BookOpen, premium: null },
-    { id: 'opening-balance', label: 'Baki Awal', icon: Landmark, premium: null },
-    { id: 'reconcile', label: 'Padanan Bank', icon: RefreshCw, premium: 'Ultimate' },
-    { id: 'ai-analysis', label: 'Smart Analisis', icon: Sparkles, premium: 'Starter' },
-    { id: 'profile', label: 'Akaun', icon: User, premium: null },
+    { id: 'dashboard', label: t('nav.dashboard'), icon: LayoutDashboard, premium: null },
+    { id: 'sales', label: t('nav.sales'), icon: ShoppingCart, premium: null },
+    { id: 'records', label: t('nav.records'), icon: FileText, premium: null },
+    { id: 'reports', label: t('nav.reports'), icon: PieChart, premium: null },
+    { id: 'ledger', label: t('nav.ledger'), icon: BookOpen, premium: null },
+    { id: 'opening-balance', label: t('nav.opening_balance'), icon: Landmark, premium: null },
+    { id: 'reconcile', label: t('nav.reconcile'), icon: RefreshCw, premium: 'Ultimate' },
+    { id: 'ai-analysis', label: t('nav.ai_analysis'), icon: Sparkles, premium: 'Starter' },
+    { id: 'profile', label: t('nav.account'), icon: User, premium: null },
   ];
 
   const adminNavItems = [
-    { id: 'admin-dashboard', label: 'Admin Panel', icon: ShieldCheck },
-    { id: 'user-management', label: 'Pengguna', icon: Users },
-    { id: 'subscription-management', label: 'Langganan', icon: Receipt },
-    { id: 'affiliated-management', label: 'Affiliated', icon: Users },
-    { id: 'token-usage', label: 'Token Usage', icon: Zap },
-    { id: 'plans', label: 'Pakej Harga', icon: CreditCard },
-    { id: 'profile', label: 'Akaun', icon: User },
+    { id: 'admin-dashboard', label: t('nav.admin_panel'), icon: ShieldCheck },
+    { id: 'user-management', label: t('nav.users'), icon: Users },
+    { id: 'subscription-management', label: t('nav.subscriptions'), icon: Receipt },
+    { id: 'affiliated-management', label: t('nav.affiliated'), icon: Users },
+    { id: 'token-usage', label: t('nav.token_usage'), icon: Zap },
+    { id: 'plans', label: t('nav.plans'), icon: CreditCard },
+    { id: 'profile', label: t('nav.account'), icon: User },
   ];
 
   const PLAN_ORDER: Record<string, number> = { free: 0, Percuma: 0, Starter: 1, Growth: 2, Ultimate: 3, Special: 4 };
@@ -914,6 +948,8 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
       </div>
 
       <div className="hidden md:block mt-auto w-full px-2 pb-4 space-y-3">
+        <LanguageSwitcher />
+
         {/* User Profile Mini Card */}
         {user && !isAdmin && (
           <button
@@ -950,31 +986,44 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
                 <ShieldCheck size={18} />
               </div>
               <div>
-                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider leading-none">Status</p>
-                <p className="text-xs font-bold text-slate-900 tracking-tight">Pentadbir Sistem</p>
+                <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider leading-none">{t('admin.status')}</p>
+                <p className="text-xs font-bold text-slate-900 tracking-tight">{t('admin.system_admin')}</p>
               </div>
             </div>
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => setView('dashboard')}
+                onClick={() => onPreviewUser?.()}
                 className="w-full py-2 bg-white border border-emerald-200 text-emerald-600 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-sm"
               >
-                Lihat Versi User
+                {t('admin.view_user')}
               </button>
               <button
                 onClick={() => setView('affiliate-auth')}
                 className="w-full py-2 bg-blue-600 text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
               >
-                Login Affiliate
+                {t('admin.login_affiliate')}
               </button>
               <button
                 onClick={onLogoutAdmin}
                 className="w-full py-2 bg-slate-100 text-slate-500 rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-200 transition-all"
               >
-                Logout Admin
+                {t('admin.logout')}
               </button>
             </div>
           </div>
+        ) : previewAsUser ? (
+          <button
+            onClick={() => onExitPreview?.()}
+            className="w-full bg-amber-500 text-white rounded-xl p-4 border border-amber-600 flex items-center gap-3 hover:bg-amber-600 transition-all group shadow-lg shadow-amber-100"
+          >
+            <div className="w-8 h-8 bg-amber-600 rounded-lg flex items-center justify-center text-white group-hover:scale-110 transition-transform">
+              <Eye size={18} />
+            </div>
+            <div className="text-left">
+              <p className="text-[10px] font-bold text-amber-100 uppercase tracking-wider leading-none mb-1">{t('admin.preview_mode')}</p>
+              <p className="text-xs font-bold text-white tracking-tight">{t('admin.back_to_admin')}</p>
+            </div>
+          </button>
         ) : (
           <button
             onClick={() => setView('admin-auth')}
@@ -984,8 +1033,8 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
               <ShieldCheck size={18} />
             </div>
             <div className="text-left">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">Akses Khas</p>
-              <p className="text-xs font-bold text-white tracking-tight">Login Admin</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-1">{t('admin.special_access')}</p>
+              <p className="text-xs font-bold text-white tracking-tight">{t('admin.login')}</p>
             </div>
           </button>
         )}
@@ -994,64 +1043,76 @@ const Navbar = ({ activeView, setView, user, isAdminAuthenticated, onLogoutAdmin
   );
 };
 
+/*
+  Senarai pakej di halaman utama.
+
+  Ciri-ciri dan teks butang disimpan sebagai KUNCI terjemahan, bukan ayat
+  siap — kerana senarai ini berada di luar komponen, jadi ia tidak boleh
+  memanggil t() sendiri. Komponen yang memaparkannya akan terjemah kunci itu.
+
+  'name' kekal teks biasa kerana ia juga nilai yang dihantar ke Stripe dan
+  disimpan dalam pangkalan data — menterjemahnya akan merosakkan padanan pakej.
+*/
 const LANDING_PLANS = [
   {
     name: 'Percuma',
     price: '0',
-    features: [
-      '10 Rekod Transaksi Manual / hari',
-      'Tiada Imbasan Bank Statement',
-      'Monitacc Assistant',
+    featureKeys: [
+      'plan.f_manual_10',
+      'plan.f_no_bank',
+      'plan.f_assistant',
     ],
-    cta: 'Mula Percuma',
+    ctaKey: 'plan.cta_free',
     popular: false,
   },
   {
     name: 'Starter',
     price: '50',
     period: '/bln',
-    features: [
-      '100 Imbasan Transaksi / bulan',
-      'Unlimited Rekod Manual',
-      'Tiada Imbasan Bank Statement',
-      'Monitacc Assistant',
-      '1× Smart Analysis',
+    featureKeys: [
+      'plan.f_scan_100',
+      'plan.f_manual_unlimited',
+      'plan.f_no_bank',
+      'plan.f_assistant',
+      'plan.f_analysis_1',
     ],
-    cta: 'Pilih Starter',
+    ctaKey: 'plan.cta_starter',
     popular: false,
   },
   {
     name: 'Growth',
     price: '100',
     period: '/bln',
-    features: [
-      '250 Imbasan Transaksi / bulan',
-      'Unlimited Rekod Manual',
-      'Tiada Imbasan Bank Statement',
-      'Monitacc Assistant',
-      '4× Smart Analysis',
+    featureKeys: [
+      'plan.f_scan_250',
+      'plan.f_manual_unlimited',
+      'plan.f_no_bank',
+      'plan.f_assistant',
+      'plan.f_analysis_4',
     ],
-    cta: 'Pilih Growth',
+    ctaKey: 'plan.cta_growth',
     popular: false,
   },
   {
     name: 'Ultimate',
     price: '150',
     period: '/bln',
-    features: [
-      'Unlimited Imbasan Transaksi',
-      'Unlimited Rekod Manual',
-      'Unlimited Bank Statement',
-      'Unlimited Smart Analysis',
-      'P&L Report + Balance Sheet',
-      'Reconciliation Features',
+    featureKeys: [
+      'plan.f_scan_unlimited',
+      'plan.f_manual_unlimited',
+      'plan.f_bank_unlimited',
+      'plan.f_analysis_unlimited',
+      'plan.f_pnl_bs',
+      'plan.f_reconcile',
     ],
-    cta: 'Pilih Ultimate',
+    ctaKey: 'plan.cta_ultimate',
     popular: true,
   },
 ];
 
-const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_PLANS[0]; onConfirm: () => void; onClose: () => void }) => (
+const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_PLANS[0]; onConfirm: () => void; onClose: () => void }) => {
+  const { t } = useLang();
+  return (
   <AnimatePresence>
     <motion.div
       initial={{ opacity: 0 }}
@@ -1075,10 +1136,10 @@ const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_P
           {plan.popular && (
             <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full mb-3 shadow-lg shadow-amber-400/40">
               <span className="w-1 h-1 bg-slate-900/50 rounded-full" />
-              Paling Popular
+              {t('plan.most_popular')}
             </span>
           )}
-          <h3 className="text-lg font-bold text-white tracking-tight font-display">Pakej {plan.name}</h3>
+          <h3 className="text-lg font-bold text-white tracking-tight font-display">{t('plan.package')} {plan.name}</h3>
           <div className="flex items-baseline justify-center gap-0.5 mt-2">
             <span className="text-[11px] font-bold text-white/50">RM</span>
             <span className="text-4xl font-extrabold text-white font-display">{plan.price}</span>
@@ -1088,10 +1149,10 @@ const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_P
 
         <div className="px-6 py-5">
           <ul className="space-y-2.5 mb-5">
-            {plan.features.map((f, j) => (
+            {plan.featureKeys.map((key, j) => (
               <li key={j} className="flex items-start gap-2.5 text-[12px] font-medium text-slate-700 leading-snug">
                 <Check size={13} strokeWidth={3} className="text-emerald-500 shrink-0 mt-0.5" />
-                {f}
+                {t(key)}
               </li>
             ))}
           </ul>
@@ -1099,22 +1160,22 @@ const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_P
           <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 mb-5">
             <div className="flex items-center gap-2.5 mb-2">
               <CreditCard size={15} className="text-slate-400" />
-              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">Maklumat Pembayaran</span>
+              <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">{t('plan.payment_info')}</span>
             </div>
             <p className="text-[11px] text-slate-500 leading-relaxed">
-              Anda akan diminta memasukkan butiran kad kredit/debit melalui Stripe selepas mendaftar akaun. Pembayaran diproses dengan selamat.
+              {t('plan.payment_desc')}
             </p>
           </div>
 
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3.5 mb-5">
             <div className="flex items-center gap-2.5 mb-1.5">
               <ShieldCheck size={15} className="text-emerald-600" />
-              <span className="text-[11px] font-bold text-emerald-700">Langkah Seterusnya</span>
+              <span className="text-[11px] font-bold text-emerald-700">{t('plan.next_steps')}</span>
             </div>
             <ol className="text-[11px] text-emerald-700/80 leading-relaxed space-y-1 pl-5 list-decimal">
-              <li>Daftar akaun Monitacc</li>
-              <li>Masukkan butiran kad pembayaran</li>
-              <li>Langganan aktif serta-merta</li>
+              <li>{t('plan.step1')}</li>
+              <li>{t('plan.step2')}</li>
+              <li>{t('plan.step3')}</li>
             </ol>
           </div>
 
@@ -1122,20 +1183,22 @@ const PlanConfirmModal = ({ plan, onConfirm, onClose }: { plan: typeof LANDING_P
             onClick={onConfirm}
             className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm rounded-xl transition-all shadow-lg shadow-emerald-600/20 active:scale-[0.98] flex items-center justify-center gap-2"
           >
-            Langgan Pakej {plan.name}
+            {t('plan.subscribe')} {plan.name}
             <ArrowRight size={15} strokeWidth={2.5} />
           </button>
 
           <p className="text-center text-[10px] text-slate-400 font-medium mt-3">
-            Batalkan bila-bila masa. Tiada komitmen jangka panjang.
+            {t('plan.cancel_anytime')}
           </p>
         </div>
       </motion.div>
     </motion.div>
   </AnimatePresence>
-);
+  );
+};
 
 const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) => void, onAffiliateLogin: () => void }) => {
+  const { t } = useLang();
   const [selectedPlan, setSelectedPlan] = useState<typeof LANDING_PLANS[0] | null>(null);
 
   const handlePlanClick = (plan: typeof LANDING_PLANS[0]) => {
@@ -1176,14 +1239,14 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             onClick={onAffiliateLogin}
             className="hidden sm:flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-700 transition-colors px-3 py-2 rounded-lg hover:bg-slate-50 group"
           >
-            Portal Affiliated
-            <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ml-0.5 group-hover:bg-amber-200 transition-colors">Soon</span>
+            {t('landing.affiliate_portal')}
+            <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ml-0.5 group-hover:bg-amber-200 transition-colors">{t('landing.soon')}</span>
           </button>
           <button
             onClick={() => onStart()}
             className="flex items-center gap-1.5 bg-emerald-600 text-white text-sm font-bold px-4 py-2 rounded-xl hover:bg-emerald-700 transition-all shadow-sm"
           >
-            Log Masuk
+            {t('landing.login')}
           </button>
         </div>
       </div>
@@ -1198,7 +1261,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             transition={{ duration: 0.3 }}
             className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 text-emerald-700 rounded-full text-[10px] font-bold uppercase tracking-wider mb-7 border border-emerald-100"
           >
-            <Zap size={10} fill="currentColor" /> Smart Accounting · Empowered by Wekeyra
+            <Zap size={10} fill="currentColor" /> {t('landing.badge')}
           </motion.div>
 
           <motion.h2
@@ -1207,9 +1270,9 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             transition={{ duration: 0.35, delay: 0.05 }}
             className="text-4xl sm:text-5xl md:text-6xl font-extrabold text-slate-900 tracking-tight mb-5 font-display leading-[1.1]"
           >
-            Urus Akaun Bisnes{' '}
+            {t('landing.hero1')}{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-emerald-400">
-              Semudah Ambil Gambar.
+              {t('landing.hero2')}
             </span>
           </motion.h2>
 
@@ -1219,7 +1282,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             transition={{ duration: 0.35, delay: 0.1 }}
             className="text-base md:text-lg text-slate-500 font-medium max-w-lg mx-auto mb-9 leading-relaxed"
           >
-            Gunakan AI untuk imbas resit, urus jualan, dan jana laporan untung rugi secara automatik.
+            {t('landing.hero_desc')}
           </motion.p>
 
           <motion.div
@@ -1232,15 +1295,15 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
               onClick={() => onStart()}
               className="w-full max-w-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2"
             >
-              Mula Sekarang — Percuma
+              {t('landing.cta_start')}
               <ArrowRight size={16} strokeWidth={2.5} />
             </button>
             <button
               onClick={onAffiliateLogin}
               className="w-full max-w-xs bg-white hover:bg-slate-50 text-slate-600 font-bold text-sm px-8 py-3.5 rounded-2xl transition-all border border-slate-200 sm:hidden flex items-center justify-center gap-2"
             >
-              Portal Affiliated
-              <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full">Soon</span>
+              {t('landing.affiliate_portal')}
+              <span className="bg-amber-100 text-amber-600 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full">{t('landing.soon')}</span>
             </button>
           </motion.div>
 
@@ -1251,9 +1314,9 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
             className="flex items-center justify-center gap-6 mt-8"
           >
             {[
-              { label: 'Pengguna Aktif', value: '2,000+' },
-              { label: 'Transaksi Diimbas', value: '50k+' },
-              { label: 'Negeri di Malaysia', value: '14' },
+              { label: t('landing.stat_users'), value: '2,000+' },
+              { label: t('landing.stat_scanned'), value: '50k+' },
+              { label: t('landing.stat_states'), value: '14' },
             ].map((stat, i) => (
               <div key={i} className="text-center">
                 <p className="text-base font-extrabold text-slate-900 font-display">{stat.value}</p>
@@ -1280,15 +1343,15 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
               <span className="w-1 h-1 bg-emerald-400 rounded-full" />
               Kenapa Monitacc?
             </span>
-            <h3 className="text-3xl md:text-4xl font-black text-white tracking-tight font-display mb-3">Direka untuk usahawan<br className="hidden sm:block" /> Malaysia yang serius.</h3>
-            <p className="text-slate-500 text-sm font-medium max-w-sm mx-auto">Bukan sekadar akaun. Ia sistem kewangan pintar untuk bisnes anda.</p>
+            <h3 className="text-3xl md:text-4xl font-black text-white tracking-tight font-display mb-3">{t('landing.features_title')}<br className="hidden sm:block" /> {t('landing.features_title2')}</h3>
+            <p className="text-slate-500 text-sm font-medium max-w-sm mx-auto">{t('landing.features_desc')}</p>
           </motion.div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             {[
               {
-                title: 'Imbasan AI',
-                desc: 'Snap resit, AI terus ekstrak data secara automatik. Jimat masa berjam-jam.',
+                title: t('landing.f1_title'),
+                desc: t('landing.f1_desc'),
                 icon: Camera,
                 num: '01',
                 accent: 'from-emerald-400/20 to-emerald-600/5',
@@ -1297,8 +1360,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                 border: 'border-emerald-500/15',
               },
               {
-                title: 'Laporan P&L',
-                desc: 'Penyata untung rugi dikemaskini secara langsung. PDF sedia muat turun.',
+                title: t('landing.f2_title'),
+                desc: t('landing.f2_desc'),
                 icon: PieChart,
                 num: '02',
                 accent: 'from-teal-400/20 to-teal-600/5',
@@ -1307,8 +1370,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                 border: 'border-teal-500/15',
               },
               {
-                title: 'Akses Mobile',
-                desc: 'Guna di mana-mana. Responsif untuk telefon, tablet, dan komputer.',
+                title: t('landing.f3_title'),
+                desc: t('landing.f3_desc'),
                 icon: LayoutDashboard,
                 num: '03',
                 accent: 'from-cyan-400/20 to-cyan-600/5',
@@ -1345,15 +1408,15 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
       <section className="px-5 py-14 bg-white">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Apa Kata Pengguna</h3>
-            <p className="text-slate-500 text-sm font-medium">Ribuan usahawan Malaysia telah beralih ke Monitacc.</p>
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">{t('landing.testi_title')}</h3>
+            <p className="text-slate-500 text-sm font-medium">{t('landing.testi_desc')}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {[
-              { name: 'Siti Aminah', role: 'Owner Kedai Makan', comment: 'Dulu kena simpan resit dalam kotak, sekarang ambil gambar saja! Senang gila.' },
-              { name: 'Khairul Ali', role: 'Freelancer Digital', comment: 'Laporan P&L yang dijana sangat membantu faham aliran tunai bisnes. Rekomended!' },
-              { name: 'Sarah Tan', role: 'Butik Pakaian', comment: 'User-friendly dan AI dia memang power. Jimat masa banyak untuk manage akaun.' },
-            ].map((t, i) => (
+              { name: 'Siti Aminah', role: t('landing.testi1_role'), comment: t('landing.testi1_text') },
+              { name: 'Khairul Ali', role: t('landing.testi2_role'), comment: t('landing.testi2_text') },
+              { name: 'Sarah Tan', role: t('landing.testi3_role'), comment: t('landing.testi3_text') },
+            ].map((testi, i) => (
               <motion.div
                 key={i}
                 initial={{ opacity: 0, scale: 0.97 }}
@@ -1365,14 +1428,14 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                 <div className="flex gap-0.5 text-amber-400 mb-4">
                   {[...Array(5)].map((_, j) => <Sparkles key={j} size={13} fill="currentColor" />)}
                 </div>
-                <p className="text-slate-700 text-sm leading-relaxed mb-5">"{t.comment}"</p>
+                <p className="text-slate-700 text-sm leading-relaxed mb-5">"{testi.comment}"</p>
                 <div className="flex items-center gap-3">
                   <div className="w-9 h-9 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 font-bold text-sm shrink-0">
-                    {t.name.charAt(0)}
+                    {testi.name.charAt(0)}
                   </div>
                   <div>
-                    <p className="text-sm font-bold text-slate-900">{t.name}</p>
-                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">{t.role}</p>
+                    <p className="text-sm font-bold text-slate-900">{testi.name}</p>
+                    <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider">{testi.role}</p>
                   </div>
                 </div>
               </motion.div>
@@ -1384,8 +1447,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
       <section className="px-5 py-14 bg-slate-50">
         <div className="max-w-5xl mx-auto">
           <div className="text-center mb-10">
-            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">Pilih Pakej Anda</h3>
-            <p className="text-slate-500 text-sm font-medium">Mula percuma. Upgrade bila bisnes berkembang.</p>
+            <h3 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight font-display mb-2">{t('landing.plans_title')}</h3>
+            <p className="text-slate-500 text-sm font-medium">{t('landing.plans_desc')}</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4">
             {LANDING_PLANS.map((p, i) => {
@@ -1423,10 +1486,10 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                   </div>
                   <div className="px-5 pt-3 pb-5 flex-1 flex flex-col">
                     <ul className="space-y-2.5 mb-5 flex-1">
-                      {p.features.map((f, j) => (
+                      {p.featureKeys.map((key, j) => (
                         <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${lt.feature}`}>
                           <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 ${lt.check}`} />
-                          {f}
+                          {t(key)}
                         </li>
                       ))}
                     </ul>
@@ -1434,7 +1497,7 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
                       onClick={() => handlePlanClick(p)}
                       className={`w-full py-2.5 rounded-xl font-bold text-xs transition-all active:scale-95 ${lt.btn}`}
                     >
-                      {p.cta}
+                      {t(p.ctaKey)}
                     </button>
                   </div>
                 </motion.div>
@@ -1449,8 +1512,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
           <div className="w-14 h-14 bg-emerald-500/20 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
             <Zap size={26} className="text-emerald-400" strokeWidth={2} />
           </div>
-          <h3 className="text-2xl md:text-3xl font-bold font-display mb-3">Mula Guna Monitacc Hari Ini</h3>
-          <p className="text-slate-400 text-sm mb-8 leading-relaxed">Daftar percuma. Tiada kredit kad diperlukan. Mula urus akaun bisnes dengan lebih mudah.</p>
+          <h3 className="text-2xl md:text-3xl font-bold font-display mb-3">{t('landing.cta_title')}</h3>
+          <p className="text-slate-400 text-sm mb-8 leading-relaxed">{t('landing.cta_desc')}</p>
           <button
             onClick={() => onStart()}
             className="w-full max-w-xs mx-auto bg-emerald-500 hover:bg-emerald-400 text-white font-bold text-sm px-8 py-3.5 rounded-2xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
@@ -1475,8 +1538,8 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
           onClick={onAffiliateLogin}
           className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-300 uppercase tracking-wider transition-colors group"
         >
-          Portal Affiliated
-          <span className="bg-amber-400/20 text-amber-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full group-hover:bg-amber-400/30 transition-colors">Soon</span>
+          {t('landing.affiliate_portal')}
+          <span className="bg-amber-400/20 text-amber-400 text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full group-hover:bg-amber-400/30 transition-colors">{t('landing.soon')}</span>
         </button>
       </div>
     </footer>
@@ -1484,14 +1547,17 @@ const LandingPage = ({ onStart, onAffiliateLogin }: { onStart: (plan?: string) =
   );
 };
 
+// descKey ialah kunci terjemahan — senarai ini di luar komponen, jadi ia tidak
+// boleh memanggil t() sendiri (lihat nota pada LANDING_PLANS).
 const AUTH_PLANS = [
-  { name: 'Percuma', price: '0', period: null, desc: '10 Rekod Manual / hari' },
-  { name: 'Starter', price: '50', period: '/bln', desc: '100 Imbasan / bln' },
-  { name: 'Growth', price: '100', period: '/bln', desc: '250 Imbasan / bln' },
-  { name: 'Ultimate', price: '150', period: '/bln', desc: 'Unlimited Imbasan' },
+  { name: 'Percuma', price: '0', period: null, descKey: 'plan.d_manual_10' },
+  { name: 'Starter', price: '50', period: '/bln', descKey: 'plan.d_scan_100' },
+  { name: 'Growth', price: '100', period: '/bln', descKey: 'plan.d_scan_250' },
+  { name: 'Ultimate', price: '150', period: '/bln', descKey: 'plan.d_scan_unlimited' },
 ];
 
 const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSuccess: (user: UserType, isNewUser: boolean) => void; initialPlan?: string | null; refCode?: string | null; onBack?: () => void }) => {
+  const { t } = useLang();
   const [isLogin, setIsLogin] = useState(!initialPlan && !refCode);
   const [name, setName] = useState('');
   const [companyName, setCompanyName] = useState('');
@@ -1582,7 +1648,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
         onAuthSuccess(userData, true);
       }
     } catch (err: any) {
-      setError(err?.message || 'Something went wrong');
+      setError(err?.message || t('auth.generic_error'));
     } finally {
       setLoading(false);
     }
@@ -1610,8 +1676,8 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
           <div className="w-12 h-12 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-xl flex items-center justify-center text-white mx-auto mb-4 shadow-lg shadow-emerald-100">
             <CreditCard size={24} />
           </div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">{isLogin ? 'Log Masuk' : 'Daftar Akaun'}</h2>
-          <p className="text-slate-500 text-sm mt-1">Sistem Perakaunan Pintar Monitacc</p>
+          <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">{isLogin ? t('auth.login') : t('auth.register')}</h2>
+          <p className="text-slate-500 text-sm mt-1">{t('auth.tagline')}</p>
         </div>
 
         {!isLogin && lockedAgent && (
@@ -1627,40 +1693,40 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
           {!isLogin && (
             <>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Penuh</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.full_name')}</label>
                 <input 
                   type="text" 
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Contoh: Ahmad bin Ali"
+                  placeholder={t('auth.ph_name')}
                   required
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Syarikat</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.company_name')}</label>
                 <input 
                   type="text" 
                   value={companyName}
                   onChange={(e) => setCompanyName(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Contoh: Kedai Kopi Ahmad"
+                  placeholder={t('auth.ph_company')}
                   required
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Telefon</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.phone')}</label>
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                  placeholder="Contoh: 0123456789"
+                  placeholder={t('auth.ph_phone')}
                   required
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Rujukan <span className="text-red-500">*</span></label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.referral')} <span className="text-red-500">*</span></label>
 
                 {lockedAgent ? (
                   <>
@@ -1669,7 +1735,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                         <Check size={16} strokeWidth={3} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Dirujuk Oleh</p>
+                        <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">{t('auth.referred_by')}</p>
                         <p className="text-sm font-bold text-emerald-900 truncate">{lockedAgent.name}</p>
                       </div>
                       <Lock size={14} className="text-emerald-400 shrink-0" />
@@ -1685,7 +1751,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                 ) : !refLookupDone ? (
                   <div className="flex items-center gap-2 px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-400">
                     <Loader2 size={14} className="animate-spin" />
-                    <span className="text-xs font-medium">Menyemak link rujukan…</span>
+                    <span className="text-xs font-medium">{t('auth.checking_ref')}</span>
                   </div>
                 ) : refMode === 'list' && agentNames.length > 0 ? (
                   <>
@@ -1703,14 +1769,14 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                       required
                     >
                       <option value="">— Sila pilih —</option>
-                      <option value="Tiada Rujukan">Tiada Rujukan</option>
+                      <option value="Tiada Rujukan">{t('auth.no_referral')}</option>
                       {agentNames.map(a => (
                         <option key={a.id} value={a.name}>{a.name}</option>
                       ))}
-                      <option value="__manual__">Nama tiada dalam senarai…</option>
+                      <option value="__manual__">{t('auth.name_not_listed')}</option>
                     </select>
                     <p className="text-[11px] text-slate-400 font-medium ml-1">
-                      Pilih nama individu yang memperkenalkan anda. Pilih <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika anda datang sendiri.
+                      Pilih nama individu yang memperkenalkan anda. Pilih <span className="font-semibold text-slate-500">{t('auth.no_referral')}</span> jika anda datang sendiri.
                     </p>
                   </>
                 ) : (
@@ -1720,7 +1786,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                       value={referredBy}
                       onChange={(e) => setReferredBy(e.target.value)}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                      placeholder="Nama Individu yang perkenalkan"
+                      placeholder={t('auth.ph_referral')}
                       required
                     />
                     {agentNames.length > 0 && (
@@ -1733,13 +1799,13 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                       </button>
                     )}
                     {!referredBy.trim() && (
-                      <p className="text-[11px] text-slate-400 font-medium ml-1">Tiada Rujukan — sila masukkan nama individu yang memperkenalkan anda, atau taip <span className="font-semibold text-slate-500">Tiada Rujukan</span> jika tiada.</p>
+                      <p className="text-[11px] text-slate-400 font-medium ml-1">{t('auth.no_ref_hint')} <span className="font-semibold text-slate-500">{t('auth.no_referral')}</span>.</p>
                     )}
                   </>
                 )}
               </div>
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Pilih Pakej</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.pick_plan')}</label>
                 <div className="grid grid-cols-2 gap-2">
                   {AUTH_PLANS.map((plan) => {
                     const isSelected = selectedPlan === plan.name;
@@ -1757,7 +1823,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                         }`}
                       >
                         {plan.name === 'Ultimate' && (
-                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full whitespace-nowrap">Popular</span>
+                          <span className="absolute -top-2 left-1/2 -translate-x-1/2 bg-emerald-500 text-white text-[8px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full whitespace-nowrap">{t('plan.popular_short')}</span>
                         )}
                         <div className={`text-xs font-bold mb-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white' : isSelected ? 'text-emerald-700' : 'text-slate-700'}`}>{plan.name}</div>
                         <div className={`flex items-baseline gap-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white' : isSelected ? 'text-emerald-600' : 'text-slate-500'}`}>
@@ -1765,29 +1831,29 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                           <span className="text-base font-extrabold">{plan.price}</span>
                           {plan.period && <span className="text-[9px] font-medium">{plan.period}</span>}
                         </div>
-                        <div className={`text-[9px] font-medium mt-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white/70' : 'text-slate-400'}`}>{plan.desc}</div>
+                        <div className={`text-[9px] font-medium mt-0.5 ${isSelected && plan.name === 'Ultimate' ? 'text-white/70' : 'text-slate-400'}`}>{t(plan.descKey)}</div>
                       </button>
                     );
                   })}
                 </div>
                 {selectedPlan !== 'Percuma' && (
-                  <p className="text-[10px] text-slate-400 font-medium text-center pt-0.5">Anda akan diarahkan ke halaman pembayaran selepas mendaftar.</p>
+                  <p className="text-[10px] text-slate-400 font-medium text-center pt-0.5">{t('auth.redirect_notice')}</p>
                 )}
               </div>
             </>
           )}
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Emel</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.email')}</label>
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-              placeholder="nama@syarikat.com"
+              placeholder={t('auth.ph_email')}
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kata Laluan</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.password')}</label>
             <div className="relative">
               <input
                 type={showLoginPass ? 'text' : 'password'}
@@ -1826,13 +1892,13 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
           <button type="submit" disabled={loading} className="btn-primary w-full py-3.5 text-sm">
             {loading
               ? selectedPlan !== 'Percuma' && !isLogin
-                ? 'Mendaftar akaun...'
-                : 'Sila Tunggu...'
+                ? t('auth.registering')
+                : t('auth.please_wait')
               : isLogin
               ? 'Log Masuk'
               : selectedPlan !== 'Percuma'
               ? `Daftar & Bayar Pakej ${selectedPlan}`
-              : 'Daftar Percuma'}
+              : t('auth.register_free')}
           </button>
         </form>
 
@@ -1847,7 +1913,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
                 className="inline-block"
                 style={{ animation: 'fadeSlideUp 0.35s ease forwards' }}
               >
-                {isLogin ? 'Tiada akaun? Daftar di sini' : 'Sudah ada akaun? Log masuk'}
+                {isLogin ? t('auth.no_account') : t('auth.have_account')}
               </span>
               <span className="inline-block transition-transform duration-300 group-hover:translate-x-0.5">→</span>
             </span>
@@ -1860,6 +1926,7 @@ const AuthView = ({ onAuthSuccess, initialPlan, refCode, onBack }: { onAuthSucce
 };
 
 const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplete: () => void }) => {
+  const { t } = useLang();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -1910,33 +1977,33 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
       name: 'Percuma',
       price: '0',
       period: undefined as string | undefined,
-      features: ['10 Rekod Transaksi Manual / hari', '5 Imbasan Transaksi / bulan', 'Tiada Imbasan Bank Statement', 'Monitacc Assistant'],
+      featureKeys: ['plan.f_manual_10', 'plan.f_scan_5', 'plan.f_no_bank', 'plan.f_assistant'],
       popular: false,
-      cta: 'Mula Percuma',
+      ctaKey: 'plan.cta_free',
     },
     {
       name: 'Starter',
       price: '50',
       period: '/bln',
-      features: ['100 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '3× Bank Statement', 'Monitacc Assistant', '1× Smart Analysis'],
+      featureKeys: ['plan.f_scan_100', 'plan.f_manual_unlimited', 'plan.f_bank_3', 'plan.f_assistant', 'plan.f_analysis_1'],
       popular: false,
-      cta: 'Langgan Starter',
+      ctaKey: 'plan.sub_starter',
     },
     {
       name: 'Growth',
       price: '100',
       period: '/bln',
-      features: ['250 Imbasan Transaksi / bulan', 'Unlimited Rekod Manual', '9× Bank Statement', 'Monitacc Assistant', '4× Smart Analysis'],
+      featureKeys: ['plan.f_scan_250', 'plan.f_manual_unlimited', 'plan.f_bank_9', 'plan.f_assistant', 'plan.f_analysis_4'],
       popular: false,
-      cta: 'Langgan Growth',
+      ctaKey: 'plan.sub_growth',
     },
     {
       name: 'Ultimate',
       price: '150',
       period: '/bln',
-      features: ['Unlimited Imbasan Transaksi', 'Unlimited Rekod Manual', 'Unlimited Bank Statement', 'Unlimited Smart Analysis', 'P&L Report + Balance Sheet', 'Reconciliation Features'],
+      featureKeys: ['plan.f_scan_unlimited', 'plan.f_manual_unlimited', 'plan.f_bank_unlimited', 'plan.f_analysis_unlimited', 'plan.f_pnl_bs', 'plan.f_reconcile'],
       popular: true,
-      cta: 'Langgan Ultimate',
+      ctaKey: 'plan.sub_ultimate',
     },
   ];
 
@@ -2065,7 +2132,7 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 z-10 flex">
                     <span className="inline-flex items-center gap-1.5 bg-amber-400 text-slate-900 text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full shadow-lg shadow-amber-400/40 whitespace-nowrap">
                       <span className="w-1 h-1 bg-slate-900/40 rounded-full" />
-                      Paling Popular
+                      {t('plan.most_popular')}
                     </span>
                   </div>
                 )}
@@ -2079,10 +2146,10 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
                 </div>
                 <div className="px-5 py-4 flex-1 flex flex-col">
                   <ul className="space-y-2.5 mb-5 flex-1">
-                    {plan.features.map((f, j) => (
+                    {plan.featureKeys.map((key, j) => (
                       <li key={j} className={`flex items-start gap-2 text-[11px] font-medium leading-snug ${ct.feature}`}>
                         <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 ${ct.check}`} />
-                        {f}
+                        {t(key)}
                       </li>
                     ))}
                   </ul>
@@ -2092,9 +2159,9 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
                     className={`w-full py-3 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center justify-center gap-2 ${ct.btn}`}
                   >
                     {isLoading ? (
-                      <><Loader2 size={13} className="animate-spin" /> Memproses...</>
+                      <><Loader2 size={13} className="animate-spin" /> {t('common.processing')}</>
                     ) : (
-                      plan.cta
+                      t(plan.ctaKey)
                     )}
                   </button>
                 </div>
@@ -2113,7 +2180,8 @@ const ChoosePlanView = ({ user, onComplete }: { user: UserType | null, onComplet
 };
 
 const WelcomeView = ({ user, onComplete }: { user: UserType | null, onComplete: () => void }) => {
-  const firstName = user?.name?.split(' ')[0] || 'Usahawan';
+  const { t } = useLang();
+  const firstName = user?.name?.split(' ')[0] || t('welcome.entrepreneur');
   const displayName = firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 
   return (
@@ -2146,7 +2214,7 @@ const WelcomeView = ({ user, onComplete }: { user: UserType | null, onComplete: 
           transition={{ delay: 0.2, duration: 0.3 }}
           className="text-5xl md:text-7xl font-bold text-white tracking-tight mb-4 font-display"
         >
-          Selamat Datang, {displayName}!
+          {t('welcome.title')}, {displayName}!
         </motion.h2>
         
         <motion.p 
@@ -2155,7 +2223,7 @@ const WelcomeView = ({ user, onComplete }: { user: UserType | null, onComplete: 
           transition={{ delay: 0.3, duration: 0.3 }}
           className="text-emerald-100 text-lg md:text-xl font-medium max-w-lg mx-auto leading-relaxed"
         >
-          Akaun Monitacc anda telah sedia. <br className="hidden md:block" /> Mari mula urus kewangan bisnes anda.
+          {t('welcome.desc1')} <br className="hidden md:block" /> {t('welcome.desc2')}
         </motion.p>
 
         <motion.div
@@ -2164,7 +2232,7 @@ const WelcomeView = ({ user, onComplete }: { user: UserType | null, onComplete: 
           transition={{ delay: 1 }}
           className="mt-12 text-emerald-200 text-sm font-semibold uppercase tracking-widest animate-pulse"
         >
-          Klik di mana-mana untuk mula
+          {t('welcome.tap')}
         </motion.div>
       </motion.div>
     </div>
@@ -2178,6 +2246,7 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
   isQuotaExceeded: boolean;
   onRefresh: () => void;
 }) => {
+  const { t } = useLang();
   const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
 
   const getIcon = (type: string) => {
@@ -2201,11 +2270,11 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
             <Sparkles size={15} className="text-emerald-400" />
           </div>
           <div>
-            <span className="text-sm font-bold text-white tracking-tight">Smart Analisis</span>
+            <span className="text-sm font-bold text-white tracking-tight">{t('ai.title')}</span>
             <div className="flex items-center gap-1.5 mt-0.5">
               <span className={`flex h-1.5 w-1.5 rounded-full ${isQuotaExceeded ? 'bg-amber-500' : 'bg-emerald-500 animate-pulse'}`} />
               <span className={`text-[9px] uppercase tracking-widest font-bold ${isQuotaExceeded ? 'text-amber-400/70' : 'text-emerald-400/70'}`}>
-                {isQuotaExceeded ? 'Berehat' : 'Langsung'}
+                {isQuotaExceeded ? t('ai.resting') : t('ai.live')}
               </span>
             </div>
           </div>
@@ -2225,7 +2294,7 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
       <div className="divide-y divide-slate-700/40">
         {insights.map((insight, idx) => {
           const isOpen = expandedIdx === idx;
-          const isQuota = insight.title === 'Had Quota Dicapai';
+          const isQuota = insight.quota === true;
           return (
             <button
               key={idx}
@@ -2258,6 +2327,7 @@ const AIInsightsCard = ({ insights, loading, lastUpdated, isQuotaExceeded, onRef
 };
 
 const AIInsights = ({ records, sales, userId, userPlan }: { records: TransactionRecord[], sales: any[], userId?: string, userPlan?: string }) => {
+  const { lang } = useLang();
   const [insights, setInsights] = useState<DashboardInsight[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
@@ -2266,7 +2336,7 @@ const AIInsights = ({ records, sales, userId, userPlan }: { records: Transaction
   const fetchInsights = async () => {
     setLoading(true);
     try {
-      const res = await getDashboardInsights(records, sales, userId, userPlan);
+      const res = await getDashboardInsights(records, sales, userId, userPlan, lang);
       setInsights(res);
       setLastUpdated(new Date().toLocaleTimeString('ms-MY', { hour: '2-digit', minute: '2-digit' }));
     } catch (err) {
@@ -2282,7 +2352,7 @@ const AIInsights = ({ records, sales, userId, userPlan }: { records: Transaction
     }, 5000); // 5 second debounce to save quota
 
     return () => clearTimeout(timer);
-  }, [records.length, sales.length, refreshTrigger]);
+  }, [records.length, sales.length, refreshTrigger, lang]);
 
   if (loading) {
     return (
@@ -2301,7 +2371,7 @@ const AIInsights = ({ records, sales, userId, userPlan }: { records: Transaction
 
   if (insights.length === 0) return null;
 
-  const isQuotaExceeded = insights.some(i => i.title === 'Had Quota Dicapai');
+  const isQuotaExceeded = insights.some(i => i.quota === true);
 
   return (
     <AIInsightsCard
@@ -2314,16 +2384,48 @@ const AIInsights = ({ records, sales, userId, userPlan }: { records: Transaction
   );
 };
 
+/*
+  Julat tahun untuk penapis dashboard. Tahun ditetapkan secara tetap (bukan
+  dikira dari data) supaya pengguna boleh memilih tahun kewangan akan datang
+  sebelum ada sebarang rekod di dalamnya.
+*/
+const DASH_YEAR_MIN = 2018;
+const DASH_YEAR_MAX = 2050;
+const DASH_YEARS: number[] = Array.from(
+  { length: DASH_YEAR_MAX - DASH_YEAR_MIN + 1 },
+  (_, i) => DASH_YEAR_MIN + i,
+);
+
 const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesStats, onAddSale, onScan, onFileSelect }: { stats: Stats | null, records: TransactionRecord[], sales: any[], user: UserType | null, setView: (v: AppView) => void, salesStats: any, onAddSale: () => void, onScan: () => void, onFileSelect: (file: File) => void }) => {
+  const { t } = useLang();
   const [timeFilter, setTimeFilter] = useState<'all' | 'daily' | 'weekly' | 'monthly' | 'yearly'>('all');
   const now = new Date();
+  const currentYear = now.getFullYear();
+  // Dashboard sentiasa terikat pada satu tahun. Lalai ialah tahun semasa.
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear);
+
+  /*
+    "Hari ini" hanya wujud dalam tahun semasa. Jadi bila pengguna memilih tahun
+    lain, tab Harian/Mingguan/Bulanan tidak lagi bermakna — paparan ditukar
+    automatik kepada Tahunan dan tab tersebut dikelabukan.
+  */
+  const yearLocked = selectedYear !== currentYear;
+
+  useEffect(() => {
+    if (yearLocked && timeFilter !== 'yearly') setTimeFilter('yearly');
+  }, [yearLocked, timeFilter]);
+
+  // Tarikh rujukan untuk sempadan tahun pada carta Tahunan.
+  const yearAnchor = new Date(selectedYear, 0, 1);
 
   const filteredRecords = records.filter(r => {
     const date = safeParseDate(r.date);
+    if (date.getFullYear() !== selectedYear) return false;
     if (timeFilter === 'daily') return isSameDay(date, now);
     if (timeFilter === 'weekly') return isSameWeek(date, now);
     if (timeFilter === 'monthly') return isSameMonth(date, now);
-    if (timeFilter === 'yearly') return isSameYear(date, now);
+    // Tahun sudah ditapis di atas, jadi Tahunan bermakna seluruh tahun itu.
+    if (timeFilter === 'yearly') return true;
     return true;
   });
 
@@ -2362,7 +2464,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
     }
 
     if (timeFilter === 'yearly') {
-      const months = eachMonthOfInterval({ start: startOfYear(now), end: endOfYear(now) });
+      const months = eachMonthOfInterval({ start: startOfYear(yearAnchor), end: endOfYear(yearAnchor) });
       return months.map(month => {
         const label = format(month, 'MMM');
         const masuk = nonAssetRecords.filter(r => r.type === 'income' && isSameMonth(safeParseDate(r.date), month)).reduce((s, r) => s + r.amount, 0);
@@ -2375,7 +2477,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
       { name: 'Masuk', masuk: income, keluar: 0 },
       { name: 'Keluar', masuk: 0, keluar: expense },
     ];
-  }, [filteredRecords, timeFilter, dashAssetLiabSet, income, expense, now]);
+  }, [filteredRecords, timeFilter, dashAssetLiabSet, income, expense, now, yearAnchor]);
 
   const chartData = [
     { name: 'Masuk', value: income, fill: '#10b981' },
@@ -2383,11 +2485,11 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
   ];
 
   const filterOptions = [
-    { id: 'all', label: 'Semua' },
-    { id: 'daily', label: 'Harian' },
-    { id: 'weekly', label: 'Mingguan' },
-    { id: 'monthly', label: 'Bulanan' },
-    { id: 'yearly', label: 'Tahunan' },
+    { id: 'all', label: t('period.all') },
+    { id: 'daily', label: t('period.daily') },
+    { id: 'weekly', label: t('period.weekly') },
+    { id: 'monthly', label: t('period.monthly') },
+    { id: 'yearly', label: t('period.yearly') },
   ];
 
   return (
@@ -2400,14 +2502,14 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
         </div>
         <div className="flex items-center justify-between mb-4 relative">
           <div>
-            <p className="text-emerald-200 text-[11px] font-semibold uppercase tracking-widest mb-1">Dashboard</p>
+            <p className="text-emerald-200 text-[11px] font-semibold uppercase tracking-widest mb-1">{t('nav.dashboard')}</p>
             <motion.h2
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3 }}
               className="text-xl font-bold text-white tracking-tight font-display"
             >
-              Selamat Kembali,
+              {t('dash.welcome_back')}
             </motion.h2>
             <p className="text-white font-bold text-lg leading-tight opacity-90">{user?.name?.split(' ')[0] || 'Ali'}</p>
           </div>
@@ -2431,7 +2533,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
         {/* Net Balance highlight */}
         {user?.role !== 'upload_only' && (
           <div className="bg-white/15 backdrop-blur-sm rounded-2xl px-4 py-3 border border-white/20 relative">
-            <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-widest mb-0.5">Baki Bersih</p>
+            <p className="text-emerald-200 text-[10px] font-bold uppercase tracking-widest mb-0.5">{t('dash.net_balance')}</p>
             <p className="text-white text-2xl font-bold tracking-tight font-display">RM {((income - expense) || 0).toLocaleString()}</p>
           </div>
         )}
@@ -2439,20 +2541,39 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
       {/* Mobile filter tabs — below hero */}
       <div className="md:hidden px-4 -mt-3 mb-4 relative z-10">
-        <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-1 flex">
-          {filterOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setTimeFilter(opt.id as any)}
-              className={`flex-1 py-2 rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
-                timeFilter === opt.id
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-400'
-              }`}
+        <div className="bg-white rounded-2xl shadow-lg border border-slate-100 p-1 space-y-1">
+          <div className="flex items-center gap-2 px-2 py-1.5">
+            <Calendar size={13} className="text-slate-400 shrink-0" />
+            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest shrink-0">{t('period.year')}</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1.5 text-[11px] font-bold text-slate-700 outline-none focus:border-emerald-400"
             >
-              {opt.label}
-            </button>
-          ))}
+              {DASH_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="flex">
+            {filterOptions.map((opt) => {
+              const locked = yearLocked && opt.id !== 'yearly';
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setTimeFilter(opt.id as any)}
+                  disabled={locked}
+                  className={`flex-1 py-2 rounded-xl text-[9px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                    timeFilter === opt.id
+                      ? 'bg-emerald-600 text-white shadow-sm'
+                      : locked
+                        ? 'text-slate-200 cursor-not-allowed'
+                        : 'text-slate-400'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 
@@ -2466,10 +2587,10 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               transition={{ duration: 0.3 }}
               className="text-3xl font-bold text-slate-900 tracking-tight mb-0.5 font-display"
             >
-              Selamat Kembali, {(user?.name?.split(' ')[0] || 'Ali')}
+              {t('dash.welcome_back')} {(user?.name?.split(' ')[0] || 'Ali')}
             </motion.h2>
             <p className="text-sm text-slate-500 font-medium tracking-tight">
-              Berikut adalah ringkasan prestasi perniagaan anda.
+              {t('dash.subtitle')}
             </p>
           </div>
           <div className="flex gap-2 items-center">
@@ -2478,11 +2599,11 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-sm"
             >
               <Camera size={16} />
-              Imbas Resit
+              {t('dash.scan_receipt')}
             </button>
             <label className="px-5 py-2.5 bg-white border border-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase tracking-wider cursor-pointer hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm">
               <FileText size={16} />
-              Muat Naik PDF
+              {t('dash.upload_pdf')}
               <input type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => {
                 const file = e.target.files?.[0];
                 if (file) onFileSelect(file);
@@ -2490,20 +2611,41 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
             </label>
           </div>
         </div>
-        <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 w-fit">
-          {filterOptions.map((opt) => (
-            <button
-              key={opt.id}
-              onClick={() => setTimeFilter(opt.id as any)}
-              className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
-                timeFilter === opt.id
-                  ? 'bg-white shadow-sm text-emerald-600'
-                  : 'text-slate-500 hover:text-slate-700'
-              }`}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200 w-fit">
+            {filterOptions.map((opt) => {
+              const locked = yearLocked && opt.id !== 'yearly';
+              return (
+                <button
+                  key={opt.id}
+                  onClick={() => setTimeFilter(opt.id as any)}
+                  disabled={locked}
+                  title={locked ? t('period.year_locked') : undefined}
+                  className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all whitespace-nowrap ${
+                    timeFilter === opt.id
+                      ? 'bg-white shadow-sm text-emerald-600'
+                      : locked
+                        ? 'text-slate-300 cursor-not-allowed'
+                        : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center gap-2 bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5">
+            <Calendar size={14} className="text-slate-400 shrink-0" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('period.year')}</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(Number(e.target.value))}
+              className="bg-transparent text-[11px] font-bold text-slate-700 outline-none cursor-pointer"
             >
-              {opt.label}
-            </button>
-          ))}
+              {DASH_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
         </div>
       </header>
 
@@ -2512,15 +2654,15 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-6 mb-5 md:mb-10">
           {user?.role === 'upload_only' ? (
             <>
-              <StatCard label="Jumlah Resit" value={expense} icon={TrendingDown} color="rose" />
-              <StatCard label="Bil. Resit" value={filteredRecords.length} icon={FileText} color="slate" />
+              <StatCard label={t('stat.total_receipt')} value={expense} icon={TrendingDown} color="rose" />
+              <StatCard label={t('stat.receipt_count')} value={filteredRecords.length} icon={FileText} color="slate" />
             </>
           ) : (
             <>
-              <StatCard label="Duit Masuk" value={income} icon={TrendingUp} color="emerald" />
-              <StatCard label="Duit Keluar" value={expense} icon={TrendingDown} color="rose" />
-              <StatCard label="Baki Tunai" value={income - expense} icon={DollarSign} color="emerald" />
-              <StatCard label="Bil. Rekod" value={filteredRecords.length} icon={FileText} color="slate" />
+              <StatCard label={t('stat.money_in')} value={income} icon={TrendingUp} color="emerald" />
+              <StatCard label={t('stat.money_out')} value={expense} icon={TrendingDown} color="rose" />
+              <StatCard label={t('stat.cash_balance')} value={income - expense} icon={DollarSign} color="emerald" />
+              <StatCard label={t('stat.record_count')} value={filteredRecords.length} icon={FileText} color="slate" />
             </>
           )}
         </div>
@@ -2535,15 +2677,15 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
           {user?.role !== 'upload_only' && (
             <div className="lg:col-span-2 card-premium p-4 md:p-8">
               <div className="flex justify-between items-center mb-3 md:mb-8">
-                <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">Aliran Tunai</h3>
+                <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">{t('dash.cash_flow')}</h3>
                 <div className="flex gap-3">
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                    <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Masuk</span>
+                    <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('dash.money_in')}</span>
                   </div>
                   <div className="flex items-center gap-1.5">
                     <div className="w-2 h-2 rounded-full bg-rose-500" />
-                    <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">Keluar</span>
+                    <span className="text-[9px] md:text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('dash.money_out')}</span>
                   </div>
                 </div>
               </div>
@@ -2557,7 +2699,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                       <Tooltip
                         cursor={{ fill: '#f8fafc' }}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
-                        formatter={timeFilter === 'daily' ? ((val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']) : undefined}
+                        formatter={timeFilter === 'daily' ? ((val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? t('dash.money_in') : t('dash.money_out')]) : undefined}
                       />
                       {timeFilter === 'all' ? (
                         <Bar dataKey="value" radius={[6, 6, 0, 0]} barSize={48}>
@@ -2580,7 +2722,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                       <Tooltip
                         cursor={{ fill: '#f8fafc' }}
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
-                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']}
+                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? t('dash.money_in') : t('dash.money_out')]}
                       />
                       <Bar dataKey="masuk" fill="#10b981" radius={[3, 3, 0, 0]} barSize={6} name="Masuk" />
                       <Bar dataKey="keluar" fill="#f43f5e" radius={[3, 3, 0, 0]} barSize={6} name="Keluar" />
@@ -2592,7 +2734,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                       <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fontWeight: 600, fill: '#94a3b8' }} />
                       <Tooltip
                         contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.08)', padding: '10px 14px', fontSize: '12px' }}
-                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? 'Masuk' : 'Keluar']}
+                        formatter={(val: number, name: string) => [`RM ${val.toLocaleString()}`, name === 'masuk' ? t('dash.money_in') : t('dash.money_out')]}
                       />
                       <Line type="monotone" dataKey="masuk" stroke="#10b981" strokeWidth={2} dot={false} name="Masuk" />
                       <Line type="monotone" dataKey="keluar" stroke="#f43f5e" strokeWidth={2} dot={false} name="Keluar" />
@@ -2605,7 +2747,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
 
           <div className={`${user?.role === 'upload_only' ? 'lg:col-span-3' : ''} card-premium p-4 md:p-8`}>
             <div className="flex items-center justify-between mb-3 md:mb-8">
-              <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">Transaksi Terkini</h3>
+              <h3 className="text-sm md:text-lg font-bold text-slate-900 tracking-tight font-display">{t('dash.recent_tx')}</h3>
               <button
                 onClick={() => setView('records')}
                 className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider md:hidden"
@@ -2632,7 +2774,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
                         {record.type === 'income' ? '+' : '-'}RM {(record.amount || 0).toLocaleString()}
                       </p>
                       <p className={`text-[9px] font-semibold ${record.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
-                        {record.type === 'income' ? 'Masuk' : 'Keluar'}
+                        {record.type === 'income' ? t('dash.money_in') : t('dash.money_out')}
                       </p>
                     </div>
                   </div>
@@ -2641,7 +2783,7 @@ const Dashboard = ({ stats: initialStats, records, sales, user, setView, salesSt
               {filteredRecords.length === 0 && (
                 <div className="text-center py-6 text-slate-400">
                   <FileText size={28} className="mx-auto mb-2 opacity-30" />
-                  <p className="text-xs font-medium">Tiada transaksi</p>
+                  <p className="text-xs font-medium">{t('dash.no_tx')}</p>
                 </div>
               )}
             </div>
@@ -2768,6 +2910,7 @@ const StatCard = ({ label, value, icon: Icon, color }: { label: string, value: n
 };
 
 const CameraView = ({ onCapture, onCancel }: { onCapture: (base64: string) => void, onCancel: () => void }) => {
+  const { t } = useLang();
   const videoRef = React.useRef<HTMLVideoElement>(null);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -2873,7 +3016,7 @@ const CameraView = ({ onCapture, onCancel }: { onCapture: (base64: string) => vo
             <div className="w-20 h-20 bg-rose-500/20 text-rose-400 rounded-3xl flex items-center justify-center mx-auto mb-6">
               <Camera size={40} />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Kamera Tidak Ditemui</h3>
+            <h3 className="text-xl font-bold text-white mb-2">{t('md.no_camera')}</h3>
             <p className="text-slate-400 text-sm mb-8 leading-relaxed">{error}</p>
             <button 
               onClick={onCancel}
@@ -2945,6 +3088,7 @@ interface ScanTask {
 }
 
 const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCategory, records, sales, user, onUpgrade }: { onSave: (data: any) => void, initialImage?: string | null, onCancel: () => void, allCategories: string[], onAddNewCategory: (name: string, type: string) => void, records: TransactionRecord[], sales: Sale[], user: UserType | null, onUpgrade: () => void }) => {
+  const { t } = useLang();
   const [queue, setQueue] = useState<ScanTask[]>([]);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [showCamera, setShowCamera] = useState(false);
@@ -3261,8 +3405,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             <ArrowLeft size={24} />
           </button>
           <div>
-            <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter font-display">Imbas Dokumen</h2>
-            <p className="text-slate-500 font-medium text-xs md:text-base">Imbas satu atau banyak resit sekaligus. AI akan mengesan data secara automatik.</p>
+            <h2 className="text-2xl md:text-4xl font-black text-slate-900 tracking-tighter font-display">{t('scan.title')}</h2>
+            <p className="text-slate-500 font-medium text-xs md:text-base">{t('scan.subtitle')}</p>
           </div>
         </header>
 
@@ -3271,8 +3415,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
           <div className="w-24 h-24 bg-emerald-50 text-emerald-600 rounded-[2rem] flex items-center justify-center shadow-xl shadow-emerald-100 mb-8 relative z-10">
             <Camera size={40} strokeWidth={1.5} />
           </div>
-          <h3 className="text-2xl font-black mb-3 tracking-tight font-display relative z-10">Sedia untuk mengimbas?</h3>
-          <p className="text-slate-500 font-bold mb-10 relative z-10">Pilih satu atau banyak fail sekaligus, atau tangkap gambar.</p>
+          <h3 className="text-2xl font-black mb-3 tracking-tight font-display relative z-10">{t('scan.ready')}</h3>
+          <p className="text-slate-500 font-bold mb-10 relative z-10">{t('scan.pick_files')}</p>
           <div className="flex flex-col gap-4 w-full max-w-xs relative z-10">
             <button
               onClick={() => setShowCamera(true)}
@@ -3309,7 +3453,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             <ArrowLeft size={18} />
           </button>
           <div className="flex-1 min-w-0">
-            <h2 className="text-lg md:text-2xl font-black text-slate-900 tracking-tight font-display leading-tight">Imbas Dokumen</h2>
+            <h2 className="text-lg md:text-2xl font-black text-slate-900 tracking-tight font-display leading-tight">{t('scan.title')}</h2>
             <p className="text-slate-400 font-medium text-[10px] md:text-xs">
               {completedCount}/{queue.length} selesai {totalRecords > 0 && `| ${totalRecords} rekod`}
             </p>
@@ -3403,7 +3547,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <div className="w-16 h-16 bg-rose-50 text-rose-500 rounded-2xl flex items-center justify-center">
                   <FileText size={32} />
                 </div>
-                <p className="font-bold text-slate-600 text-sm">Dokumen PDF</p>
+                <p className="font-bold text-slate-600 text-sm">{t('scan.pdf_doc')}</p>
               </div>
             ) : (
               <img src={activeTask.image} alt="Scanned" className="w-full h-auto object-contain" />
@@ -3411,7 +3555,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             {activeTask.status === 'analyzing' && (
               <div className="absolute inset-0 bg-black/40 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                 <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                <p className="font-bold text-sm">Menganalisa Dokumen...</p>
+                <p className="font-bold text-sm">{t('scan.analysing')}</p>
               </div>
             )}
             {activeTask.status !== 'analyzing' && activeTask.mimeType !== 'application/pdf' && (
@@ -3506,7 +3650,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                       <button
                         onClick={() => removeSelectedRows(activeTask.id)}
                         className="p-1.5 bg-rose-500 text-white rounded-lg hover:bg-rose-600 transition-all"
-                        title="Buang rekod dipilih"
+                        title={t('scan.remove_selected')}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -3522,7 +3666,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               {visibleIdxs.length === 0 && (
                 <div className="text-center py-10 text-slate-400">
                   <SearchX size={28} className="mx-auto mb-2" />
-                  <p className="text-xs font-bold">Tiada rekod untuk tapisan ini.</p>
+                  <p className="text-xs font-bold">{t('scan.empty_filter')}</p>
                 </div>
               )}
 
@@ -3548,7 +3692,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                       <div className="flex items-center justify-between gap-3">
                         <button
                           onClick={() => toggleRow(idx)}
-                          title="Pilih rekod ini"
+                          title={t('scan.select_record')}
                           className={`w-8 h-8 shrink-0 rounded-lg border-2 flex items-center justify-center transition-all active:scale-90 ${
                             selectedRows.includes(idx)
                               ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm'
@@ -3567,8 +3711,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                               onChange={(e) => updateTaskResult(activeTask.id, idx, 'type', e.target.value)}
                               className="w-full bg-transparent font-bold text-slate-900 text-xs outline-none cursor-pointer appearance-none pr-6"
                             >
-                              <option value="income">Duit Masuk</option>
-                              <option value="expense">Duit Keluar</option>
+                              <option value="income">{t('stat.money_in')}</option>
+                              <option value="expense">{t('stat.money_out')}</option>
                             </select>
                             <ChevronDown size={14} className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           </div>
@@ -3584,7 +3728,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                       {/* Fields grid - 2 cols on mobile for compact layout */}
                       <div className="grid grid-cols-2 md:grid-cols-2 xl:grid-cols-4 gap-3 md:gap-x-6 md:gap-y-4 w-full">
                         <div className="col-span-2 space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Kategori</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('col.category')}</p>
                           <SearchableSelect
                             value={result.category}
                             onChange={(val) => updateTaskResult(activeTask.id, idx, 'category', val)}
@@ -3600,7 +3744,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Jumlah (RM)</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('scan.amount_rm')}</p>
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-[11px]">RM</span>
                             <input
@@ -3614,7 +3758,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarikh</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('col.date')}</p>
                           <div className="relative">
                             <input
                               type="date"
@@ -3626,7 +3770,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                           </div>
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Bayaran</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('scan.payment')}</p>
                           <PaymentMethodSelect
                             compact
                             value={result.payment_method || BANK_METHOD_CODE}
@@ -3634,14 +3778,14 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                           />
                         </div>
                         <div className="space-y-1.5">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('col.description')}</p>
                           <div className="relative">
                             <input
                               type="text"
                               value={result.description}
                               onChange={(e) => updateTaskResult(activeTask.id, idx, 'description', e.target.value)}
                               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 font-bold text-slate-900 text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
-                              placeholder="Butiran transaksi..."
+                              placeholder={t('scan.ph_desc')}
                             />
                           </div>
                         </div>
@@ -3659,7 +3803,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               <div className="w-14 h-14 bg-rose-50 text-rose-400 rounded-2xl flex items-center justify-center mx-auto mb-5">
                 <CircleX size={28} />
               </div>
-              <h3 className="text-lg font-black text-slate-900 mb-2 font-display">Gagal Dianalisis</h3>
+              <h3 className="text-lg font-black text-slate-900 mb-2 font-display">{t('scan.failed')}</h3>
               <p className="text-slate-500 text-xs mb-6 max-w-xs mx-auto font-medium">
                 {activeTask.error || 'AI tidak dapat mengekstrak maklumat dari dokumen ini.'}
               </p>
@@ -3692,8 +3836,8 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
               <div className="w-12 h-12 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
                 <Clock size={24} />
               </div>
-              <h3 className="text-base font-black text-slate-900 mb-1 font-display">Dalam Barisan</h3>
-              <p className="text-slate-500 text-xs font-medium">Dokumen ini sedang menunggu giliran untuk dianalisis.</p>
+              <h3 className="text-base font-black text-slate-900 mb-1 font-display">{t('scan.queued')}</h3>
+              <p className="text-slate-500 text-xs font-medium">{t('scan.queued_desc')}</p>
             </div>
           )}
         </div>
@@ -3743,7 +3887,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
                 <div className="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
                   <Zap size={28} className="text-amber-400" />
                 </div>
-                <h3 className="text-xl font-black tracking-tight font-display mb-2">Had Imbasan Habis</h3>
+                <h3 className="text-xl font-black tracking-tight font-display mb-2">{t('scan.quota_done')}</h3>
                 <p className="text-white/60 text-sm font-medium">
                   Had imbasan untuk pakej {user?.plan || 'anda'} telah habis. Sila naik taraf pelan atau hubungi admin untuk dapatkan bantuan.
                 </p>
@@ -3751,7 +3895,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
             </div>
             <div className="p-6 space-y-4">
               <div className="bg-slate-50 rounded-2xl p-4">
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Naik Taraf Untuk Lebih Banyak</p>
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">{t('scan.upgrade')}</p>
                 <div className="space-y-2">
                   {[
                     { plan: 'Starter', receipt: '100 imbasan', pdf: '100 imbasan (resit + PDF)', price: 'RM 50/bln' },
@@ -3789,6 +3933,7 @@ const ScanView = ({ onSave, initialImage, onCancel, allCategories, onAddNewCateg
 };
 
 const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategory, categoryMappings }: { type: 'income' | 'expense', onClose: () => void, onSave: (data: any) => void, initialData?: any, onAddNewCategory: (name: string, type: string) => void, categoryMappings: Record<string, string> }) => {
+  const { t } = useLang();
   const [formData, setFormData] = useState({
     type: type,
     docType: type === 'income' ? 'Duit Masuk Manual' : 'Duit Keluar Manual',
@@ -3863,7 +4008,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('col.category')}</label>
               <SearchableSelect 
                 value={formData.category}
                 onChange={(val) => setFormData({...formData, category: val})}
@@ -3884,7 +4029,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 panjang (cth "Touch 'n Go eWallet") tidak terpotong */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.amount_rm')}</label>
                 <input
                   required
                   type="number"
@@ -3896,7 +4041,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('col.date')}</label>
                 <input
                   required
                   type="date"
@@ -3906,7 +4051,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.payment_method')}</label>
                 <PaymentMethodSelect
                   value={formData.payment_method}
                   onChange={(code) => setFormData({ ...formData, payment_method: code })}
@@ -3915,7 +4060,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Dokumen (Optional)</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.doc_no_opt')}</label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <Hash size={14} />
@@ -3924,25 +4069,25 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                   type="text"
                   value={formData.docNumber}
                   onChange={(e) => setFormData({...formData, docNumber: e.target.value})}
-                  placeholder="Contoh: REF-001"
+                  placeholder={t('md.ph_doc')}
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
             </div>
 
             <div className="space-y-2">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('col.description')}</p>
               <textarea 
                 required
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
-                placeholder="Masukkan butiran transaksi..."
+                placeholder={t('md.ph_desc')}
                 className="w-full px-6 py-4 bg-slate-50 border border-slate-200 rounded-2xl font-medium text-sm outline-none focus:ring-4 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all min-h-[100px]"
               />
             </div>
 
             <div className="space-y-2">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Lampiran Dokumen (Optional)</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('md.attachment_opt')}</p>
               <div className="flex flex-col gap-3">
                 <input 
                   type="file"
@@ -3958,7 +4103,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                     className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-emerald-500 hover:text-emerald-500 transition-all bg-slate-50/50"
                   >
                     <Camera size={24} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Muat Naik Resit / Invois (Imej/PDF)</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{t('md.upload_receipt')}</span>
                   </button>
                 ) : (
                   <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
@@ -3966,7 +4111,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                       {formData.image_url.startsWith('data:application/pdf') ? (
                         <div className="flex flex-col items-center gap-2 text-rose-500">
                           <FileText size={48} />
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Dokumen PDF</span>
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{t('md.pdf_doc')}</span>
                         </div>
                       ) : (
                         <img src={formData.image_url} alt="Attachment" className="w-full h-full object-cover" />
@@ -3988,7 +4133,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className="py-2.5 px-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95"
-                        title="Tukar"
+                        title={t('md.replace')}
                       >
                         <RefreshCw size={14} />
                       </button>
@@ -3996,7 +4141,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                         type="button"
                         onClick={() => setFormData({ ...formData, image_url: '' })}
                         className="py-2.5 px-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all active:scale-95"
-                        title="Padam"
+                        title={t('common.delete')}
                       >
                         <Trash2 size={14} />
                       </button>
@@ -4022,7 +4167,7 @@ const ManualRecordModal = ({ type, onClose, onSave, initialData, onAddNewCategor
                 {isSaving ? (
                   <>
                     <Loader2 className="animate-spin" size={16} />
-                    <span>Menyimpan...</span>
+                    <span>{t('md.saving')}</span>
                   </>
                 ) : (
                   'Simpan Rekod'
@@ -4063,6 +4208,7 @@ const downloadDocument = async (url: string, filename: string) => {
 };
 
 const DocumentViewerModal = ({ url, filename, onClose }: { url: string; filename: string; onClose: () => void }) => {
+  const { t } = useLang();
   const [downloading, setDownloading] = useState(false);
   const isPdf = url.includes('.pdf') || url.startsWith('data:application/pdf') || filename.endsWith('.pdf');
   const isDataUrl = url.startsWith('data:');
@@ -4134,8 +4280,8 @@ const DocumentViewerModal = ({ url, filename, onClose }: { url: string; filename
                 <div className="w-20 h-20 bg-rose-50 rounded-3xl flex items-center justify-center">
                   <FileText size={40} className="text-rose-400" />
                 </div>
-                <p className="text-sm font-bold text-slate-700">Dokumen PDF</p>
-                <p className="text-xs text-slate-400 text-center max-w-xs">Klik "Muat Turun" untuk membuka PDF ini pada peranti anda.</p>
+                <p className="text-sm font-bold text-slate-700">{t('md.pdf_doc')}</p>
+                <p className="text-xs text-slate-400 text-center max-w-xs">{t('md.pdf_hint')}</p>
                 <button
                   onClick={handleDownload}
                   className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 text-white rounded-xl text-sm font-bold hover:bg-rose-700 transition-all"
@@ -4166,6 +4312,7 @@ const DocumentViewerModal = ({ url, filename, onClose }: { url: string; filename
 };
 
 const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMappings }: { record: TransactionRecord, onClose: () => void, onSave: (data: any) => void, onAddNewCategory: (name: string, type: string) => void, categoryMappings: Record<string, string> }) => {
+  const { t } = useLang();
   const [formData, setFormData] = useState({
     type: record.type,
     docType: record.docType,
@@ -4189,6 +4336,10 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
       setLoadingImage(true);
       apiGetRecordImageUrl(record.id).then(result => {
         if (result) setFormData(prev => ({ ...prev, image_url: result.url }));
+        else setImgError(true);
+      }).catch(err => {
+        console.error('Error loading attachment:', err);
+        setImgError(true);
       }).finally(() => setLoadingImage(false));
     }
   }, [record.id]);
@@ -4233,7 +4384,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                 {React.createElement(getCategoryIcon(formData.category), { size: 24, strokeWidth: 2 })}
               </div>
               <div>
-                <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Butiran Rekod</h3>
+                <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">{t('md.record_detail')}</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">
                   ACC: {getAccCode(formData.category)}
                 </p>
@@ -4247,14 +4398,14 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
           <form onSubmit={handleSubmit} className="space-y-5">
             <div className="grid grid-cols-3 gap-4">
               <div className="col-span-1 space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jenis</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('col.type')}</label>
                 <select 
                   value={formData.type}
                   onChange={(e) => setFormData({...formData, type: e.target.value as 'income' | 'expense'})}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 >
-                  <option value="income">Masuk</option>
-                  <option value="expense">Keluar</option>
+                  <option value="income">{t('dash.money_in')}</option>
+                  <option value="expense">{t('dash.money_out')}</option>
                 </select>
               </div>
               <div className="col-span-2 space-y-1.5">
@@ -4269,7 +4420,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Dokumen</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.doc_no')}</label>
               <div className="relative">
                 <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                   <Hash size={14} />
@@ -4285,7 +4436,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('col.category')}</label>
               <SearchableSelect 
                 value={formData.category}
                 onChange={(val) => setFormData({...formData, category: val})}
@@ -4304,7 +4455,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah (RM)</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.amount_rm')}</label>
                 <input
                   type="number"
                   step="0.01"
@@ -4314,7 +4465,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('col.date')}</label>
                 <input
                   type="date"
                   value={formData.date}
@@ -4323,7 +4474,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                 />
               </div>
               <div className="space-y-1.5 sm:col-span-2">
-                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
+                <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.payment_method')}</label>
                 <PaymentMethodSelect
                   value={formData.payment_method}
                   onChange={(code) => setFormData({ ...formData, payment_method: code })}
@@ -4332,7 +4483,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
             </div>
 
             <div className="space-y-2">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Penerangan</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('col.description')}</p>
               <textarea 
                 value={formData.description}
                 onChange={(e) => setFormData({...formData, description: e.target.value})}
@@ -4341,7 +4492,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
             </div>
 
             <div className="space-y-2">
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">Lampiran Dokumen</p>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('md.attachment')}</p>
               <div className="flex flex-col gap-3">
                 <input 
                   type="file"
@@ -4357,7 +4508,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                     className="w-full py-4 border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center gap-2 text-slate-400 hover:border-emerald-500 hover:text-emerald-500 transition-all bg-slate-50/50"
                   >
                     <Camera size={24} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">Muat Naik Resit / Invois (Imej/PDF)</span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">{t('md.upload_receipt')}</span>
                   </button>
                 ) : (() => {
                   const isPlaceholder = formData.image_url === '__has_image__';
@@ -4365,20 +4516,20 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                   const docFilename = `lampiran-${record.id || 'rekod'}.${isPdf ? 'pdf' : 'jpg'}`;
                   return (
                     <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
-                      {loadingImage || isPlaceholder ? (
+                      {loadingImage || (isPlaceholder && !imgError) ? (
                         <div className="w-full h-32 flex flex-col items-center justify-center gap-2">
                           <Loader2 size={24} className="text-emerald-500 animate-spin" />
-                          <span className="text-[10px] text-slate-400 font-medium">Memuat lampiran...</span>
+                          <span className="text-[10px] text-slate-400 font-medium">{t('md.loading_attachment')}</span>
                         </div>
                       ) : isPdf ? (
                         <div className="w-full h-32 flex flex-col items-center justify-center gap-1.5">
                           <FileText size={32} className="text-slate-400" />
-                          <span className="text-[10px] text-slate-400 font-medium">Dokumen PDF</span>
+                          <span className="text-[10px] text-slate-400 font-medium">{t('md.pdf_doc')}</span>
                         </div>
                       ) : imgError ? (
                         <div className="w-full h-32 flex flex-col items-center justify-center gap-1">
                           <AlertCircle size={24} className="text-slate-300" />
-                          <span className="text-[10px] text-slate-400">Imej tidak dapat dipaparkan</span>
+                          <span className="text-[10px] text-slate-400">{t('md.image_failed')}</span>
                         </div>
                       ) : (
                         <img
@@ -4410,7 +4561,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
                             className="py-2.5 px-3 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all active:scale-95"
-                            title="Tukar"
+                            title={t('md.replace')}
                           >
                             <RefreshCw size={14} />
                           </button>
@@ -4418,7 +4569,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                             type="button"
                             onClick={() => { setFormData({ ...formData, image_url: '' }); setImgError(false); }}
                             className="py-2.5 px-3 bg-rose-50 text-rose-500 rounded-xl hover:bg-rose-100 transition-all active:scale-95"
-                            title="Padam"
+                            title={t('common.delete')}
                           >
                             <Trash2 size={14} />
                           </button>
@@ -4453,7 +4604,7 @@ const EditRecordModal = ({ record, onClose, onSave, onAddNewCategory, categoryMa
                 {isSaving ? (
                   <>
                     <Loader2 className="animate-spin" size={16} />
-                    <span>Menyimpan...</span>
+                    <span>{t('md.saving')}</span>
                   </>
                 ) : (
                   'Simpan Perubahan'
@@ -4604,6 +4755,7 @@ const InvoiceTemplate = ({ sale, user }: { sale: any, user: UserType | null }) =
 };
 
 const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, categoryMappings, onAddNewCategory }: { sales: any[], onAdd: (data: any) => void, onDelete: (id: number) => void, stats: any, user: UserType | null, triggerAddSale?: number, categoryMappings: Record<string, string>, onAddNewCategory: (name: string) => void }) => {
+  const { t } = useLang();
   const [showAdd, setShowAdd] = useState(false);
   const [downloading, setDownloading] = useState<number | null>(null);
 
@@ -4684,12 +4836,12 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
   };
 
   const filterOptions = [
-    { id: 'all', label: 'Semua', short: 'Semua' },
-    { id: 'daily', label: 'Harian', short: 'Hari' },
-    { id: 'weekly', label: 'Mingguan', short: 'Mggu' },
-    { id: 'monthly', label: 'Bulanan', short: 'Bulan' },
-    { id: 'yearly', label: 'Tahunan', short: 'Tahun' },
-    { id: 'custom', label: 'Khas', short: 'Khas' },
+    { id: 'all', label: t('period.all'), short: 'Semua' },
+    { id: 'daily', label: t('period.daily'), short: 'Hari' },
+    { id: 'weekly', label: t('period.weekly'), short: 'Mggu' },
+    { id: 'monthly', label: t('period.monthly'), short: 'Bulan' },
+    { id: 'yearly', label: t('period.yearly'), short: 'Tahun' },
+    { id: 'custom', label: t('period.custom'), short: 'Khas' },
   ];
 
   const months = [
@@ -4704,8 +4856,8 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
       {/* ── Header ── */}
       <div className="px-4 md:px-6 pt-5 md:pt-0 mb-4">
-        <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">Rekod Jualan</h2>
-        <p className="text-slate-400 text-[12px] font-medium mt-0.5">Pantau prestasi jualan anda secara langsung.</p>
+        <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">{t('sales.title')}</h2>
+        <p className="text-slate-400 text-[12px] font-medium mt-0.5">{t('sales.subtitle')}</p>
       </div>
 
       {/* ── Filter tabs ── */}
@@ -4780,7 +4932,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
       {/* ── Summary card ── */}
       <div className="mb-4 bg-emerald-600 rounded-2xl px-5 py-4 flex items-center justify-between shadow-sm">
         <div>
-          <p className="text-emerald-100 text-[10px] font-semibold uppercase tracking-widest mb-1">Jumlah Jualan</p>
+          <p className="text-emerald-100 text-[10px] font-semibold uppercase tracking-widest mb-1">{t('sales.total_sales')}</p>
           <span className="text-3xl font-bold text-white tracking-tight font-display">RM {(filteredTotal || 0).toLocaleString('ms-MY', { minimumFractionDigits: 2 })}</span>
         </div>
         <div className="bg-white/15 text-white rounded-xl px-3 py-1.5 text-[11px] font-bold backdrop-blur-sm">
@@ -4794,7 +4946,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
         <div className="lg:hidden">
           {filteredSales.length > 0 && (
             <div className="px-4 pt-3 pb-1 border-b border-slate-50">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Senarai Transaksi</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('sales.tx_list')}</p>
             </div>
           )}
           <div className="divide-y divide-slate-50">
@@ -4847,7 +4999,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                 <div className="w-14 h-14 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-200">
                   <ReceiptText size={26} />
                 </div>
-                <p className="text-slate-400 text-xs font-semibold">Tiada rekod jualan untuk tempoh ini.</p>
+                <p className="text-slate-400 text-xs font-semibold">{t('sales.empty')}</p>
               </div>
             </div>
           )}
@@ -4857,11 +5009,11 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
           <table className="w-full text-left">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24">No. Kod</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">Tarikh</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-48">Kategori</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">Jualan (RM)</th>
-                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">Tindakan</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-24">{t('col.code')}</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">{t('col.date')}</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-48">{t('col.category')}</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-32">{t('sales.amount_rm')}</th>
+                <th className="px-6 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-24">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -4883,7 +5035,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                     <div className="flex items-center gap-3">
                       {format(safeParseDate(sale.date), 'dd MMM yyyy')}
                       {!!sale.reconciled && (
-                        <span className="text-emerald-500 ml-2" title="Telah Dipadankan dengan Bank">
+                        <span className="text-emerald-500 ml-2" title={t('records.reconciled')}>
                           <Check size={14} strokeWidth={3} />
                         </span>
                       )}
@@ -4902,14 +5054,14 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                         onClick={() => downloadInvoice(sale)}
                         disabled={downloading === sale.id}
                         className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all disabled:opacity-50"
-                        title="Muat Turun Invois"
+                        title={t('sales.download_invoice')}
                       >
                         {downloading === sale.id ? <RefreshCw size={16} className="animate-spin" /> : <Download size={16} />}
                       </button>
                       <button
                         onClick={() => onDelete(sale.id)}
                         className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                        title="Padam"
+                        title={t('common.delete')}
                       >
                         <Trash2 size={16} />
                       </button>
@@ -4924,7 +5076,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                       <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200">
                         <ReceiptText size={32} />
                       </div>
-                      <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada rekod jualan untuk tempoh ini.</p>
+                      <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">{t('sales.empty')}</p>
                     </div>
                   </td>
                 </tr>
@@ -4952,8 +5104,8 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                       <ShoppingCart size={24} />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Tambah Jualan</h3>
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Rekod Transaksi Baru</p>
+                      <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">{t('sales.add')}</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">{t('sales.new_record')}</p>
                     </div>
                   </div>
                   <button onClick={() => setShowAdd(false)} className="w-10 h-10 flex items-center justify-center hover:bg-slate-100 rounded-xl transition-colors text-slate-400">
@@ -4963,7 +5115,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
 
                 <form onSubmit={handleSubmit} className="space-y-5">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh Jualan</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.date')}</label>
                     <input 
                       required
                       type="date"
@@ -4974,7 +5126,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Invois / Resit</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.invoice_no')}</label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                         <Hash size={14} />
@@ -4984,13 +5136,13 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                         value={formData.docNumber || ''}
                         onChange={(e) => setFormData({...formData, docNumber: e.target.value})}
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-mono font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                        placeholder="Contoh: INV-001"
+                        placeholder={t('sales.ph_invoice')}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kategori Jualan</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.category')}</label>
                     <SearchableSelect 
                       value={formData.category}
                       onChange={(val) => setFormData({...formData, category: val})}
@@ -5000,7 +5152,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Pelanggan (Optional)</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.customer_name')}</label>
                     <div className="relative">
                       <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                         <UserCircle size={14} />
@@ -5010,25 +5162,25 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                         value={formData.customer_name}
                         onChange={(e) => setFormData({...formData, customer_name: e.target.value})}
                         className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                        placeholder="Contoh: Ali bin Abu"
+                        placeholder={t('sales.ph_customer')}
                       />
                     </div>
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Produk / Perkhidmatan</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.product_name')}</label>
                     <input 
                       required
                       type="text"
                       value={formData.product_name}
                       onChange={(e) => setFormData({...formData, product_name: e.target.value})}
                       className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                      placeholder="Contoh: Jualan Produk A"
+                      placeholder={t('sales.ph_product')}
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Jumlah Jualan (RM)</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.amount_rm')}</label>
                     <input 
                       required
                       type="number"
@@ -5041,7 +5193,7 @@ const SalesView = ({ sales, onAdd, onDelete, stats, user, triggerAddSale = 0, ca
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Kaedah Bayaran</label>
+                    <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('sales.payment_method')}</label>
                     <PaymentMethodSelect
                       value={formData.payment_method}
                       onChange={(code) => setFormData({ ...formData, payment_method: code })}
@@ -5161,6 +5313,7 @@ const TransactionReportTemplate = ({ records, user }: { records: any[], user: Us
 };
 
 const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initialYear, onUpdate, onDelete, onDeleteSale, onAddNewCategory, categoryMappings }: { records: TransactionRecord[], sales: any[], user: UserType | null, initialCategory?: string, initialMonth?: number, initialYear?: number, onUpdate: (id: number, data: any) => void, onDelete: (id: number) => void, onDeleteSale: (id: number) => void, onAddNewCategory: (name: string, type: string) => void, categoryMappings: Record<string, string> }) => {
+  const { t } = useLang();
   const { methods: customMethods } = usePaymentMethods();
   const [selectedCategory, setSelectedCategory] = useState(initialCategory || 'JUALAN (REKOD)');
   const [editingRecord, setEditingRecord] = useState<TransactionRecord | null>(null);
@@ -5341,8 +5494,8 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         <div className="absolute inset-0 opacity-5">
           <div className="absolute top-0 right-0 w-40 h-40 bg-white rounded-full -translate-y-1/2 translate-x-1/2" />
         </div>
-        <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-widest mb-1">Lejar</p>
-        <h2 className="text-xl font-bold text-white tracking-tight font-display">Perincian Lejar</h2>
+        <p className="text-slate-400 text-[11px] font-semibold uppercase tracking-widest mb-1">{t('ledger.title')}</p>
+        <h2 className="text-xl font-bold text-white tracking-tight font-display">{t('ledger.detail')}</h2>
         <p className="text-slate-400 text-xs mt-0.5">{selectedCategory}</p>
       </div>
 
@@ -5351,12 +5504,12 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         <header className="hidden md:flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 mb-8">
           <div>
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Lejar</span>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">{t('ledger.title')}</span>
               <ChevronRight size={12} className="text-slate-300" />
               <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest truncate max-w-[200px]">{selectedCategory}</span>
             </div>
-            <h2 className="text-3xl font-bold text-slate-900 tracking-tight font-display">Perincian Lejar</h2>
-            <p className="text-slate-400 text-sm font-medium mt-0.5">Lihat transaksi mengikut kategori akaun</p>
+            <h2 className="text-3xl font-bold text-slate-900 tracking-tight font-display">{t('ledger.detail')}</h2>
+            <p className="text-slate-400 text-sm font-medium mt-0.5">{t('ledger.subtitle')}</p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-2.5 py-1.5 rounded-lg border border-slate-200">
@@ -5373,7 +5526,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                 value={selectedCategory}
                 onChange={setSelectedCategory}
                 options={ledgerAccounts}
-                placeholder="Pilih Akaun"
+                placeholder={t('ledger.pick_account')}
               />
             </div>
             <div className="flex items-center gap-2 flex-wrap">
@@ -5424,24 +5577,24 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5 md:mb-8">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Masuk</p>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('dash.money_in')}</p>
             <p className="text-lg md:text-2xl font-bold text-emerald-600 font-display leading-tight">RM {totalIncome.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'income').length} transaksi</p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Keluar</p>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('dash.money_out')}</p>
             <p className="text-lg md:text-2xl font-bold text-rose-500 font-display leading-tight">RM {totalExpense.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'expense').length} transaksi</p>
           </div>
           <div className={`rounded-2xl border shadow-sm p-4 md:p-5 ${total >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Baki</p>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('ledger.balance')}</p>
             <p className={`text-lg md:text-2xl font-bold font-display leading-tight ${total >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
               {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium">{periodLabel}</p>
           </div>
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Bil. Rekod</p>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('stat.record_count')}</p>
             <p className="text-lg md:text-2xl font-bold text-slate-800 font-display leading-tight">{filtered.length}</p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium font-mono">{getAccCode(selectedCategory)}</p>
           </div>
@@ -5513,8 +5666,8 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                 <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-3">
                   <BookOpen size={22} />
                 </div>
-                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tiada transaksi</p>
-                <p className="text-slate-300 text-[10px] mt-1">Cuba tukar tempoh atau kategori</p>
+                <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{t('dash.no_tx')}</p>
+                <p className="text-slate-300 text-[10px] mt-1">{t('ledger.try_other')}</p>
               </div>
             )}
           </div>
@@ -5524,12 +5677,12 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-slate-100">
-                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36">Tarikh</th>
-                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-32">No. Dokumen</th>
-                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Penerangan</th>
-                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">Debit (RM)</th>
-                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">Kredit (RM)</th>
-                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right w-24">Tindakan</th>
+                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36">{t('col.date')}</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-32">{t('ledger.doc_no')}</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('col.description')}</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">{t('ledger.debit')}</th>
+                  <th className="px-4 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider w-36 text-right">{t('ledger.credit')}</th>
+                  <th className="px-6 py-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right w-24">{t('common.action')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
@@ -5579,13 +5732,13 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                           {record.source === 'record' && (
                             <button onClick={() => setEditingRecord(record as TransactionRecord)}
                               className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                              title="Edit">
+                              title={t('common.edit')}>
                               <Eye size={15} />
                             </button>
                           )}
                           <button onClick={() => record.source === 'sale' ? onDeleteSale(record.sale_id) : onDelete(record.id)}
                             className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all"
-                            title="Padam">
+                            title={t('common.delete')}>
                             <Trash2 size={15} />
                           </button>
                         </div>
@@ -5599,8 +5752,8 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                       <div className="w-12 h-12 bg-slate-100 rounded-2xl flex items-center justify-center text-slate-300 mx-auto mb-3">
                         <BookOpen size={22} />
                       </div>
-                      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">Tiada transaksi</p>
-                      <p className="text-slate-300 text-[10px] mt-1">Cuba tukar tempoh atau kategori</p>
+                      <p className="text-slate-400 text-xs font-bold uppercase tracking-wider">{t('dash.no_tx')}</p>
+                      <p className="text-slate-300 text-[10px] mt-1">{t('ledger.try_other')}</p>
                     </td>
                   </tr>
                 )}
@@ -5608,7 +5761,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
               {filtered.length > 0 && (
                 <tfoot>
                   <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td colSpan={3} className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">Jumlah</td>
+                    <td colSpan={3} className="px-6 py-3.5 text-xs font-bold text-slate-600 uppercase tracking-wider">{t('col.amount')}</td>
                     <td className="px-4 py-3.5 text-right text-sm font-bold text-rose-500">
                       {totalExpense > 0 ? totalExpense.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                     </td>
@@ -5618,7 +5771,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                     <td className="px-6 py-3.5" />
                   </tr>
                   <tr className="bg-slate-50">
-                    <td colSpan={3} className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">Baki Bersih</td>
+                    <td colSpan={3} className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dash.net_balance')}</td>
                     <td colSpan={2} className={`px-4 py-3 text-right text-sm font-bold ${total >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                       {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
@@ -5849,6 +6002,7 @@ const parseCsvDate = (raw: string): string => {
 };
 
 const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMissingRecord, onBulkAdd, onRefresh, user }:{ records: TransactionRecord[], sales: Sale[], onUpdateRecord: (id: number, data: any) => void, onUpdateSale: (id: number, data: any) => void, onAddMissingRecord: (bt: any) => void, onBulkAdd: (data: any[]) => void, onRefresh: () => void, user: UserType | null }) => {
+  const { t } = useLang();
   const [bankTransactions, setBankTransactions] = useState<any[]>(() => {
     const saved = localStorage.getItem('monitacc_bank_transactions');
     return saved ? JSON.parse(saved) : [];
@@ -6311,8 +6465,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Bank Reconciliation</h2>
-          <p className="text-slate-500 text-sm font-medium">Padankan transaksi bank dengan rekod perakaunan anda.</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">{t('rec.title')}</h2>
+          <p className="text-slate-500 text-sm font-medium">{t('rec.subtitle')}</p>
         </div>
         <div className="flex items-center gap-3">
           {bankTransactions.length > 0 && (
@@ -6320,7 +6474,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               <button 
                 onClick={onRefresh}
                 className="p-2 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-200 transition-all border border-slate-200"
-                title="Segarkan Padanan"
+                title={t('rec.refresh')}
               >
                 <RefreshCw size={16} />
               </button>
@@ -6372,8 +6526,8 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             <div className="w-20 h-20 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-2">
               <Loader2 size={40} className="animate-spin" />
             </div>
-            <h3 className="text-xl font-bold text-slate-900 font-display">AI Sedang Menganalisis...</h3>
-            <p className="text-slate-500 text-sm leading-relaxed">Mengekstrak transaksi daripada penyata bank anda. Ini mungkin mengambil masa beberapa saat.</p>
+            <h3 className="text-xl font-bold text-slate-900 font-display">{t('rec.analysing')}</h3>
+            <p className="text-slate-500 text-sm leading-relaxed">{t('rec.analysing_desc')}</p>
           </div>
         </div>
       ) : bankTransactions.length === 0 ? (
@@ -6382,7 +6536,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
             <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mb-2">
               <RefreshCw size={40} />
             </div>
-            <h3 className="text-xl font-bold text-slate-900 font-display">Mula Padanan Bank</h3>
+            <h3 className="text-xl font-bold text-slate-900 font-display">{t('rec.start')}</h3>
             <p className="text-slate-500 text-sm leading-relaxed">
               {bolehImbasPenyata
                 ? 'Muat naik penyata bank anda (CSV/PDF) untuk memulakan proses padanan automatik dengan rekod jualan dan duit keluar anda.'
@@ -6392,7 +6546,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               <div className="flex items-start gap-2 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-left">
                 <Crown size={15} className="text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
-                  Imbasan penyata bank <span className="font-bold">PDF dengan AI</span> hanya tersedia untuk pakej Ultimate.
+                  Imbasan penyata bank <span className="font-bold">{t('rec.pdf_ai')}</span> hanya tersedia untuk pakej Ultimate.
                   Pakej anda masih boleh import fail CSV yang dimuat turun terus daripada bank.
                 </p>
               </div>
@@ -6424,7 +6578,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                 <AlertTriangle size={20} />
               </div>
               <div className="flex-1">
-                <h4 className="text-sm font-bold text-amber-900">Sistem Perakaunan Masih Kosong</h4>
+                <h4 className="text-sm font-bold text-amber-900">{t('rec.empty_system')}</h4>
                 <p className="text-xs text-amber-700 leading-relaxed mt-1">
                   Anda belum memasukkan sebarang rekod transaksi. Untuk memulakan dengan cepat, anda boleh menjana rekod secara automatik berdasarkan penyata bank ini.
                 </p>
@@ -6436,7 +6590,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                   {isBulkAdding ? (
                     <>
                       <Loader2 className="animate-spin" size={14} />
-                      <span>Menjana Rekod...</span>
+                      <span>{t('rec.generating')}</span>
                     </>
                   ) : (
                     <>
@@ -6454,7 +6608,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
               <AlertCircle size={18} />
             </div>
             <div>
-              <h4 className="text-sm font-bold text-blue-900">Maklumat Penyata Bank</h4>
+              <h4 className="text-sm font-bold text-blue-900">{t('rec.bank_info')}</h4>
               <p className="text-xs text-blue-700 leading-relaxed mt-1">
                 Transaksi di bawah adalah rekod dari penyata bank anda. Jika anda belum memasukkan transaksi ini ke dalam sistem Monitacc, anda boleh klik <strong>"Tambah Rekod"</strong> untuk memasukkannya secara automatik.
               </p>
@@ -6472,9 +6626,9 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                     disabled={selectableIds.length === 0}
                     className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
                   />
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Pilih Semua</span>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('rec.select_all')}</span>
                 </label>
-                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">Transaksi Bank Terkini</h4>
+                <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider hidden sm:block">{t('rec.recent_bank_tx')}</h4>
               </div>
               <span className="px-2 py-1 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-md uppercase tracking-wider">
                 {bankTransactions.length} Transaksi Ditemui
@@ -6565,7 +6719,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                     <div className="flex items-center gap-2 flex-wrap">
                       {match ? (
                         match.alreadyReconciled ? (
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selesai</span>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('rec.done')}</span>
                         ) : (
                           <button
                             onClick={() => handleReconcile(bt.id, match)}
@@ -6620,11 +6774,11 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                         className="w-4 h-4 rounded accent-emerald-600 cursor-pointer"
                       />
                     </th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarikh</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">Penerangan</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Jumlah (RM)</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">Status Padanan</th>
-                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">Tindakan</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('col.date')}</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider">{t('col.description')}</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">{t('scan.amount_rm')}</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-center">{t('rec.match_status')}</th>
+                    <th className="px-6 py-4 text-[10px] font-bold text-slate-400 uppercase tracking-wider text-right">{t('common.action')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
@@ -6668,7 +6822,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                         <td className="px-6 py-4 text-right">
                           {match ? (
                             match.alreadyReconciled ? (
-                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selesai</span>
+                              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{t('rec.done')}</span>
                             ) : (
                               <button
                                 onClick={() => handleReconcile(bt.id, match)}
@@ -6682,7 +6836,7 @@ const ReconcileView = ({ records, sales, onUpdateRecord, onUpdateSale, onAddMiss
                               <button
                                 onClick={() => handleQuickAdd(bt)}
                                 className="px-4 py-2 bg-emerald-600 text-white text-[10px] font-bold rounded-lg hover:bg-emerald-700 transition-all shadow-sm flex items-center gap-2"
-                                title="Tambah terus dengan kategori yang dicadangkan"
+                                title={t('rec.add_suggested')}
                               >
                                 <Zap size={14} />
                                 Padan Pantas
@@ -6755,6 +6909,7 @@ const RecordsView = ({
   categoryMappings: Record<string, string>,
   onBulkDelete?: (items: { id: number, type: 'record' | 'sale', saleId?: number }[]) => void
 }) => {
+  const { t } = useLang();
   const [filter, setFilter] = useState<'all' | 'income' | 'expense' | 'sale'>('all');
   const [timeFilter, setTimeFilter] = useState<'all' | 'monthly' | 'yearly' | 'custom'>('all');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -6869,8 +7024,8 @@ const RecordsView = ({
         {/* Title row */}
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Rekod Transaksi</h2>
-            <p className="text-slate-400 text-[11px] mt-0.5">Semua duit masuk dan keluar</p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">{t('records.title')}</h2>
+            <p className="text-slate-400 text-[11px] mt-0.5">{t('records.subtitle')}</p>
           </div>
           <div className="flex items-center gap-1.5">
             {selectedIds.size > 0 && (
@@ -6900,7 +7055,7 @@ const RecordsView = ({
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Cari penerangan, kategori, jumlah..."
+            placeholder={t('records.search_placeholder')}
             className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-10 pr-9 py-2.5 text-xs font-medium text-slate-700 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
           {searchQuery && (
@@ -6916,10 +7071,10 @@ const RecordsView = ({
         {/* Type filter */}
         <div className="grid grid-cols-4 bg-slate-100 rounded-2xl p-1 gap-1">
           {[
-            { id: 'all', label: 'Semua' },
-            { id: 'income', label: 'Masuk' },
-            { id: 'expense', label: 'Keluar' },
-            { id: 'sale', label: 'Jualan' },
+            { id: 'all', label: t('period.all') },
+            { id: 'income', label: t('dash.money_in') },
+            { id: 'expense', label: t('dash.money_out') },
+            { id: 'sale', label: t('records.type_sale') },
           ].map((opt) => (
             <button
               key={opt.id}
@@ -6938,10 +7093,10 @@ const RecordsView = ({
         {/* Time filter */}
         <div className="grid grid-cols-4 bg-slate-100 rounded-2xl p-1 gap-1">
           {[
-            { id: 'all', label: 'Semua' },
-            { id: 'monthly', label: 'Bulan' },
-            { id: 'yearly', label: 'Tahun' },
-            { id: 'custom', label: 'Khas' },
+            { id: 'all', label: t('period.all') },
+            { id: 'monthly', label: t('period.month') },
+            { id: 'yearly', label: t('period.year') },
+            { id: 'custom', label: t('period.custom') },
           ].map((opt) => (
             <button
               key={opt.id}
@@ -7002,7 +7157,7 @@ const RecordsView = ({
       {/* ── Desktop Header ── */}
       <header className="hidden lg:flex mb-10 flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Rekod Transaksi</h2>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">{t('records.title')}</h2>
           <p className="text-slate-500 text-sm font-medium">
             {searchTerm
               ? `${filtered.length} rekod sepadan dengan "${searchQuery}"`
@@ -7016,26 +7171,26 @@ const RecordsView = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Cari penerangan, kategori, jumlah..."
+              placeholder={t('records.search_placeholder')}
               className="w-full bg-white border border-slate-200 rounded-xl pl-10 pr-9 py-2.5 text-xs font-semibold text-slate-700 placeholder:text-slate-400 placeholder:font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all shadow-sm"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-rose-500 transition-colors"
-                title="Kosongkan carian"
+                title={t('records.clear_search')}
               >
                 <X size={15} />
               </button>
             )}
           </div>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            {[{ id: 'all', label: 'Semua' }, { id: 'income', label: 'Masuk' }, { id: 'expense', label: 'Keluar' }, { id: 'sale', label: 'Jualan' }].map((opt) => (
+            {[{ id: 'all', label: t('period.all') }, { id: 'income', label: t('dash.money_in') }, { id: 'expense', label: t('dash.money_out') }, { id: 'sale', label: t('records.type_sale') }].map((opt) => (
               <button key={opt.id} onClick={() => setFilter(opt.id as any)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${filter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{opt.label}</button>
             ))}
           </div>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            {[{ id: 'all', label: 'Semua Masa' }, { id: 'monthly', label: 'Bulan' }, { id: 'yearly', label: 'Tahun' }, { id: 'custom', label: 'Khas' }].map((opt) => (
+            {[{ id: 'all', label: t('period.all_time') }, { id: 'monthly', label: t('period.month') }, { id: 'yearly', label: t('period.year') }, { id: 'custom', label: t('period.custom') }].map((opt) => (
               <button key={opt.id} onClick={() => setTimeFilter(opt.id as any)} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${timeFilter === opt.id ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{opt.label}</button>
             ))}
           </div>
@@ -7115,7 +7270,7 @@ const RecordsView = ({
                               <button
                                 onClick={async (e) => { e.stopPropagation(); const result = await apiGetRecordImageUrl(record.id); if (result) setViewingDocument({ url: result.url, filename: `lampiran-${record.id}.${result.isPdf ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
-                                title="Lihat Lampiran"
+                                title={t('records.view_attachment')}
                               >
                                 <Paperclip size={10} strokeWidth={3} />
                               </button>
@@ -7183,14 +7338,14 @@ const RecordsView = ({
                     className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                   />
                 </th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%]">No. Kod</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%]">Tarikh</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%]">Jenis</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[15%]">Kategori</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[23%]">Penerangan</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%]">Kaedah</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] text-right">Jumlah</th>
-                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-[10%]">Tindakan</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%]">{t('col.code')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%]">{t('col.date')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[8%]">{t('col.type')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[15%]">{t('col.category')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[23%]">{t('col.description')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[10%]">{t('col.method')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider w-[12%] text-right">{t('col.amount')}</th>
+                <th className="px-2 py-4 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right w-[10%]">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -7216,7 +7371,7 @@ const RecordsView = ({
                       <div className="flex items-center gap-3 truncate">
                         {format(safeParseDate(record.date), 'dd MMM yyyy')}
                         {!!record.reconciled && (
-                          <span className="text-emerald-500 shrink-0 ml-2" title="Telah Dipadankan dengan Bank">
+                          <span className="text-emerald-500 shrink-0 ml-2" title={t('records.reconciled')}>
                             <Check size={12} strokeWidth={3} />
                           </span>
                         )}
@@ -7228,7 +7383,7 @@ const RecordsView = ({
                           ? 'bg-blue-50 text-blue-700 border-blue-100'
                           : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                       }`}>
-                        {record.docType || 'Rekod'}
+                        {record.docType || t('records.default_doctype')}
                       </span>
                     </td>
                     <td className="px-2 py-4">
@@ -7247,7 +7402,7 @@ const RecordsView = ({
                               <button
                                 onClick={async (e) => { e.stopPropagation(); const result = await apiGetRecordImageUrl(record.id); if (result) setViewingDocument({ url: result.url, filename: `lampiran-${record.id}.${result.isPdf ? 'pdf' : 'jpg'}` }); }}
                                 className="shrink-0 text-emerald-500 hover:text-emerald-700 transition-colors"
-                                title="Lihat Lampiran"
+                                title={t('records.view_attachment')}
                               >
                                 <Paperclip size={10} strokeWidth={3} />
                               </button>
@@ -7280,7 +7435,7 @@ const RecordsView = ({
                           <button
                             onClick={() => setEditingRecord(record as TransactionRecord)}
                             className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-all"
-                            title="Lihat & Edit"
+                            title={t('records.view_edit')}
                           >
                             <Eye size={14} />
                           </button>
@@ -7288,7 +7443,7 @@ const RecordsView = ({
                         <button
                           onClick={() => record.origin === 'sale' && record.sale_id ? onDeleteSale(record.sale_id) : onDelete(record.id)}
                           className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all"
-                          title="Padam"
+                          title={t('common.delete')}
                         >
                           <Trash2 size={14} />
                         </button>
@@ -8721,6 +8876,7 @@ const ReportsView = ({
   openingBalances?: OpeningBalance[],
   stockTakes?: StockTake[]
 }) => {
+  const { t } = useLang();
   const [isAnnualMode, setIsAnnualMode] = useState(false);
   const [reportType, setReportType] = useState<'monthly' | 'yearly' | 'custom'>('monthly');
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
@@ -8902,8 +9058,8 @@ const ReportsView = ({
       <div className="lg:hidden bg-white border-b border-slate-100 px-4 pt-5 pb-4 space-y-3 print:hidden">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-bold text-slate-900 tracking-tight">Laporan Kewangan</h2>
-            <p className="text-slate-400 text-[11px] mt-0.5">Analisa prestasi perniagaan</p>
+            <h2 className="text-xl font-bold text-slate-900 tracking-tight">{t('reports.title')}</h2>
+            <p className="text-slate-400 text-[11px] mt-0.5">{t('reports.subtitle_short')}</p>
           </div>
           <div className="flex items-center gap-1.5">
             <button
@@ -8924,9 +9080,9 @@ const ReportsView = ({
 
         <div className="grid grid-cols-3 bg-slate-100 rounded-2xl p-1 gap-1">
           {[
-            { id: 'monthly', label: 'Bulanan' },
-            { id: 'yearly', label: 'Tahunan' },
-            { id: 'custom', label: 'Khas' },
+            { id: 'monthly', label: t('period.monthly') },
+            { id: 'yearly', label: t('period.yearly') },
+            { id: 'custom', label: t('period.custom') },
           ].map((opt) => (
             <button
               key={opt.id}
@@ -8974,8 +9130,8 @@ const ReportsView = ({
       {/* ── Desktop Header ── */}
       <header className="hidden lg:flex mb-10 flex-row justify-between items-center print:hidden gap-6 px-0 pt-0">
         <div>
-          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Laporan Kewangan</h2>
-          <p className="text-slate-500 text-sm font-medium">Analisa mendalam prestasi perniagaan anda.</p>
+          <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">{t('reports.title')}</h2>
+          <p className="text-slate-500 text-sm font-medium">{t('reports.subtitle')}</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
           <button onClick={handleReportPdf}
@@ -8984,9 +9140,9 @@ const ReportsView = ({
             Muat Turun PDF
           </button>
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-            <button onClick={() => setReportType('monthly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'monthly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Bulanan</button>
-            <button onClick={() => setReportType('yearly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'yearly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Tahunan</button>
-            <button onClick={() => setReportType('custom')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'custom' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>Khas</button>
+            <button onClick={() => setReportType('monthly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'monthly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{t('period.monthly')}</button>
+            <button onClick={() => setReportType('yearly')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'yearly' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{t('period.yearly')}</button>
+            <button onClick={() => setReportType('custom')} className={`px-4 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${reportType === 'custom' ? 'bg-white shadow-sm text-emerald-600' : 'text-slate-500 hover:text-slate-700'}`}>{t('period.custom')}</button>
           </div>
           <div className="flex gap-2 items-center">
             {reportType === 'monthly' && (
@@ -9024,7 +9180,7 @@ const ReportsView = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
         <div className="lg:col-span-8 card-premium p-4 md:p-8 bg-white">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 md:mb-8">
-            <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Perbandingan Prestasi</h3>
+            <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">{t('reports.comparison')}</h3>
             <div className="flex flex-wrap gap-3">
               {comparisonData.map((d, i) => (
                 <div key={i} className="flex items-center gap-2">
@@ -9062,19 +9218,19 @@ const ReportsView = ({
           <div className="w-12 h-12 bg-white/10 backdrop-blur-md rounded-xl flex items-center justify-center mx-auto mb-6 border border-white/10">
             <ShoppingCart size={24} className="text-emerald-400" />
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">Total Jualan Keseluruhan</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{t('reports.total_sales_all')}</p>
           <h3 className="text-4xl font-bold tracking-tight font-display">
             RM {totalSales.toLocaleString()}
           </h3>
           <div className="mt-6 px-4 py-2 bg-white/5 rounded-lg border border-white/10 inline-block mx-auto">
-            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Berdasarkan rekod jualan pintar</p>
+            <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400">{t('reports.based_on_sales')}</p>
           </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 mb-10">
         <div className="lg:col-span-5 card-premium p-4 md:p-8 bg-white">
-          <h3 className="text-lg font-bold mb-6 md:mb-8 tracking-tight font-display text-slate-900">Pecahan Duit Keluar</h3>
+          <h3 className="text-lg font-bold mb-6 md:mb-8 tracking-tight font-display text-slate-900">{t('reports.expense_breakdown')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
@@ -9141,8 +9297,8 @@ const ReportsView = ({
         <div className="lg:col-span-7 card-premium p-4 md:p-8 bg-white">
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-3 mb-6 md:mb-10">
             <div>
-              <h3 className="text-lg font-bold tracking-tight font-display text-slate-900">Penyata Untung Rugi</h3>
-              <p className="text-slate-500 text-xs font-medium">Ringkasan kewangan (P&L Statement)</p>
+              <h3 className="text-lg font-bold tracking-tight font-display text-slate-900">{t('reports.pnl')}</h3>
+              <p className="text-slate-500 text-xs font-medium">{t('reports.pnl_desc')}</p>
             </div>
             <div className="px-3 py-1 bg-slate-50 rounded-md border border-slate-200">
               <p className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">
@@ -9155,7 +9311,7 @@ const ReportsView = ({
           
           <div className="space-y-10">
             <section>
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Duit Masuk</h4>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">{t('stat.money_in')}</h4>
               <div className="space-y-3">
                 {incomeList.map((item, i) => (
                   <div 
@@ -9171,14 +9327,14 @@ const ReportsView = ({
                   </div>
                 ))}
                 <div className="flex justify-between py-4 px-6 font-bold text-emerald-700 bg-emerald-50 rounded-xl border border-emerald-100 mt-4">
-                  <span className="uppercase tracking-wider text-[10px]">Jumlah Duit Masuk</span>
+                  <span className="uppercase tracking-wider text-[10px]">{t('reports.total_in')}</span>
                   <span className="text-xl font-display">RM {totalIncome.toLocaleString()}</span>
                 </div>
               </div>
             </section>
 
             <section>
-              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Duit Keluar</h4>
+              <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">{t('stat.money_out')}</h4>
               <div className="space-y-3">
                 {expenseList.map((item, i) => (
                   <div 
@@ -9194,7 +9350,7 @@ const ReportsView = ({
                   </div>
                 ))}
                 <div className="flex justify-between py-4 px-6 font-bold text-rose-700 bg-rose-50 rounded-xl border border-rose-100 mt-4">
-                  <span className="uppercase tracking-wider text-[10px]">Jumlah Duit Keluar</span>
+                  <span className="uppercase tracking-wider text-[10px]">{t('reports.total_out')}</span>
                   <span className="text-xl font-display">RM {totalExpense.toLocaleString()}</span>
                 </div>
               </div>
@@ -9203,8 +9359,8 @@ const ReportsView = ({
             <section className="pt-6 border-t-2 border-slate-900">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 py-4 md:py-6 px-4 md:px-8 bg-slate-900 text-white rounded-2xl shadow-xl">
                 <div>
-                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Baki Tunai</h4>
-                  <p className="text-[10px] font-medium text-slate-500">Selepas ditolak kos operasi</p>
+                  <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">{t('stat.cash_balance')}</h4>
+                  <p className="text-[10px] font-medium text-slate-500">{t('reports.after_costs')}</p>
                 </div>
                 <span className={`text-2xl md:text-4xl font-bold tracking-tight font-display ${(totalIncome - totalExpense) >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                   RM {(totalIncome - totalExpense).toLocaleString()}
@@ -9541,9 +9697,10 @@ const BalanceSheetReport = ({
 
   const capital = getBalance(capitalCats) + openingFor(capitalCats);
   // Akaun pengarah dikendalikan sebagai ekuiti dalam penyata ini: baki "due to"
-  // menambah ekuiti, baki "due from" menguranginya.
+  // menambah ekuiti, baki "due from" dan baki awal ambilan menguranginya.
   const drawings = getBalance(drawingCats)
-    + openingFor(['AMOUNT DUE TO DIRECTOR']) - openingFor(['AMOUNT DUE FROM DIRECTOR']);
+    + openingFor(['AMOUNT DUE TO DIRECTOR']) - openingFor(['AMOUNT DUE FROM DIRECTOR'])
+    - openingFor(['ADVANCE DRAWING']);
   const retainedEarnings = netProfit;
 
   // In a single-entry system, we derive the Bank/Cash balance from the accounting equation:
@@ -10031,6 +10188,7 @@ const BalanceSheetReport = ({
 };
 
 const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[], sales: any[], user: UserType | null }) => {
+  const { t, lang } = useLang();
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [isConcise, setIsConcise] = useState(false);
@@ -10039,7 +10197,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
 
   const generateAnalysis = async (conciseMode: boolean = isConcise) => {
     setLoading(true);
-    const result = await analyzeFinancials(records, sales, conciseMode, user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan);
+    const result = await analyzeFinancials(records, sales, conciseMode, user?.id, user?.plan === 'Special' ? (user?.special_tier || 'Starter') : user?.plan, lang);
     setAnalysis(result);
     setLoading(false);
   };
@@ -10067,7 +10225,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
           <h2 className="text-4xl font-black text-slate-900 tracking-tight mb-2 font-display">
             Smart Analisis Pintar
           </h2>
-          <p className="text-slate-500 text-sm font-medium max-w-md">Analisa data kewangan anda secara automatik dengan teknologi AI terkini untuk keputusan bisnes yang lebih bijak.</p>
+          <p className="text-slate-500 text-sm font-medium max-w-md">{t('analysis.intro')}</p>
         </div>
         
         <div className="flex items-center gap-4 bg-white p-1.5 rounded-xl border border-slate-200 shadow-sm">
@@ -10090,7 +10248,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
               onClick={() => generateAnalysis()}
               disabled={loading}
               className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl hover:bg-emerald-100 transition-all disabled:opacity-50 border border-emerald-100"
-              title="Refresh Smart Analisis"
+              title={t('analysis.refresh')}
             >
               <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
             </button>
@@ -10135,9 +10293,9 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
           </div>
           <div className="col-span-4">
             <div className="border border-black p-6 text-center h-full flex flex-col justify-center">
-              <p className="text-[9px] font-bold text-gray-400 uppercase mb-2">Skor Kesihatan</p>
+              <p className="text-[9px] font-bold text-gray-400 uppercase mb-2">{t('analysis.health_score')}</p>
               <p className="text-4xl font-bold text-black mb-1">92%</p>
-              <p className="text-[9px] font-bold text-black uppercase tracking-tighter">PRESTASI TINGGI</p>
+              <p className="text-[9px] font-bold text-black uppercase tracking-tighter">{t('analysis.high_performance')}</p>
             </div>
           </div>
         </div>
@@ -10190,8 +10348,8 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
                 </div>
               </div>
               <div>
-                <p className="text-xl font-bold text-slate-900 mb-2">Sedang Menganalisa...</p>
-                <p className="text-slate-500 font-medium text-sm max-w-xs mx-auto">AI kami sedang memproses data transaksi dan jualan anda untuk menjana laporan komprehensif.</p>
+                <p className="text-xl font-bold text-slate-900 mb-2">{t('analysis.running')}</p>
+                <p className="text-slate-500 font-medium text-sm max-w-xs mx-auto">{t('analysis.running_desc')}</p>
               </div>
               <div className="w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                 <motion.div 
@@ -10224,8 +10382,8 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
               >
                 <Sparkles size={48} strokeWidth={1.5} />
               </motion.div>
-              <h3 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight font-display">Sedia untuk Dianalisa</h3>
-              <p className="text-slate-500 max-w-sm mb-10 text-sm leading-relaxed font-medium">Data transaksi anda telah sedia. Klik butang di bawah untuk memulakan analisis AI yang mendalam tentang prestasi perniagaan anda.</p>
+              <h3 className="text-2xl font-bold text-slate-900 mb-3 tracking-tight font-display">{t('analysis.ready')}</h3>
+              <p className="text-slate-500 max-w-sm mb-10 text-sm leading-relaxed font-medium">{t('analysis.ready_desc')}</p>
               <button 
                 onClick={() => generateAnalysis()}
                 className="group relative flex items-center gap-3 px-8 py-4 bg-emerald-600 text-white rounded-2xl text-sm font-bold uppercase tracking-wider hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-200 overflow-hidden"
@@ -10240,8 +10398,8 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
               <div className="w-20 h-20 bg-slate-50 rounded-3xl flex items-center justify-center text-slate-300 mb-6 border border-slate-100">
                 <FileText size={40} strokeWidth={1.5} />
               </div>
-              <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">Tiada Data untuk Dianalisa</h3>
-              <p className="text-slate-500 max-w-xs text-sm font-medium">Sila tambah transaksi atau jualan terlebih dahulu untuk membolehkan AI membuat analisa yang tepat.</p>
+              <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight">{t('analysis.no_data')}</h3>
+              <p className="text-slate-500 max-w-xs text-sm font-medium">{t('analysis.no_data_desc')}</p>
             </div>
           )}
         </div>
@@ -10253,9 +10411,9 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
             <div className="p-3 bg-white/10 rounded-2xl border border-white/10">
               <Zap size={24} className="text-emerald-300" />
             </div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-200/60 bg-white/5 px-2 py-1 rounded">Quick Tip</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-200/60 bg-white/5 px-2 py-1 rounded">{t('analysis.quick_tip')}</div>
           </div>
-          <h4 className="text-lg font-bold mb-3 font-display tracking-tight">Tips Pintar AI</h4>
+          <h4 className="text-lg font-bold mb-3 font-display tracking-tight">{t('analysis.tips')}</h4>
           <p className="text-sm text-emerald-50/80 leading-relaxed font-medium">
             AI kami menganalisa trend duit keluar dan jualan anda untuk memberikan nasihat perniagaan yang tepat. Pastikan anda mengimbas semua resit untuk hasil yang terbaik dan laporan yang lebih komprehensif.
           </p>
@@ -10265,9 +10423,9 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
             <div className="p-3 bg-white/10 rounded-2xl border border-white/10">
               <FileDown size={24} className="text-slate-400" />
             </div>
-            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-white/5 px-2 py-1 rounded">Export</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-slate-500 bg-white/5 px-2 py-1 rounded">{t('analysis.export')}</div>
           </div>
-          <h4 className="text-lg font-bold mb-3 font-display tracking-tight">Laporan PDF Rasmi</h4>
+          <h4 className="text-lg font-bold mb-3 font-display tracking-tight">{t('analysis.official_pdf')}</h4>
           <p className="text-sm text-slate-400 leading-relaxed font-medium mb-6">
             {analysis ? 'Laporan analisis anda sedia untuk dimuat turun dalam format PDF rasmi untuk kegunaan mesyuarat atau simpanan fail.' : 'Ciri eksport laporan AI ke PDF akan tersedia secara automatik sebaik sahaja analisis dijana oleh sistem.'}
           </p>
@@ -10309,6 +10467,7 @@ const AIAnalysisView = ({ records, sales, user }: { records: TransactionRecord[]
 };
 
 const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data: any) => void }) => {
+  const { t } = useLang();
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -10343,7 +10502,7 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
           <div className="w-20 h-20 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle2 size={40} />
           </div>
-          <h3 className="text-2xl font-bold text-slate-900 mb-2 font-display">Berjaya Ditambah!</h3>
+          <h3 className="text-2xl font-bold text-slate-900 mb-2 font-display">{t('md.added_ok')}</h3>
           <p className="text-slate-500 text-sm mb-8 font-medium">
             Pengguna baru telah didaftarkan. Anda boleh salin pautan akses di bawah untuk dikongsi.
           </p>
@@ -10369,7 +10528,7 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
         className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] flex flex-col"
       >
         <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-          <h3 className="text-xl font-bold text-slate-900 font-display tracking-tight">Tambah Pengguna Baru</h3>
+          <h3 className="text-xl font-bold text-slate-900 font-display tracking-tight">{t('md.add_user')}</h3>
           <button onClick={onClose} className="p-2 hover:bg-white rounded-lg text-slate-400 transition-colors">
             <X size={20} />
           </button>
@@ -10384,31 +10543,31 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
           )}
           
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Nama Penuh</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('auth.full_name')}</label>
             <input 
               required
               type="text" 
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
-              placeholder="Contoh: Ahmad bin Ali"
+              placeholder={t('md.ph_user_name')}
             />
           </div>
           
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Alamat Email</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('md.email_address')}</label>
             <input 
               required
               type="email" 
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
-              placeholder="ahmad@example.com"
+              placeholder={t('md.ph_user_email')}
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Kata Laluan</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('auth.password')}</label>
             <input 
               required
               type="password" 
@@ -10420,26 +10579,26 @@ const AddUserModal = ({ onClose, onSave }: { onClose: () => void, onSave: (data:
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Nama Syarikat</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('auth.company_name')}</label>
             <input 
               type="text" 
               value={formData.company_name}
               onChange={(e) => setFormData({ ...formData, company_name: e.target.value })}
               className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
-              placeholder="Contoh: Ahmad Enterprise"
+              placeholder={t('md.ph_user_company')}
             />
           </div>
 
           <div>
-            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">Peranan (Role)</label>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">{t('md.role')}</label>
             <select 
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value })}
               className="w-full bg-slate-50 border-none rounded-xl px-4 py-3 text-sm font-bold outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all appearance-none"
             >
-              <option value="admin">Admin (Full Access)</option>
-              <option value="full_access">Full Access</option>
-              <option value="upload_only">Upload Resit Sahaja</option>
+              <option value="admin">{t('md.role_admin')}</option>
+              <option value="full_access">{t('md.role_full')}</option>
+              <option value="upload_only">{t('md.role_upload')}</option>
             </select>
           </div>
 
@@ -10661,6 +10820,7 @@ const OpeningBalanceView = ({
   onSaved: () => void,
   showToast: (msg: string, type?: 'success' | 'error') => void,
 }) => {
+  const { t } = useLang();
   const defaultDate = format(new Date(new Date().getFullYear() - 1, 11, 31), 'yyyy-MM-dd');
 
   // Kaedah bayaran tersuai menjadi akaun Aset Semasa tambahan dalam borang ini
@@ -10706,7 +10866,8 @@ const OpeningBalanceView = ({
   const groupTotal = (key: string) => {
     const g = groups.find(x => x.key === key);
     if (!g) return 0;
-    return g.categories.reduce((s, c) => s + (numericValues[c] || 0), 0);
+    return g.categories.reduce((s, c) =>
+      s + (CONTRA_EQUITY_CATEGORIES.includes(c) ? -1 : 1) * (numericValues[c] || 0), 0);
   };
 
   const fmtRM = (v: number) =>
@@ -10798,7 +10959,7 @@ const OpeningBalanceView = ({
   return (
     <div className="p-4 md:p-6 pb-28 md:pl-64 md:pt-12 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Baki Awal</h2>
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">{t('ob.title')}</h2>
         <p className="text-slate-500 text-sm font-medium mt-0.5">
           Baki setiap akaun pada hari anda mula guna Monitacc
         </p>
@@ -10810,11 +10971,11 @@ const OpeningBalanceView = ({
         <div className="text-xs text-blue-900 leading-relaxed space-y-1.5">
           <p>
             Kalau perniagaan anda sudah lama beroperasi sebelum guna Monitacc, sistem tidak tahu
-            baki bank, stok, hutang atau modal sedia ada. Isikan di sini <strong>sekali sahaja</strong> —
+            baki bank, stok, hutang atau modal sedia ada. Isikan di sini <strong>{t('ob.once_only')}</strong> —
             tahun-tahun berikutnya bergolek sendiri.
           </p>
           <p>
-            Set ini mesti <strong>seimbang</strong>: Jumlah Aset = Jumlah Liabiliti + Ekuiti.
+            Set ini mesti <strong>{t('ob.balanced')}</strong>: Jumlah Aset = Jumlah Liabiliti + Ekuiti.
             Kalau tak tahu berapa Modal, isi semua yang lain dahulu kemudian tekan
             <strong> Auto-Imbang Modal</strong>.
           </p>
@@ -10823,7 +10984,7 @@ const OpeningBalanceView = ({
 
       {/* Tarikh */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-5">
-        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Baki Awal</label>
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('ob.date')}</label>
         <p className="text-[11px] text-slate-500 mt-1 mb-2">
           Biasanya sehari sebelum tahun kewangan pertama anda dalam sistem (cth 31/12/2025)
         </p>
@@ -10838,7 +10999,7 @@ const OpeningBalanceView = ({
       {/* Kaedah bayaran tersuai — setiap satu ialah akaun Aset Semasa di bawah */}
       {customMethods.length > 0 && (
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kaedah Bayaran Anda</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('ob.your_methods')}</label>
           <p className="text-[11px] text-slate-500 mt-1 mb-3">
             Setiap kaedah ini ialah satu baris Aset Semasa dalam Kunci Kira-Kira.
             Tambah kaedah baharu melalui butang <strong>+</strong> pada mana-mana borang transaksi.
@@ -10851,7 +11012,7 @@ const OpeningBalanceView = ({
                 <button
                   type="button"
                   onClick={() => handleDeleteMethod(m)}
-                  title="Padam kaedah bayaran"
+                  title={t('ob.delete_method')}
                   className="w-5 h-5 rounded-lg flex items-center justify-center text-violet-400 hover:text-rose-600 hover:bg-white transition-colors"
                 >
                   <X size={12} />
@@ -10920,19 +11081,19 @@ const OpeningBalanceView = ({
       }`}>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Jumlah Aset</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('ob.total_assets')}</p>
             <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.assets)}</p>
           </div>
           <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Liabiliti</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('ob.liabilities')}</p>
             <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.liabilities)}</p>
           </div>
           <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Ekuiti</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('ob.equity')}</p>
             <p className="text-sm font-black text-slate-900 tabular-nums">{fmtRM(check.equity)}</p>
           </div>
           <div>
-            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">Perbezaan</p>
+            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1">{t('ob.difference')}</p>
             <p className={`text-sm font-black tabular-nums ${check.isBalanced ? 'text-emerald-700' : 'text-amber-700'}`}>
               {fmtRM(check.difference)}
             </p>
@@ -10980,7 +11141,7 @@ const OpeningBalanceView = ({
 
       {/* ── Stok Akhir (Stock Take) ─────────────────────────────────── */}
       <div className="mt-10">
-        <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">Stok Akhir (Stock Take)</h3>
+        <h3 className="text-lg font-black text-slate-900 tracking-tight font-display">{t('ob.stock_take')}</h3>
         <p className="text-slate-500 text-xs font-medium mt-0.5 mb-4">
           Nilai stok fizikal pada hujung tempoh — digunakan dalam Kos Jualan
         </p>
@@ -10997,7 +11158,7 @@ const OpeningBalanceView = ({
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5 mb-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('col.date')}</label>
               <input
                 type="date"
                 value={stkDate}
@@ -11006,7 +11167,7 @@ const OpeningBalanceView = ({
               />
             </div>
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nilai Stok (RM)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('ob.stock_value')}</label>
               <input
                 type="number"
                 step="0.01"
@@ -11018,10 +11179,10 @@ const OpeningBalanceView = ({
               />
             </div>
             <div>
-              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Catatan</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('ob.note')}</label>
               <input
                 type="text"
-                placeholder="Pilihan"
+                placeholder={t('ob.ph_optional')}
                 value={stkNote}
                 onChange={e => setStkNote(e.target.value)}
                 className="mt-1.5 w-full px-3 py-2.5 text-sm font-medium text-slate-700 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400"
@@ -11042,7 +11203,7 @@ const OpeningBalanceView = ({
           {sortedStockTakes.length === 0 ? (
             <div className="px-5 py-10 flex flex-col items-center gap-2">
               <Package size={20} className="text-slate-300" />
-              <p className="text-xs text-slate-400 font-medium">Belum ada rekod stok akhir</p>
+              <p className="text-xs text-slate-400 font-medium">{t('ob.no_stock')}</p>
             </div>
           ) : (
             <div className="divide-y divide-slate-50">
@@ -11060,7 +11221,7 @@ const OpeningBalanceView = ({
                   <button
                     onClick={() => handleDeleteStockTake(s.id)}
                     className="p-1.5 rounded-lg text-slate-300 hover:text-rose-600 hover:bg-rose-50 transition-colors shrink-0"
-                    title="Padam"
+                    title={t('common.delete')}
                   >
                     <Trash2 size={14} />
                   </button>
@@ -11075,6 +11236,7 @@ const OpeningBalanceView = ({
 };
 
 const UserManagementView = ({ onBack }: { onBack: () => void }) => {
+  const { t } = useLang();
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -11227,15 +11389,15 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-6xl mx-auto">
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">Pengurusan Pengguna</h2>
-          <p className="text-slate-500 text-sm font-medium mt-0.5">Semua pengguna yang berdaftar dalam sistem</p>
+          <h2 className="text-2xl font-black text-slate-900 tracking-tight font-display">{t('users.title')}</h2>
+          <p className="text-slate-500 text-sm font-medium mt-0.5">{t('users.subtitle')}</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
           className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 hover:bg-emerald-700 transition-all active:scale-95"
         >
           <Plus size={16} />
-          Tambah Pengguna
+          {t('users.add')}
         </button>
       </div>
 
@@ -11251,10 +11413,10 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         {[
-          { label: 'Jumlah Berdaftar', value: users.length, color: 'bg-white border-slate-200', textColor: 'text-slate-900', labelColor: 'text-slate-500', icon: Users },
-          { label: 'Pengguna Aktif', value: users.filter(u => u.status === 'active').length, color: 'bg-emerald-50 border-emerald-100', textColor: 'text-emerald-900', labelColor: 'text-emerald-600', icon: CheckCircle2 },
-          { label: 'Pengguna Batal', value: users.filter(u => u.status === 'cancelled').length, color: 'bg-rose-50 border-rose-100', textColor: 'text-rose-900', labelColor: 'text-rose-500', icon: X },
-          { label: 'Berbayar', value: users.filter(u => u.plan && u.plan !== 'free' && u.plan !== 'Free').length, color: 'bg-amber-50 border-amber-100', textColor: 'text-amber-900', labelColor: 'text-amber-600', icon: Crown },
+          { label: t('users.registered'), value: users.length, color: 'bg-white border-slate-200', textColor: 'text-slate-900', labelColor: 'text-slate-500', icon: Users },
+          { label: t('users.active'), value: users.filter(u => u.status === 'active').length, color: 'bg-emerald-50 border-emerald-100', textColor: 'text-emerald-900', labelColor: 'text-emerald-600', icon: CheckCircle2 },
+          { label: t('users.cancelled'), value: users.filter(u => u.status === 'cancelled').length, color: 'bg-rose-50 border-rose-100', textColor: 'text-rose-900', labelColor: 'text-rose-500', icon: X },
+          { label: t('users.paid'), value: users.filter(u => u.plan && u.plan !== 'free' && u.plan !== 'Free').length, color: 'bg-amber-50 border-amber-100', textColor: 'text-amber-900', labelColor: 'text-amber-600', icon: Crown },
         ].map((s, i) => (
           <div key={i} className={`${s.color} border rounded-2xl p-4`}>
             <div className="flex items-center justify-between mb-2">
@@ -11271,7 +11433,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Cari nama, emel, syarikat, telefon..."
+            placeholder={t('users.search_placeholder')}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all placeholder:text-slate-400"
@@ -11293,7 +11455,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                   : 'text-slate-500 hover:text-slate-700'
               }`}
             >
-              {tab === 'all' ? `Semua (${users.length})` : tab === 'active' ? `Aktif (${users.filter(u => u.status === 'active').length})` : `Batal (${users.filter(u => u.status === 'cancelled').length})`}
+              {tab === 'all' ? `${t('common.all')} (${users.length})` : tab === 'active' ? `${t('common.active')} (${users.filter(u => u.status === 'active').length})` : `${t('common.cancelled')} (${users.filter(u => u.status === 'cancelled').length})`}
             </button>
           ))}
         </div>
@@ -11302,16 +11464,16 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
       {/* Penapis: Tarikh Daftar & Affiliate */}
       <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-end gap-3 mb-5">
         <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Tarikh Daftar</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('users.filter_register_date')}</label>
           <DateRangeCalendar
             from={dateFrom}
             to={dateTo}
-            onChange={(f, t) => { setDateFrom(f); setDateTo(t); }}
+            onChange={(from, to) => { setDateFrom(from); setDateTo(to); }}
           />
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Affiliate / Rujukan</label>
+          <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{t('users.filter_affiliate')}</label>
           <div className="relative">
             <Users size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
             <select
@@ -11319,8 +11481,8 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
               onChange={e => setAffiliateFilter(e.target.value)}
               className="appearance-none pl-8 pr-8 py-2.5 text-xs font-bold text-slate-700 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-400 transition-all cursor-pointer max-w-[220px] truncate"
             >
-              <option value="all">Semua Affiliate</option>
-              <option value="__direct__">Tiada Rujukan (Terus)</option>
+              <option value="all">{t('users.all_affiliates')}</option>
+              <option value="__direct__">{t('users.direct')}</option>
               {affiliateOptions.map(ref => (
                 <option key={ref} value={ref}>{ref}</option>
               ))}
@@ -11342,7 +11504,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
-          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{filteredUsers.length} pengguna dijumpai</p>
+          <p className="text-xs font-bold text-slate-500 uppercase tracking-wider">{t('users.found', { count: filteredUsers.length })}</p>
           <div className="flex items-center gap-1.5">
             <button
               onClick={() => {
@@ -11389,7 +11551,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
         ) : filteredUsers.length === 0 ? (
           <div className="px-5 py-12 flex flex-col items-center gap-2">
             <SearchX size={20} className="text-slate-300" />
-            <p className="text-xs text-slate-400 font-medium">Tiada pengguna dijumpai</p>
+            <p className="text-xs text-slate-400 font-medium">{t('subs.not_found')}</p>
           </div>
         ) : (
           <>
@@ -11502,90 +11664,91 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
               <table className="w-full text-left">
                 <thead>
                   <tr className="bg-slate-50/80 border-b border-slate-100">
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">#</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pengguna</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Telefon</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Status</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Pakej</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Daftar</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tarikh Subscribe</th>
-                    <th className="px-5 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Tindakan</th>
+                    <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest w-10">#</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('common.user')}</th>
+                    <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('common.status')}</th>
+                    <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">{t('common.plan')}</th>
+                    <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider whitespace-nowrap">{t('users.col_register')}</th>
+                    <th className="px-3 py-3 text-[10px] font-black text-slate-400 uppercase tracking-wider whitespace-nowrap">{t('users.col_subscribe')}</th>
+                    <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">{t('common.action')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50">
                   {filteredUsers.map((u, idx) => (
                     <tr key={u.id} className="hover:bg-slate-50/60 transition-colors group">
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 py-3.5">
                         <span className="text-[11px] font-bold text-slate-300">{idx + 1}</span>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-4 py-3.5">
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 bg-emerald-50 rounded-xl flex items-center justify-center shrink-0">
                             <span className="text-[11px] font-black text-emerald-600">{(u.name || '?')[0].toUpperCase()}</span>
                           </div>
                           <div>
                             <div className="text-sm font-bold text-slate-900 leading-tight">{u.name || '-'}</div>
-                            <div className="text-[11px] text-slate-400 font-medium">{u.email}</div>
-                            {u.company_name && (
-                              <div className="text-[10px] text-emerald-600 font-bold uppercase tracking-tight">{u.company_name}</div>
-                            )}
+                            <div className="text-[11px] text-slate-400 font-medium whitespace-nowrap">{u.email}</div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              {u.company_name && (
+                                <span className="text-[10px] text-emerald-600 font-bold uppercase tracking-tight">{u.company_name}</span>
+                              )}
+                              {u.phone && (
+                                <span className="text-[10px] text-slate-400 font-medium whitespace-nowrap">{u.phone}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className="text-xs text-slate-500 font-medium">{u.phone || <span className="text-slate-300">—</span>}</span>
-                      </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${
+                      <td className="px-3 py-3.5">
+                        <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${
                           u.status === 'active' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-600'
                         }`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${u.status === 'active' ? 'bg-emerald-500' : 'bg-rose-400'}`} />
-                          {u.status === 'active' ? 'Aktif' : 'Batal'}
+                          {u.status === 'active' ? t('common.active') : t('common.cancelled')}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${planColor(u.plan || 'free')}`}>
+                      <td className="px-3 py-3.5">
+                        <span className={`inline-block px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider whitespace-nowrap ${planColor(u.plan || 'free')}`}>
                           {u.plan || 'Free'}
                         </span>
                       </td>
-                      <td className="px-5 py-3.5">
-                        <span className="text-xs text-slate-500 font-medium">
+                      <td className="px-3 py-3.5">
+                        <span className="text-xs text-slate-500 font-medium whitespace-nowrap">
                           {u.created_at ? new Date(u.created_at).toLocaleDateString('ms-MY', { day: '2-digit', month: 'short', year: 'numeric' }) : '—'}
                         </span>
-                        <div className={`text-[10px] font-bold mt-0.5 ${isDirectRef((u.referred_by || '').trim()) ? 'text-slate-300' : 'text-blue-500'}`}>
-                          {isDirectRef((u.referred_by || '').trim()) ? 'Terus' : u.referred_by}
+                        <div className={`text-[10px] font-bold mt-0.5 whitespace-nowrap ${isDirectRef((u.referred_by || '').trim()) ? 'text-slate-300' : 'text-blue-500'}`}>
+                          {isDirectRef((u.referred_by || '').trim()) ? t('users.direct') : u.referred_by}
                         </div>
                       </td>
-                      <td className="px-5 py-3.5">
+                      <td className="px-3 py-3.5">
                         {subscribeDate(u) ? (
                           <>
-                            <span className="text-xs text-slate-500 font-medium">{subscribeDate(u)}</span>
-                            <div className="text-[10px] font-bold text-slate-300 mt-0.5">
-                              {fmtDate(u.plan_end) ? `Tamat: ${fmtDate(u.plan_end)}` : 'Tiada tamat'}
+                            <span className="text-xs text-slate-500 font-medium whitespace-nowrap">{subscribeDate(u)}</span>
+                            <div className="text-[10px] font-bold text-slate-300 mt-0.5 whitespace-nowrap">
+                              {fmtDate(u.plan_end) ? `${t('subs.end')}: ${fmtDate(u.plan_end)}` : t('users.no_expiry')}
                             </div>
                           </>
                         ) : (
-                          <span className="text-xs text-slate-300 font-medium">
-                            {isPaidPlan(u.plan) ? '—' : 'Belum subscribe'}
+                          <span className="text-xs text-slate-300 font-medium whitespace-nowrap">
+                            {isPaidPlan(u.plan) ? '—' : t('users.not_subscribed')}
                           </span>
                         )}
                       </td>
-                      <td className="px-5 py-3.5">
-                        <div className="flex items-center justify-end gap-2">
+                      <td className="px-4 py-3.5">
+                        <div className="flex items-center justify-end gap-1.5">
                           <select
                             value={u.role || 'full_access'}
                             onChange={(e) => handleUpdateRole(u.id, e.target.value)}
-                            className="text-[10px] font-bold bg-slate-100 border-none rounded-lg px-2 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer"
+                            className="text-[10px] font-bold bg-slate-100 border-none rounded-lg px-1.5 py-1.5 outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer shrink-0"
                           >
-                            <option value="admin">Admin</option>
-                            <option value="full_access">Full Access</option>
-                            <option value="upload_only">Upload Only</option>
+                            <option value="admin">{t('users.role_admin')}</option>
+                            <option value="full_access">{t('users.role_full')}</option>
+                            <option value="upload_only">{t('users.role_upload')}</option>
                           </select>
                           {(!u.plan || u.plan === 'free' || u.plan === 'Percuma') && (
                             <button
                               onClick={() => setShowTopUp(u)}
                               className="p-1.5 rounded-lg text-emerald-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors"
-                              title="Top Up Token"
+                              title={t('users.topup_token')}
                             >
                               <Zap size={14} />
                             </button>
@@ -11593,7 +11756,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                           <button
                             onClick={() => setSelectedUser(u)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
-                            title="Lihat butiran"
+                            title={t('users.view_details')}
                           >
                             <Eye size={14} />
                           </button>
@@ -11601,7 +11764,7 @@ const UserManagementView = ({ onBack }: { onBack: () => void }) => {
                             <button
                               onClick={() => setConfirmDelete(u)}
                               className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="Padam pengguna"
+                              title={t('users.delete_user')}
                             >
                               <Trash2 size={14} />
                             </button>
@@ -11941,6 +12104,7 @@ const PLAN_COLORS: Record<string, { bg: string; text: string; border: string; do
 };
 
 const PremiumGateView = ({ featureId, onUpgrade, onBack }: { featureId: string; onUpgrade: () => void; onBack: () => void }) => {
+  const { t } = useLang();
   const info = PREMIUM_GATE_INFO[featureId];
   if (!info) return null;
   const Icon = info.icon;
@@ -11997,7 +12161,7 @@ const PremiumGateView = ({ featureId, onUpgrade, onBack }: { featureId: string; 
 
           <div className="px-7 py-7">
             <div className="mb-7">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Apa yang anda dapat</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">{t('gate.what_you_get')}</p>
               <div className="grid grid-cols-2 gap-2.5">
                 {info.features.map((f, i) => (
                   <div key={i} className="flex items-center gap-2.5 bg-slate-50 rounded-2xl p-3.5 border border-slate-100">
@@ -12012,7 +12176,7 @@ const PremiumGateView = ({ featureId, onUpgrade, onBack }: { featureId: string; 
 
             {planOptions.length > 0 && (
               <div className="mb-7">
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Pakej yang sesuai</p>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">{t('gate.suitable_plan')}</p>
                 <div className="space-y-2.5">
                   {planOptions.map((plan) => {
                     const colors = PLAN_COLORS[plan.name] || PLAN_COLORS['Starter'];
@@ -12154,6 +12318,7 @@ const PROFILE_PLAN_DETAILS: Record<string, { label: string; price: string; perio
 };
 
 const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUserManagement }: { user: UserType | null, setView: (v: AppView) => void, onLogout: () => void, onEdit: () => void, onBusinessSettings: () => void, onUserManagement: () => void }) => {
+  const { t } = useLang();
   const name = user?.name || 'Ahmad bin Ali';
   const companyName = user?.company_name || 'Ahmad Business';
   const email = user?.email || 'monitacc2026@gmail.com';
@@ -12173,6 +12338,11 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <div className="space-y-6">
+        {/* Pemilih bahasa — sidebar tersembunyi di telefon, jadi ia diletak di sini juga */}
+        <div className="card-premium p-4 md:hidden">
+          <LanguageSwitcher />
+        </div>
+
         {/* Profile Header Card */}
         <div className="card-premium overflow-hidden relative">
           <div className="h-20 bg-gradient-to-r from-emerald-500 to-teal-600 relative">
@@ -12230,7 +12400,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
           <div className={`bg-gradient-to-r ${planDetails.color} p-6 text-white`}>
             <div className="flex items-start justify-between">
               <div>
-                <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">Pakej Semasa</p>
+                <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mb-1">{t('prof.current_plan')}</p>
                 <h3 className="text-2xl font-bold tracking-tight font-display">{planDetails.label}</h3>
                 <div className="flex items-baseline gap-1 mt-1">
                   <span className="text-3xl font-black">{planDetails.price}</span>
@@ -12245,7 +12415,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
             {!isFreePlan && planEndFormatted && (
               <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
                 <div>
-                  <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest">Tamat Langganan</p>
+                  <p className="text-white/50 text-[10px] font-bold uppercase tracking-widest">{t('prof.plan_ends')}</p>
                   <p className="text-white text-sm font-bold mt-0.5">{planEndFormatted}</p>
                 </div>
                 {daysLeft !== null && (
@@ -12258,7 +12428,7 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
           </div>
 
           <div className="p-6 bg-white">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Ciri-ciri Yang Disertakan</p>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">{t('prof.included')}</p>
             <div className="space-y-3">
               {planDetails.features.map((f, i) => (
                 <div key={i} className="flex items-center gap-3">
@@ -12321,9 +12491,9 @@ const ProfileView = ({ user, setView, onLogout, onEdit, onBusinessSettings, onUs
               <ShieldCheck size={20} className="text-emerald-400" strokeWidth={2} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">Akses Khas</p>
-              <p className="text-sm font-bold text-white leading-tight">Portal Pentadbir</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">Untuk pengurusan sistem sahaja</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">{t('admin.special_access')}</p>
+              <p className="text-sm font-bold text-white leading-tight">{t('prof.admin_portal')}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-tight">{t('prof.admin_only')}</p>
             </div>
             <button
               onClick={() => setView('admin-auth')}
@@ -12356,6 +12526,7 @@ const CategoriesView = ({
   setCategoryMappings: React.Dispatch<React.SetStateAction<Record<string, string>>>,
   onBack: () => void 
 }) => {
+  const { t } = useLang();
   const [searchTerm, setSearchTerm] = useState('');
   const [newCategory, setNewCategory] = useState('');
   const [newCategoryType, setNewCategoryType] = useState('EXPENSE');
@@ -12389,12 +12560,12 @@ const CategoriesView = ({
     <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
-        <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
+        <span className="font-bold text-sm uppercase tracking-wider">{t('common.back')}</span>
       </button>
 
       <header className="mb-12">
-        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pengurusan Kategori</h2>
-        <p className="text-slate-500 text-sm font-medium">Urus kategori tersuai anda untuk pengelasan transaksi yang lebih baik.</p>
+        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">{t('cat.title')}</h2>
+        <p className="text-slate-500 text-sm font-medium">{t('cat.subtitle')}</p>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -12406,26 +12577,26 @@ const CategoriesView = ({
             </h3>
             <form onSubmit={handleAdd} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Nama Kategori</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('cat.name')}</label>
                 <input 
                   type="text"
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
-                  placeholder="Contoh: GRABFOOD"
+                  placeholder={t('cat.ph_name')}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">Jenis</label>
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">{t('col.type')}</label>
                 <select 
                   value={newCategoryType}
                   onChange={(e) => setNewCategoryType(e.target.value)}
                   className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 >
-                  <option value="SALES">Profit & Loss (Jualan)</option>
-                  <option value="EXPENSE">Profit & Loss (Belanja)</option>
-                  <option value="COGS">Profit & Loss (COGS)</option>
-                  <option value="ASSET_LIABILITY">Balance Sheet (Aset/Liabiliti)</option>
+                  <option value="SALES">{t('cat.g_sales')}</option>
+                  <option value="EXPENSE">{t('cat.g_expense')}</option>
+                  <option value="COGS">{t('cat.g_cogs')}</option>
+                  <option value="ASSET_LIABILITY">{t('cat.g_bs')}</option>
                 </select>
               </div>
               <button 
@@ -12446,7 +12617,7 @@ const CategoriesView = ({
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                 <input 
                   type="text"
-                  placeholder="Cari kategori tersuai..."
+                  placeholder={t('cat.ph_search')}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-medium outline-none focus:ring-4 focus:ring-emerald-500/5 focus:border-emerald-500 transition-all"
@@ -12484,7 +12655,7 @@ const CategoriesView = ({
                   <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center text-slate-200 mx-auto mb-4">
                     <Tag size={32} />
                   </div>
-                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">Tiada kategori tersuai ditemui.</p>
+                  <p className="text-slate-400 font-bold text-xs uppercase tracking-wider">{t('cat.empty')}</p>
                 </div>
               )}
             </div>
@@ -12496,7 +12667,7 @@ const CategoriesView = ({
                 <Info size={20} />
               </div>
               <div>
-                <h4 className="text-sm font-bold text-slate-900 mb-1">Nota Penting</h4>
+                <h4 className="text-sm font-bold text-slate-900 mb-1">{t('cat.important')}</h4>
                 <p className="text-xs text-slate-500 font-medium leading-relaxed">
                   Hanya kategori tersuai yang anda tambah boleh dipadamkan. Kategori standard perakaunan (Chart of Accounts) adalah tetap untuk memastikan integriti laporan kewangan anda.
                 </p>
@@ -12510,39 +12681,25 @@ const CategoriesView = ({
 };
 
 const FAQView = ({ onBack }: { onBack: () => void }) => {
+  const { t } = useLang();
   const faqs = [
-    {
-      q: "Bagaimana cara untuk mengimbas resit?",
-      a: "Anda boleh klik pada butang '+' di bahagian bawah skrin dan pilih 'Imbas Resit'. Ambil gambar resit anda dengan jelas dan AI kami akan mengekstrak maklumat secara automatik."
-    },
-    {
-      q: "Adakah data saya selamat?",
-      a: "Ya, kami menggunakan penyulitan gred bank untuk memastikan semua data kewangan anda selamat dan hanya boleh diakses oleh anda."
-    },
-    {
-      q: "Bolehkah saya eksport data ke Excel?",
-      a: "Boleh. Anda boleh pergi ke bahagian 'Laporan' atau 'Profil' dan pilih 'Eksport Data (PDF)' untuk memuat turun laporan dalam format PDF standard perakaunan."
-    },
-    {
-      q: "Bagaimana cara untuk menaik taraf plan?",
-      a: "Pergi ke bahagian 'Akaun' (Profil) dan klik pada kad 'Naik Taraf Plan'. Pilih plan yang sesuai dengan keperluan perniagaan anda."
-    },
-    {
-      q: "Apa itu Smart Analisis?",
-      a: "Smart Analisis adalah ciri kecerdasan buatan (AI) yang menganalisis data kewangan anda untuk memberikan nasihat perniagaan, ramalan jualan, dan tips penjimatan cukai."
-    }
+    { q: t('faq.q1'), a: t('faq.a1') },
+    { q: t('faq.q2'), a: t('faq.a2') },
+    { q: t('faq.q3'), a: t('faq.a3') },
+    { q: t('faq.q4'), a: t('faq.a4') },
+    { q: t('faq.q5'), a: t('faq.a5') },
   ];
 
   return (
     <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
-        <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
+        <span className="font-bold text-sm uppercase tracking-wider">{t('common.back')}</span>
       </button>
 
       <header className="mb-12">
-        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Pusat Bantuan (FAQ)</h2>
-        <p className="text-slate-500 text-sm font-medium">Soalan lazim yang sering ditanya oleh pengguna Monitacc.</p>
+        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">{t('faq.title')}</h2>
+        <p className="text-slate-500 text-sm font-medium">{t('faq.subtitle')}</p>
       </header>
 
       <div className="space-y-4">
@@ -12564,42 +12721,43 @@ const FAQView = ({ onBack }: { onBack: () => void }) => {
 };
 
 const TermsView = ({ onBack }: { onBack: () => void }) => {
+  const { t } = useLang();
   return (
     <div className="p-6 pb-24 md:pl-64 md:pt-12 max-w-4xl mx-auto">
       <button onClick={onBack} className="flex items-center gap-2 text-slate-500 hover:text-slate-900 mb-8 transition-colors">
         <ArrowLeft size={20} />
-        <span className="font-bold text-sm uppercase tracking-wider">Kembali</span>
+        <span className="font-bold text-sm uppercase tracking-wider">{t('common.back')}</span>
       </button>
 
       <header className="mb-12">
-        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">Terma & Syarat</h2>
-        <p className="text-slate-500 text-sm font-medium">Sila baca terma dan syarat penggunaan Monitacc dengan teliti.</p>
+        <h2 className="text-3xl font-bold text-slate-900 mb-2 tracking-tight font-display">{t('terms.title')}</h2>
+        <p className="text-slate-500 text-sm font-medium">{t('terms.subtitle')}</p>
       </header>
 
       <div className="card-premium p-8 bg-white space-y-8 text-slate-600 text-sm leading-relaxed">
         <section>
           <h3 className="text-lg font-bold text-slate-900 mb-3 font-display tracking-tight">1. Penerimaan Terma</h3>
-          <p>Dengan mengakses dan menggunakan aplikasi Monitacc, anda bersetuju untuk terikat dengan terma dan syarat ini. Jika anda tidak bersetuju, sila hentikan penggunaan aplikasi ini dengan serta-merta.</p>
+          <p>{t('terms.p1')}</p>
         </section>
 
         <section>
           <h3 className="text-lg font-bold text-slate-900 mb-3 font-display tracking-tight">2. Penggunaan Akaun</h3>
-          <p>Anda bertanggungjawab sepenuhnya untuk menjaga kerahsiaan maklumat akaun dan kata laluan anda. Sebarang aktiviti yang berlaku di bawah akaun anda adalah tanggungjawab anda.</p>
+          <p>{t('terms.p2')}</p>
         </section>
 
         <section>
           <h3 className="text-lg font-bold text-slate-900 mb-3 font-display tracking-tight">3. Ketepatan Data</h3>
-          <p>Walaupun Monitacc menggunakan teknologi AI untuk mengekstrak data dari resit, anda bertanggungjawab untuk menyemak dan mengesahkan ketepatan setiap transaksi sebelum menyimpannya.</p>
+          <p>{t('terms.p3')}</p>
         </section>
 
         <section>
           <h3 className="text-lg font-bold text-slate-900 mb-3 font-display tracking-tight">4. Langganan & Pembayaran</h3>
-          <p>Pembayaran untuk plan langganan adalah tidak boleh dikembalikan. Anda boleh membatalkan langganan anda pada bila-bila masa, namun akses akan kekal sehingga tamat tempoh kitaran pengebilan semasa.</p>
+          <p>{t('terms.p4')}</p>
         </section>
 
         <section>
           <h3 className="text-lg font-bold text-slate-900 mb-3 font-display tracking-tight">5. Privasi Data</h3>
-          <p>Kami menghormati privasi anda. Data anda tidak akan dikongsi dengan pihak ketiga tanpa kebenaran anda, kecuali jika dikehendaki oleh undang-undang.</p>
+          <p>{t('terms.p5')}</p>
         </section>
 
         <div className="pt-8 border-t border-slate-100 text-[10px] font-bold text-slate-400 uppercase tracking-widest text-center">
@@ -12619,10 +12777,13 @@ const PLAN_CONFIG: { name: string; price: number; color: string; features: strin
 ];
 
 const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
+  const { t, lang } = useLang();
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
   const [filterPlan, setFilterPlan] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  // 'all' | 'expired' | 'soon' | 'safe' | 'none' | kunci bulan '2026-08'
+  const [filterExpiry, setFilterExpiry] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(10);
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
@@ -12696,9 +12857,59 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
+  // Berapa hari lagi sebelum tarikh tamat langganan. Negatif = sudah lepas,
+  // null = pengguna tiada tarikh tamat (cth pakej percuma atau seumur hidup).
+  const daysToExpiry = (planEnd?: string | null): number | null => {
+    if (!planEnd) return null;
+    const d = parseISO(planEnd);
+    if (isNaN(d.getTime())) return null;
+    return differenceInCalendarDays(d, new Date());
+  };
+
+  const EXPIRY_SOON_DAYS = 30;
+  const MONTH_KEY_PATTERN = /^\d{4}-\d{2}$/;
+
+  // Kunci bulan '2026-08' daripada tarikh tamat. null jika tiada/tidak sah.
+  const monthKeyOf = (iso?: string | null): string | null => {
+    if (!iso) return null;
+    const d = parseISO(iso);
+    if (isNaN(d.getTime())) return null;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  // Nama bulan mengikut bahasa semasa, cth "Ogos 2026" / "August 2026" / "2026年8月".
+  const monthLabel = (key: string) => {
+    const [y, m] = key.split('-');
+    const locale = lang === 'zh' ? 'zh-CN' : lang === 'en' ? 'en-GB' : 'ms-MY';
+    return new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' })
+      .format(new Date(Number(y), Number(m) - 1, 1));
+  };
+
+  // Hanya bulan yang benar-benar ada dalam data ditunjuk — terkini dahulu.
+  const expiryMonths = useMemo(() => {
+    const set = new Set<string>();
+    users.forEach(u => {
+      const key = monthKeyOf(u.plan_end);
+      if (key) set.add(key);
+    });
+    return Array.from(set).sort().reverse();
+  }, [users]);
+
   const filtered = users.filter(u => {
     if (filterPlan !== 'all' && (u.plan || 'free') !== filterPlan) return false;
     if (filterStatus !== 'all' && (u.status || 'active') !== filterStatus) return false;
+    if (filterExpiry !== 'all') {
+      // Nilai berbentuk '2026-08' bermakna tapis ikut bulan; selain itu ikut status hari.
+      if (MONTH_KEY_PATTERN.test(filterExpiry)) {
+        if (monthKeyOf(u.plan_end) !== filterExpiry) return false;
+      } else {
+        const d = daysToExpiry(u.plan_end);
+        if (filterExpiry === 'none' && d !== null) return false;
+        if (filterExpiry === 'expired' && (d === null || d >= 0)) return false;
+        if (filterExpiry === 'soon' && (d === null || d < 0 || d > EXPIRY_SOON_DAYS)) return false;
+        if (filterExpiry === 'safe' && (d === null || d <= EXPIRY_SOON_DAYS)) return false;
+      }
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       return (u.name?.toLowerCase().includes(q) || u.email?.toLowerCase().includes(q) || u.company_name?.toLowerCase().includes(q));
@@ -12706,7 +12917,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
     return true;
   });
 
-  useEffect(() => { setVisibleCount(10); }, [filterPlan, filterStatus, searchQuery]);
+  useEffect(() => { setVisibleCount(10); }, [filterPlan, filterStatus, filterExpiry, searchQuery]);
 
   const visibleUsers = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visibleCount;
@@ -12735,7 +12946,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
   const statusBadge = (status: string) => {
     const s = status || 'active';
     const cls = s === 'active' ? 'bg-emerald-100 text-emerald-700' : s === 'cancelled' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700';
-    return <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${cls}`}>{s === 'active' ? 'Aktif' : s === 'cancelled' ? 'Batal' : 'Tamat'}</span>;
+    return <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider ${cls}`}>{s === 'active' ? t('common.active') : s === 'cancelled' ? t('common.cancelled') : t('common.expired')}</span>;
   };
 
   return (
@@ -12744,8 +12955,8 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
         <div className="flex items-center gap-4">
           <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"><ArrowLeft size={20} /></button>
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">Pengurusan Langganan</h2>
-            <p className="text-sm text-slate-500 font-medium">Pantau subscriber mengikut pakej</p>
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight font-display">{t('subs.title')}</h2>
+            <p className="text-sm text-slate-500 font-medium">{t('subs.subtitle')}</p>
           </div>
         </div>
       </div>
@@ -12759,25 +12970,25 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
           >
             <div className="flex items-center justify-between mb-2">
               {planBadge(p.name)}
-              <span className="text-[10px] font-bold text-slate-400">{p.price === 0 && p.name === 'Special' ? 'Khas' : `RM${p.price}/bln`}</span>
+              <span className="text-[10px] font-bold text-slate-400">{p.price === 0 && p.name === 'Special' ? t('subs.special') : `RM${p.price}/bln`}</span>
             </div>
             <p className="text-2xl font-bold text-slate-900">{p.count}</p>
-            <p className="text-[10px] font-medium text-slate-400 mt-0.5">pengguna</p>
+            <p className="text-[10px] font-medium text-slate-400 mt-0.5">{t('subs.users_unit')}</p>
           </button>
         ))}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
         <div className="bg-emerald-50 p-5 rounded-2xl border border-emerald-100">
-          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">Subscriber Aktif (Berbayar)</p>
+          <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider mb-1">{t('subs.active_paid')}</p>
           <p className="text-2xl font-bold text-emerald-900">{activeCount}</p>
         </div>
         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Anggaran Hasil Bulanan</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('subs.est_revenue')}</p>
           <p className="text-2xl font-bold text-slate-900">RM {totalRevenue.toLocaleString()}</p>
         </div>
         <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200">
-          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Jumlah Pengguna</p>
+          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('subs.total_users')}</p>
           <p className="text-2xl font-bold text-slate-900">{users.length}</p>
         </div>
       </div>
@@ -12789,7 +13000,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Cari nama, email, syarikat..."
+            placeholder={t('subs.search_placeholder')}
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-300 transition-all"
           />
         </div>
@@ -12800,7 +13011,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
               onClick={() => setFilterStatus(s)}
               className={`px-4 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all ${filterStatus === s ? 'bg-slate-900 text-white shadow-lg shadow-slate-200' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
             >
-              {s === 'all' ? 'Semua' : s === 'active' ? 'Aktif' : 'Batal'}
+              {s === 'all' ? t('common.all') : s === 'active' ? t('common.active') : t('common.cancelled')}
             </button>
           ))}
         </div>
@@ -12816,17 +13027,42 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
             <table className="w-full text-left">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pengguna</th>
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Pakej</th>
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Tempoh</th>
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">Affiliate</th>
-                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">Tindakan</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('common.user')}</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('common.plan')}</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('common.status')}</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    <div className="flex items-center gap-2">
+                      <span>{t('subs.col_period')}</span>
+                      <select
+                        value={filterExpiry}
+                        onChange={e => setFilterExpiry(e.target.value)}
+                        title={t('expiry.filter_title')}
+                        className={`px-2 py-1 rounded-lg border text-[9px] font-bold uppercase tracking-wider outline-none cursor-pointer transition-all focus:ring-2 focus:ring-emerald-500/20 ${filterExpiry === 'all' ? 'bg-white border-slate-200 text-slate-500 hover:border-slate-300' : 'bg-slate-900 border-slate-900 text-white'}`}
+                      >
+                        <option value="all">{t('expiry.all')}</option>
+                        <optgroup label={t('expiry.group_status')}>
+                          <option value="expired">{t('expiry.expired')}</option>
+                          <option value="soon">{t('expiry.soon', { days: EXPIRY_SOON_DAYS })}</option>
+                          <option value="safe">{t('expiry.safe', { days: EXPIRY_SOON_DAYS })}</option>
+                          <option value="none">{t('expiry.none')}</option>
+                        </optgroup>
+                        {expiryMonths.length > 0 && (
+                          <optgroup label={t('expiry.group_month')}>
+                            {expiryMonths.map(key => (
+                              <option key={key} value={key}>{monthLabel(key)}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </select>
+                    </div>
+                  </th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('subs.col_affiliate')}</th>
+                  <th className="px-5 py-3.5 text-[10px] font-bold text-slate-500 uppercase tracking-wider text-right">{t('common.action')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400 font-medium">Tiada pengguna dijumpai</td></tr>
+                  <tr><td colSpan={6} className="px-5 py-12 text-center text-sm text-slate-400 font-medium">{t('subs.not_found')}</td></tr>
                 ) : visibleUsers.map(u => (
                   <tr key={u.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-5 py-4">
@@ -12843,12 +13079,27 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                     <td className="px-5 py-4">{statusBadge(u.status || 'active')}</td>
                     <td className="px-5 py-4">
                       <div className="text-[10px] text-slate-500 font-medium">
-                        {u.plan_start ? <span>Mula: {format(parseISO(u.plan_start), 'dd MMM yyyy')}</span> : <span className="text-slate-300">-</span>}
+                        {u.plan_start ? <span>{t('subs.start')}: {format(parseISO(u.plan_start), 'dd MMM yyyy')}</span> : <span className="text-slate-300">-</span>}
                       </div>
-                      {u.plan_end && (
-                        <div className="text-[10px] text-slate-400 font-medium">
-                          Tamat: {format(parseISO(u.plan_end), 'dd MMM yyyy')}
-                        </div>
+                      {u.plan_end ? (
+                        <>
+                          <div className="text-[10px] text-slate-400 font-medium">
+                            {t('subs.end')}: {format(parseISO(u.plan_end), 'dd MMM yyyy')}
+                          </div>
+                          {(() => {
+                            const d = daysToExpiry(u.plan_end);
+                            if (d === null) return null;
+                            const cls = d < 0 ? 'bg-rose-50 text-rose-600 border-rose-100'
+                              : d <= EXPIRY_SOON_DAYS ? 'bg-amber-50 text-amber-700 border-amber-100'
+                              : 'bg-emerald-50 text-emerald-700 border-emerald-100';
+                            const label = d < 0 ? t('expiry.days_ago', { days: Math.abs(d) })
+                              : d === 0 ? t('expiry.today')
+                              : t('expiry.days_left', { days: d });
+                            return <span className={`inline-block mt-1 px-1.5 py-0.5 rounded border text-[9px] font-bold ${cls}`}>{label}</span>;
+                          })()}
+                        </>
+                      ) : (
+                        <div className="text-[10px] text-slate-300 font-medium">{t('expiry.no_date')}</div>
                       )}
                     </td>
                     <td className="px-5 py-4">
@@ -12860,7 +13111,7 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                           <div className="flex items-center gap-1.5 group/ref">
                             <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${isDirect ? 'bg-slate-200' : isMatched ? 'bg-blue-500' : 'bg-amber-500'}`} />
                             <span className={`text-xs font-medium ${isDirect ? 'text-slate-400' : isMatched ? 'text-slate-600' : 'text-amber-700'}`}>
-                              {isDirect ? 'Direct' : ref}
+                              {isDirect ? t('users.direct') : ref}
                             </span>
                             {!isDirect && !isMatched && (
                               <span title="Nama ini tidak sepadan dengan mana-mana ejen — komisen tidak dikira">
@@ -12884,13 +13135,13 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                           onClick={() => { setEditingUser(u); setEditPlan(u.plan || 'free'); setEditPlanEnd(u.plan_end || ''); setEditSpecialTier((u as any).special_tier || 'Starter'); }}
                           className="px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-lg text-[10px] font-bold hover:bg-emerald-100 transition-all"
                         >
-                          Tukar Pakej
+                          {t('subs.change_plan')}
                         </button>
                         <button
                           onClick={() => handleToggleStatus(u.id, u.status || 'active')}
                           className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${(u.status || 'active') === 'active' ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}
                         >
-                          {(u.status || 'active') === 'active' ? 'Batal' : 'Aktifkan'}
+                          {(u.status || 'active') === 'active' ? t('common.cancel') : t('subs.activate')}
                         </button>
                       </div>
                     </td>
@@ -12906,14 +13157,16 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
                 onClick={() => setVisibleCount(c => c + 10)}
                 className="px-4 py-2 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded-lg transition-all"
               >
-                Lihat Lebih ({filtered.length - visibleCount} lagi)
+                {t('common.show_more')} ({filtered.length - visibleCount})
               </button>
             </div>
           )}
           <div className="px-5 py-3 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400">{visibleUsers.length} daripada {filtered.length} pengguna ditunjuk ({users.length} jumlah)</span>
-            {filterPlan !== 'all' && (
-              <button onClick={() => { setFilterPlan('all'); setVisibleCount(10); }} className="text-[10px] font-bold text-emerald-600 hover:underline">Reset Penapis</button>
+            <span className="text-[10px] font-bold text-slate-400">
+              {t('subs.users_shown', { shown: visibleUsers.length, filtered: filtered.length, total: users.length })}
+            </span>
+            {(filterPlan !== 'all' || filterExpiry !== 'all') && (
+              <button onClick={() => { setFilterPlan('all'); setFilterExpiry('all'); setVisibleCount(10); }} className="text-[10px] font-bold text-emerald-600 hover:underline">{t('common.reset_filters')}</button>
             )}
           </div>
         </div>
@@ -13099,12 +13352,13 @@ const SubscriptionManagementView = ({ onBack }: { onBack: () => void }) => {
 };
 
 const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanActivated?: (plan: string) => void }) => {
+  const { t } = useLang();
   const [loadingPlan, setLoadingPlan] = useState<string | null>(null);
   const [loadingPortal, setLoadingPortal] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [confirmingPayment, setConfirmingPayment] = useState(false);
-  const [selectedPlan, setSelectedPlan] = useState<{ name: string; price: string; period?: string; features: string[]; popular: boolean } | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{ name: string; price: string; period?: string; featureKeys: string[]; ctaKey: string; popular: boolean } | null>(null);
 
   const handleManageSubscription = async () => {
     setError('');
@@ -13179,52 +13433,56 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
       name: 'Percuma',
       price: '0',
       period: undefined as string | undefined,
-      features: [
-        '10 Rekod Transaksi Manual / hari',
-        '5 Imbasan Transaksi / bulan',
-        'Tiada Imbasan Bank Statement',
-        'Monitacc Assistant',
+      featureKeys: [
+        'plan.f_manual_10',
+        'plan.f_scan_5',
+        'plan.f_no_bank',
+        'plan.f_assistant',
       ],
+      ctaKey: 'plan.cta_free',
       popular: false,
     },
     {
       name: 'Starter',
       price: '50',
       period: '/bln',
-      features: [
-        '100 Imbasan Transaksi / bulan',
-        'Unlimited Rekod Transaksi Manual',
-        'Tiada Imbasan Bank Statement',
-        'Monitacc Assistant',
-        '1× Smart Analysis',
+      featureKeys: [
+        'plan.f_scan_100',
+        'plan.f_manual_unlimited',
+        'plan.f_no_bank',
+        'plan.f_assistant',
+        'plan.f_analysis_1',
       ],
+      ctaKey: 'plan.sub_starter',
       popular: false,
     },
     {
       name: 'Growth',
       price: '100',
       period: '/bln',
-      features: [
-        '250 Imbasan Transaksi / bulan',
-        'Unlimited Rekod Transaksi Manual',
-        'Tiada Imbasan Bank Statement',
-        'Monitacc Assistant',
-        '4× Smart Analysis',
+      featureKeys: [
+        'plan.f_scan_250',
+        'plan.f_manual_unlimited',
+        'plan.f_no_bank',
+        'plan.f_assistant',
+        'plan.f_analysis_4',
       ],
+      ctaKey: 'plan.sub_growth',
       popular: false,
     },
     {
       name: 'Ultimate',
       price: '150',
       period: '/bln',
-      features: [
-        'Unlimited Imbasan Transaksi',
-        'Unlimited Rekod Transaksi Manual',
-        'Unlimited Imbasan Bank Statement',
-        'Unlimited Smart Analysis',
-        'P&L Report + Balance Sheet',
-        'Reconciliation Features',
+      featureKeys: [
+        'plan.f_scan_unlimited',
+        'plan.f_manual_unlimited',
+        'plan.f_bank_unlimited',
+        'plan.f_analysis_unlimited',
+        'plan.f_pnl_bs',
+        'plan.f_reconcile',
       ],
+      ctaKey: 'plan.sub_ultimate',
       popular: true,
     },
   ];
@@ -13330,10 +13588,10 @@ const PlansView = ({ user, onPlanActivated }: { user: UserType | null; onPlanAct
 
               <div className="px-6 py-4 flex-1 flex flex-col">
                 <ul className="space-y-2.5 mb-5 flex-1">
-                  {plan.features.map((f, j) => (
+                  {plan.featureKeys.map((key, j) => (
                     <li key={j} className={`flex items-start text-[11px] font-medium leading-snug ${theme.feature}`}>
                       <Check size={11} strokeWidth={3} className={`shrink-0 mt-0.5 mr-2 ${theme.check}`} />
-                      {f}
+                      {t(key)}
                     </li>
                   ))}
                 </ul>
@@ -13819,6 +14077,7 @@ const AffiliateDashboardView = ({ affiliate, onLogout }: { affiliate: any, onLog
 };
 
 const AdminDashboardView = () => {
+  const { t } = useLang();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalUsers: 0,
@@ -13871,8 +14130,8 @@ const AdminDashboardView = () => {
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-10">
-        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Admin Dashboard</h2>
-        <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan token dan langganan pengguna.</p>
+        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">{t('adm.title')}</h2>
+        <p className="text-slate-500 font-medium tracking-tight">{t('adm.subtitle')}</p>
       </header>
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-10">
@@ -13896,7 +14155,7 @@ const AdminDashboardView = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900 mb-6 tracking-tight font-display">Penggunaan Token (7 Hari Terakhir)</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-6 tracking-tight font-display">{t('adm.token_chart')}</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={tokenUsageData}>
@@ -13911,7 +14170,7 @@ const AdminDashboardView = () => {
         </div>
 
         <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-900 mb-6 tracking-tight font-display">Agihan Pakej Langganan</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-6 tracking-tight font-display">{t('adm.plan_split')}</h3>
           <div className="h-64 flex items-center justify-center">
             <ResponsiveContainer width="100%" height="100%">
               <RePieChart>
@@ -13937,23 +14196,23 @@ const AdminDashboardView = () => {
 
       <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">Pengguna Terkini</h3>
+          <h3 className="text-lg font-bold text-slate-900 tracking-tight font-display">{t('adm.recent_users')}</h3>
           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{recentUsers.length} terkini</span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <tr>
-                <th className="px-5 py-3.5">Pengguna</th>
-                <th className="px-5 py-3.5">Pakej</th>
-                <th className="px-5 py-3.5">Status</th>
-                <th className="px-5 py-3.5">Affiliate</th>
-                <th className="px-5 py-3.5">Tarikh Daftar</th>
+                <th className="px-5 py-3.5">{t('common.user')}</th>
+                <th className="px-5 py-3.5">{t('common.plan')}</th>
+                <th className="px-5 py-3.5">{t('common.status')}</th>
+                <th className="px-5 py-3.5">{t('subs.col_affiliate')}</th>
+                <th className="px-5 py-3.5">{t('adm.reg_date')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {recentUsers.length === 0 ? (
-                <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-400">Tiada pengguna lagi</td></tr>
+                <tr><td colSpan={5} className="px-5 py-10 text-center text-sm text-slate-400">{t('adm.no_users')}</td></tr>
               ) : recentUsers.map((u) => (
                 <tr key={u.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-5 py-4">
@@ -13988,6 +14247,7 @@ const AdminDashboardView = () => {
 };
 
 const AffiliatedManagementView = () => {
+  const { t } = useLang();
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -14343,9 +14603,9 @@ const AffiliatedManagementView = () => {
                 <th className="px-4 py-4">Nama Ejen</th>
                 <th className="px-4 py-4">Rujukan</th>
                 <th className="px-4 py-4">{monthFilter ? `Komisen ${monthLabel(monthFilter)} (RM)` : 'Komisen Sebulan (RM)'}</th>
-                <th className="px-4 py-4">Status</th>
+                <th className="px-4 py-4">{t('common.status')}</th>
                 <th className="px-4 py-4">Tarikh Sertai</th>
-                <th className="px-4 py-4 text-right">Tindakan</th>
+                <th className="px-4 py-4 text-right">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -14486,7 +14746,7 @@ const AffiliatedManagementView = () => {
                   </div>
                 ))}
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('common.status')}</label>
                   <select value={addForm.status} onChange={e => setAddForm(prev => ({ ...prev, status: e.target.value }))} className="w-full px-4 py-3 rounded-xl border border-slate-200 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500">
                     <option>Aktif</option>
                     <option>Tidak Aktif</option>
@@ -14634,9 +14894,9 @@ const AffiliatedManagementView = () => {
                       <table className="w-full text-left min-w-[620px]">
                         <thead className="bg-slate-50 text-[9px] font-bold text-slate-500 uppercase tracking-wider sticky top-0">
                           <tr>
-                            <th className="px-3 py-2.5">Pengguna</th>
-                            <th className="px-3 py-2.5">Pakej</th>
-                            <th className="px-3 py-2.5">Status</th>
+                            <th className="px-3 py-2.5">{t('common.user')}</th>
+                            <th className="px-3 py-2.5">{t('common.plan')}</th>
+                            <th className="px-3 py-2.5">{t('common.status')}</th>
                             <th className="px-3 py-2.5 whitespace-nowrap">Buka Akaun</th>
                             <th className="px-3 py-2.5 whitespace-nowrap">Mula Langgan</th>
                             <th className="px-3 py-2.5 text-right">Komisen</th>
@@ -14779,7 +15039,7 @@ const AffiliatedManagementView = () => {
                 ))}
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Status</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">{t('common.status')}</label>
                   <select
                     value={editForm.status}
                     onChange={e => setEditForm(prev => ({ ...prev, status: e.target.value }))}
@@ -14919,6 +15179,7 @@ const AffiliatedManagementView = () => {
 };
 
 const TokenUsageView = () => {
+  const { t } = useLang();
   const [usageData, setUsageData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -14962,8 +15223,8 @@ const TokenUsageView = () => {
   return (
     <div className="p-4 md:p-6 pb-24 md:pl-64 md:pt-12 max-w-7xl mx-auto">
       <header className="mb-6">
-        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">Token Usage by User</h2>
-        <p className="text-slate-500 font-medium tracking-tight">Pantau penggunaan kuota AI bagi setiap pengguna.</p>
+        <h2 className="text-3xl font-bold text-slate-900 tracking-tight mb-1 font-display">{t('tok.title')}</h2>
+        <p className="text-slate-500 font-medium tracking-tight">{t('tok.subtitle')}</p>
       </header>
 
       <div className="mb-6 relative">
@@ -14972,7 +15233,7 @@ const TokenUsageView = () => {
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
-          placeholder="Cari nama atau emel pengguna..."
+          placeholder={t('tok.ph_search')}
           className="w-full pl-9 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-400 focus:border-transparent shadow-sm"
         />
       </div>
@@ -14987,12 +15248,12 @@ const TokenUsageView = () => {
           <table className="w-full text-left">
             <thead className="bg-slate-50 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
               <tr>
-                <th className="px-6 py-4">Pengguna</th>
-                <th className="px-6 py-4">Pelan</th>
-                <th className="px-6 py-4">Penggunaan</th>
-                <th className="px-6 py-4">Status Kuota</th>
-                <th className="px-6 py-4">Kegunaan Terakhir</th>
-                <th className="px-6 py-4 text-right">Tindakan</th>
+                <th className="px-6 py-4">{t('common.user')}</th>
+                <th className="px-6 py-4">{t('tok.plan')}</th>
+                <th className="px-6 py-4">{t('tok.usage')}</th>
+                <th className="px-6 py-4">{t('tok.quota_status')}</th>
+                <th className="px-6 py-4">{t('tok.last_used')}</th>
+                <th className="px-6 py-4 text-right">{t('common.action')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -15001,7 +15262,7 @@ const TokenUsageView = () => {
                 const q = searchQuery.toLowerCase();
                 return (u.name || '').toLowerCase().includes(q) || (u.email || '').toLowerCase().includes(q);
               }).length === 0 ? (
-                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">{searchQuery ? 'Tiada pengguna dijumpai' : 'Tiada data penggunaan token lagi'}</td></tr>
+                <tr><td colSpan={6} className="px-6 py-12 text-center text-sm text-slate-400">{searchQuery ? t('subs.not_found') : t('tok.empty')}</td></tr>
               ) : usageData.filter(u => {
                 if (!searchQuery.trim()) return true;
                 const q = searchQuery.toLowerCase();
@@ -15065,7 +15326,7 @@ const TokenUsageView = () => {
                         className="px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-lg text-[10px] font-bold uppercase tracking-wider hover:bg-emerald-100 transition-all flex items-center gap-1.5 ml-auto"
                       >
                         <Zap size={12} />
-                        <span>Top Up</span>
+                        <span>{t('tok.topup')}</span>
                       </button>
                     </td>
                   </tr>
@@ -15095,7 +15356,7 @@ const TokenUsageView = () => {
             >
               <div className="p-6 bg-slate-900 text-white flex justify-between items-center">
                 <div>
-                  <h3 className="text-lg font-bold tracking-tight font-display">Manual Token Top Up</h3>
+                  <h3 className="text-lg font-bold tracking-tight font-display">{t('tok.manual_topup')}</h3>
                   <p className="text-xs text-slate-400 font-medium">Tambah kuota token untuk {showTopUp.user?.name}</p>
                 </div>
                 <button 
@@ -15109,7 +15370,7 @@ const TokenUsageView = () => {
               <div className="p-8 space-y-6">
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100">
                   <div className="flex justify-between items-center mb-2">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Kuota Semasa</span>
+                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">{t('tok.current_quota')}</span>
                     <span className="text-sm font-bold text-slate-900">{showTopUp.user?.limit.toLocaleString()} Tokens</span>
                   </div>
                   <div className="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden">
@@ -15121,14 +15382,14 @@ const TokenUsageView = () => {
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">Jumlah Token Tambahan</label>
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">{t('tok.extra_total')}</label>
                   <div className="relative">
                     <Zap size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-emerald-500" />
                     <input 
                       type="number"
                       value={topUpAmount}
                       onChange={(e) => setTopUpAmount(e.target.value)}
-                      placeholder="Masukkan jumlah token (cth: 5000)"
+                      placeholder={t('tok.ph_amount')}
                       className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 outline-none transition-all font-bold text-slate-900"
                       autoFocus
                     />
@@ -15166,6 +15427,7 @@ const TokenUsageView = () => {
 };
 
 const BusinessSettingsModal = ({ user, onClose, onSave }: { user: UserType | null, onClose: () => void, onSave: (data: any) => void }) => {
+  const { t } = useLang();
   const [companyName, setCompanyName] = useState(user?.company_name || '');
   const [ssmNumber, setSsmNumber] = useState(user?.ssm_number || '');
   const [address, setAddress] = useState(user?.business_address || '');
@@ -15201,7 +15463,7 @@ const BusinessSettingsModal = ({ user, onClose, onSave }: { user: UserType | nul
       >
         <div className="p-8 overflow-y-auto custom-scrollbar">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Tetapan Perniagaan</h3>
+          <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">{t('md.business_settings')}</h3>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">
             <X size={20} />
           </button>
@@ -15209,53 +15471,53 @@ const BusinessSettingsModal = ({ user, onClose, onSave }: { user: UserType | nul
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Syarikat / Perniagaan</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.company_full')}</label>
             <input 
               type="text" 
               value={companyName}
               onChange={(e) => setCompanyName(e.target.value)}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-              placeholder="Contoh: Monitacc Enterprise"
+              placeholder={t('md.ph_company')}
               required
             />
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Pendaftaran (SSM)</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.ssm_no')}</label>
               <input 
                 type="text" 
                 value={ssmNumber}
                 onChange={(e) => setSsmNumber(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                placeholder="Contoh: 202403123456"
+                placeholder={t('md.ph_ssm')}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Cukai (TIN)</label>
+              <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.tax_no')}</label>
               <input 
                 type="text" 
                 value={taxId}
                 onChange={(e) => setTaxId(e.target.value)}
                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
-                placeholder="Contoh: IG1234567890"
+                placeholder={t('md.ph_tax')}
               />
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Alamat Perniagaan</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.business_address')}</label>
             <textarea 
               value={address}
               onChange={(e) => setAddress(e.target.value)}
               rows={3}
               className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all resize-none"
-              placeholder="Alamat penuh pejabat atau kedai anda"
+              placeholder={t('md.ph_address')}
             />
           </div>
 
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Tarikh Akhir Tahun Kewangan</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('md.fy_end')}</label>
             <input 
               type="date"
               value={financialYearEnd.includes(' ') ? '' : financialYearEnd}
@@ -15277,6 +15539,7 @@ const BusinessSettingsModal = ({ user, onClose, onSave }: { user: UserType | nul
 };
 
 const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, onClose: () => void, onSave: (data: any) => void }) => {
+  const { t } = useLang();
   const [name, setName] = useState(user?.name || '');
   const [companyName, setCompanyName] = useState(user?.company_name || '');
   const [phone, setPhone] = useState(user?.phone || '');
@@ -15304,7 +15567,7 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
       >
         <div className="p-8 overflow-y-auto custom-scrollbar">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">Kemaskini Profil</h3>
+          <h3 className="text-xl font-bold text-slate-900 tracking-tight font-display">{t('md.update_profile')}</h3>
           <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg text-slate-400">
             <X size={20} />
           </button>
@@ -15312,7 +15575,7 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
 
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Penuh</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.full_name')}</label>
             <input 
               type="text" 
               value={name}
@@ -15322,7 +15585,7 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">Nama Syarikat</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.company_name')}</label>
             <input 
               type="text" 
               value={companyName}
@@ -15332,7 +15595,7 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">No. Telefon</label>
+            <label className="text-xs font-bold text-slate-600 uppercase tracking-wider ml-1">{t('auth.phone')}</label>
             <input 
               type="tel" 
               value={phone}
@@ -15352,7 +15615,9 @@ const ProfileEditModal = ({ user, onClose, onSave }: { user: UserType | null, on
   );
 };
 
-const DeleteConfirmationModal = ({ onCancel, onConfirm, type, count }: { onCancel: () => void, onConfirm: () => void, type: 'record' | 'sale' | 'bulk', count?: number }) => (
+const DeleteConfirmationModal = ({ onCancel, onConfirm, type, count }: { onCancel: () => void, onConfirm: () => void, type: 'record' | 'sale' | 'bulk', count?: number }) => {
+  const { t } = useLang();
+  return (
   <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
     <motion.div 
       initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -15363,7 +15628,7 @@ const DeleteConfirmationModal = ({ onCancel, onConfirm, type, count }: { onCance
         <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-full flex items-center justify-center mx-auto mb-4">
           <Trash2 size={32} />
         </div>
-        <h3 className="text-xl font-bold text-slate-900 mb-2">Padam Rekod?</h3>
+        <h3 className="text-xl font-bold text-slate-900 mb-2">{t('md.delete_record')}</h3>
         <p className="text-slate-500 mb-6">
           {type === 'bulk' 
             ? `Adakah anda pasti mahu memadam ${count} rekod yang dipilih? Tindakan ini tidak boleh diubah.`
@@ -15386,9 +15651,11 @@ const DeleteConfirmationModal = ({ onCancel, onConfirm, type, count }: { onCance
       </div>
     </motion.div>
   </div>
-);
+  );
+};
 
 const DuplicateWarningModal = ({ data, existing, onCancel, onConfirm }: { data: any, existing: TransactionRecord | Sale | null, onCancel: () => void, onConfirm: () => void }) => {
+  const { t } = useLang();
   if (!existing) return null;
 
   const isSale = 'product_name' in existing;
@@ -15405,13 +15672,13 @@ const DuplicateWarningModal = ({ data, existing, onCancel, onConfirm }: { data: 
           <AlertTriangle size={32} strokeWidth={2} />
         </div>
         
-        <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight font-display">Rekod Bertindih!</h3>
+        <h3 className="text-xl font-bold text-slate-900 mb-2 tracking-tight font-display">{t('md.duplicate')}</h3>
         <p className="text-slate-500 text-sm font-medium mb-8">
           Sistem mengesan rekod yang serupa sudah wujud dalam pangkalan data anda.
         </p>
 
         <div className="bg-slate-50 rounded-xl p-6 mb-8 text-left border border-slate-100 relative group">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">Rekod Sedia Ada:</p>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-4">{t('md.existing_record')}</p>
           
           <div className="space-y-4">
             <div className="flex justify-between items-start">
@@ -15458,6 +15725,7 @@ const PROTECTED_VIEWS: AppView[] = [
 ];
 
 export default function App() {
+  const { t } = useLang();
   const [view, setView] = useState<AppView>('landing');
   const [user, setUser] = useState<UserType | null>(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
@@ -15474,6 +15742,10 @@ export default function App() {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [pendingPlan, setPendingPlan] = useState<string | null>(null);
   const [sessionLoading, setSessionLoading] = useState(true);
+  // Admin "melihat versi user": kekalkan sesi admin, cuma tunjukkan antara muka
+  // pengguna biasa. Tanpa ini menu sisi kekal menu admin dan butang itu nampak
+  // seperti tidak berfungsi.
+  const [previewAsUser, setPreviewAsUser] = useState(false);
 
   const isAdmin = user?.role === 'admin' || isAdminAuthenticated;
 
@@ -15828,6 +16100,22 @@ export default function App() {
     return true;
   };
 
+  // Lampiran dari borang manual datang sebagai base64 (data:...). Muat naik ke
+  // storage dan simpan URL sahaja, seperti aliran imbasan. Base64 besar akan
+  // gagal/terbuang jika disimpan terus ke jadual records.
+  const storeAttachment = async (imageUrl?: string): Promise<string> => {
+    if (!imageUrl || !imageUrl.startsWith('data:')) return imageUrl || '';
+    const isPdf = imageUrl.startsWith('data:application/pdf');
+    try {
+      return await apiUploadReceiptFile(String(user?.id), imageUrl, isPdf ? 'pdf' : 'receipt');
+    } catch (err) {
+      console.error('Error uploading attachment:', err);
+      if (imageUrl.length <= 500000) return imageUrl;
+      showToast('Lampiran gagal dimuat naik. Rekod disimpan tanpa lampiran.', 'error');
+      return '';
+    }
+  };
+
   const handleSaveRecord = async (data: any | any[], force = false) => {
     const recordsToSave = Array.isArray(data) ? data : [data];
     const isBulk = recordsToSave.length > 1;
@@ -15887,19 +16175,7 @@ export default function App() {
           ...recordData,
           category: recordData.category.trim().toUpperCase(),
         };
-              // Muat naik lampiran ke storage dan simpan URL sahaja (base64 besar akan terbuang)
-        if (saveData.image_url && saveData.image_url.startsWith('data:')) {
-          try {
-            saveData.image_url = await apiUploadReceiptFile(String(user?.id), saveData.image_url, saveData.image_url.startsWith('data:application/pdf') ? 'pdf' : 'receipt');
-          } catch (err) {
-            console.error('Error uploading attachment:', err);
-            if (saveData.image_url.length > 500000) {
-              saveData.image_url = '';
-              showToast('Lampiran gagal dimuat naik. Rekod disimpan tanpa lampiran.', 'error');
-            }
-          }
-        }
-
+        saveData.image_url = await storeAttachment(saveData.image_url);
         await apiSaveRecord(String(user?.id), saveData);
         justSaved.push(recordData);
       } catch (err) {
@@ -15942,7 +16218,7 @@ export default function App() {
 
   const handleUpdateRecord = async (id: number, data: any) => {
     try {
-      await apiUpdateRecord(id, String(user?.id), data);
+      await apiUpdateRecord(id, String(user?.id), { ...data, image_url: await storeAttachment(data.image_url) });
       showToast('Rekod berjaya dikemas kini!');
       fetchData();
     } catch (err) {
@@ -16103,12 +16379,41 @@ export default function App() {
         setView={safeSetView}
         user={user}
         isAdminAuthenticated={isAdminAuthenticated}
+        previewAsUser={previewAsUser}
+        onPreviewUser={() => {
+          setPreviewAsUser(true);
+          window.history.replaceState({}, '', '/');
+          setView('dashboard');
+        }}
+        onExitPreview={() => {
+          setPreviewAsUser(false);
+          window.history.replaceState({}, '', '/admin/dashboard');
+          setView('admin-dashboard');
+        }}
         onLogoutAdmin={() => {
+          setPreviewAsUser(false);
           setIsAdminAuthenticated(false);
           setView('dashboard');
         }}
       />
       
+      {previewAsUser && (
+        <div className="fixed top-0 left-0 right-0 z-[9998] bg-amber-500 text-white px-4 py-2 flex items-center justify-center gap-3 shadow-md md:pl-64">
+          <Eye size={14} className="shrink-0" />
+          <span className="text-[11px] font-bold tracking-tight">{t('admin.preview_banner')}</span>
+          <button
+            onClick={() => {
+              setPreviewAsUser(false);
+              window.history.replaceState({}, '', '/admin/dashboard');
+              setView('admin-dashboard');
+            }}
+            className="px-2.5 py-1 bg-white/20 hover:bg-white/30 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all"
+          >
+            {t('admin.back_to_admin')}
+          </button>
+        </div>
+      )}
+
       {isFetching && !connectionError && (
         <div className="fixed top-4 right-4 z-[9999] bg-white/80 backdrop-blur-md border border-slate-100 px-4 py-2 rounded-2xl shadow-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2 duration-300">
           <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
