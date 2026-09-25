@@ -147,6 +147,7 @@ export function checkOpeningBalances(
       case 'contra': assets -= amount; break;
       case 'liab': liabilities += amount; break;
       case 'equity': equity += amount; break;
+      case 'contraEquity': equity -= amount; break;
     }
   });
 
