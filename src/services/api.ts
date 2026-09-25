@@ -40,33 +40,7 @@ export async function apiLogin(email: string, password: string): Promise<UserTyp
   if (profileError) throw new Error(profileError.message);
   if (!profile) throw new Error('Profil pengguna tidak dijumpai');
 
-  return apiResolveAccountProfile(profile as unknown as UserType);
-}
-
-/*
-  Staff tiada pakej sendiri — semua had (imbasan, token, percubaan, ciri
-  premium) dikira daripada pakej BOS. Tanpa langkah ini, staff akan terperangkap
-  pada pakej yang disalin semasa akaun mereka dicipta, dan naik taraf oleh bos
-  tidak akan sampai kepada mereka.
-*/
-export async function apiResolveAccountProfile(profile: UserType): Promise<UserType> {
-  if (!profile?.owner_id) return profile;
-
-  const { data, error } = await supabase
-    .from('users')
-    .select('plan, special_tier, plan_end, company_name')
-    .eq('id', profile.owner_id)
-    .maybeSingle();
-
-  if (error || !data) return profile;
-
-  return {
-    ...profile,
-    plan: data.plan || profile.plan,
-    special_tier: data.special_tier || profile.special_tier,
-    plan_end: data.plan_end ?? null,
-    company_name: data.company_name || profile.company_name,
-  };
+  return profile as unknown as UserType;
 }
 
 export async function apiRegister(name: string, email: string, phone: string, password: string, company_name: string, referred_by?: string): Promise<{ user: UserType; accessToken: string | null }> {
@@ -76,19 +50,7 @@ export async function apiRegister(name: string, email: string, phone: string, pa
 
   const { data: profile, error: profileError } = await supabase
     .from('users')
-    // Setiap akaun baharu bermula dengan percubaan percuma TRIAL_DAYS hari.
-    // Selepas plan_end, antara muka bertukar ke mod baca sahaja sehingga melanggan.
-    .insert([{
-      id: data.user.id,
-      name,
-      email,
-      phone,
-      company_name,
-      referred_by: referred_by?.trim() || 'Tiada Rujukan',
-      plan: 'free',
-      plan_start: new Date().toISOString(),
-      plan_end: trialEndFrom(),
-    }])
+    .insert([{ id: data.user.id, name, email, phone, company_name, referred_by: referred_by?.trim() || 'Tiada Rujukan' }])
     .select('*')
     .single();
 
@@ -655,7 +617,6 @@ export const PLAN_PRICES: Record<string, number> = {
   Starter: 50,
   Growth: 100,
   Ultimate: 150,
-  Business: 299,
 };
 
 // Kadar komisen affiliate: 10% daripada langganan berbayar
@@ -701,7 +662,7 @@ export async function apiGetAdminDashboardStats() {
   });
   const tokenUsageData = Object.entries(tokenByDay).map(([day, tokens]) => ({ day, tokens }));
 
-  const planCounts: Record<string, number> = { free: 0, Starter: 0, Growth: 0, Ultimate: 0, Business: 0 };
+  const planCounts: Record<string, number> = { free: 0, Starter: 0, Growth: 0, Ultimate: 0 };
   allUsers.forEach(u => {
     const plan = u.plan || 'free';
     if (plan in planCounts) planCounts[plan]++;
@@ -712,7 +673,6 @@ export async function apiGetAdminDashboardStats() {
     { name: 'Starter', value: planCounts['Starter'], fill: '#10b981' },
     { name: 'Growth', value: planCounts['Growth'], fill: '#059669' },
     { name: 'Ultimate', value: planCounts['Ultimate'], fill: '#064e3b' },
-    { name: 'Business', value: planCounts['Business'], fill: '#1e293b' },
   ];
 
   return { totalUsers, activeSubscribers, cancelledUsers, totalTokensUsed, monthlyRevenue, totalAffiliated, tokenUsageData, packageDistribution };
@@ -723,7 +683,6 @@ export const PLAN_TOKEN_LIMITS: Record<string, number> = {
   Starter: 500000,
   Growth: 1000000,
   Ultimate: 10000000,
-  Business: 10000000,
   Special: 10000000,
 };
 
@@ -785,167 +744,12 @@ export async function apiTopUpUserTokens(userId: string, tokens: number): Promis
   if (error) throw new Error(error.message);
 }
 
-/*
-  Akaun staff (dua lapisan pengguna)
-  ──────────────────────────────────
-  Setiap akaun perakaunan dimiliki oleh seorang BOS. Bos boleh mencipta akaun
-  STAFF yang log masuk dengan email sendiri tetapi bekerja DI DALAM data bos.
-
-  Pembezanya satu lajur sahaja: users.owner_id
-    - NULL   → akaun ini bos
-    - berisi → akaun ini staff, dan nilainya id bos
-
-  Semua panggilan data mesti menggunakan accountOwnerId(user), bukan user.id —
-  kalau tidak staff akan menulis ke dalam akaun kosong mereka sendiri. Polisi
-  RLS di pangkalan data turut menguatkuasakan perkara sama melalui fungsi
-  acc_owner_id(), jadi kesilapan di sini gagal dengan selamat (data tidak
-  bocor), bukan senyap.
-*/
-
-/*
-  Had bilangan staff mengikut pakej.
-
-  Akaun staff ialah ciri EKSKLUSIF pakej Business. Semua pakej sedia ada
-  (Percuma, Starter, Growth, Ultimate) sengaja kekal 0 supaya pelanggan yang
-  sudah melanggan tidak mendapat ciri baharu secara percuma, dan supaya
-  Business mempunyai sebab jelas untuk dinaik taraf.
-
-  Mesti sepadan dengan STAFF_LIMITS dalam functions/manage-staff/index.ts —
-  di situlah had sebenar dikuatkuasakan.
-*/
-export const PLAN_STAFF_LIMITS: Record<string, number> = {
-  free: 0,
-  Percuma: 0,
-  Starter: 0,
-  Growth: 0,
-  Ultimate: 0,
-  Business: Infinity,
-};
-
-type StaffAware = { id?: string; role?: string; owner_id?: string | null; plan?: string; special_tier?: string } | null | undefined;
-
-/** True jika akaun ini staff kepada seseorang bos. */
-export function isStaffUser(user: StaffAware): boolean {
-  return !!user?.owner_id;
-}
-
-/** Id akaun yang MEMILIKI data — id bos bagi staff, id sendiri bagi bos. */
-export function accountOwnerId(user: StaffAware): string {
-  return String(user?.owner_id || user?.id || '');
-}
-
-/** Berapa staff dibenarkan untuk pakej akaun ini. */
-export function staffLimitFor(user: StaffAware): number {
-  const key = user?.plan === 'Special' ? (user?.special_tier || 'Starter') : (user?.plan || 'free');
-  return PLAN_STAFF_LIMITS[key] ?? 0;
-}
-
-/** Senarai staff milik seorang bos. */
-export async function apiGetStaff(ownerId: string): Promise<UserType[]> {
-  const { data, error } = await supabase
-    .from('users')
-    .select('*')
-    .eq('owner_id', ownerId)
-    .order('created_at', { ascending: true });
-  if (error) throw new Error(error.message);
-  return (data || []) as unknown as UserType[];
-}
-
-async function callManageStaff(payload: Record<string, unknown>) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token;
-  if (!token) throw new Error('Tidak log masuk');
-
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/manage-staff`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-      'Apikey': import.meta.env.VITE_SUPABASE_ANON_KEY,
-    },
-    body: JSON.stringify(payload),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error || 'Gagal memproses permintaan staff');
-  return json;
-}
-
-export async function apiCreateStaff(name: string, email: string, password: string): Promise<UserType> {
-  const json = await callManageStaff({ action: 'create', name, email, password });
-  return json.staff as UserType;
-}
-
-export async function apiDeleteStaff(staffId: string): Promise<void> {
-  await callManageStaff({ action: 'delete', staffId });
-}
-
-/*
-  Percubaan percuma 7 hari
-  ─────────────────────────
-  Akaun percuma yang didaftar SELEPAS ciri ini diperkenalkan menerima
-  plan_end = tarikh daftar + 7 hari. Selepas tarikh itu akaun bertukar ke
-  mod BACA SAHAJA sehingga pengguna melanggan pakej berbayar.
-
-  Akaun percuma LAMA tiada plan_end (null) — mereka sengaja dikekalkan tanpa
-  had masa supaya ciri ini tidak menyekat pengguna yang sudah mendaftar.
-  Ini juga menjadi jalan keluar untuk admin: menukar pakej pengguna kepada
-  'free' di panel admin akan mengosongkan plan_end (lihat apiUpdateUserPlan)
-  dan memulangkan akses percuma tanpa had.
-*/
-export const TRIAL_DAYS = 7;
-
-export function isFreePlanKey(plan?: string | null): boolean {
-  return !plan || plan === 'free' || plan === 'Percuma';
-}
-
-/** Tarikh tamat percubaan dalam bentuk ISO, dikira TRIAL_DAYS hari dari `from`. */
-export function trialEndFrom(from: Date = new Date()): string {
-  const end = new Date(from);
-  end.setDate(end.getDate() + TRIAL_DAYS);
-  return end.toISOString();
-}
-
-export interface TrialStatus {
-  /** Akaun percuma yang tertakluk kepada had 7 hari. */
-  isTrial: boolean;
-  /** Percubaan sudah tamat — antara muka masuk mod baca sahaja. */
-  expired: boolean;
-  /** Hari penuh yang tinggal. 0 bermakna tamat hari ini atau sudah tamat. */
-  daysLeft: number;
-  endsAt: Date | null;
-}
-
-const NO_TRIAL: TrialStatus = { isTrial: false, expired: false, daysLeft: 0, endsAt: null };
-
-export function getTrialStatus(
-  user?: { role?: string; plan?: string; plan_end?: string | null } | null,
-  now: Date = new Date(),
-): TrialStatus {
-  if (!user) return NO_TRIAL;
-  if (user.role === 'admin') return NO_TRIAL;      // admin tidak pernah disekat
-  if (!isFreePlanKey(user.plan)) return NO_TRIAL;  // pakej berbayar ikut aliran langganan biasa
-  if (!user.plan_end) return NO_TRIAL;             // akaun percuma lama — tiada had masa
-
-  const endsAt = new Date(user.plan_end);
-  if (isNaN(endsAt.getTime())) return NO_TRIAL;
-
-  const msLeft = endsAt.getTime() - now.getTime();
-  return {
-    isTrial: true,
-    expired: msLeft <= 0,
-    daysLeft: Math.max(0, Math.ceil(msLeft / 86400000)),
-    endsAt,
-  };
-}
-
 export const PLAN_SCAN_LIMITS: Record<string, number> = {
   free: 5,
   Percuma: 5,
   Starter: 100,
   Growth: 250,
   Ultimate: Infinity,
-  Business: Infinity,
   Special: Infinity,
 };
 
@@ -959,7 +763,6 @@ export const PLAN_PDF_LIMITS: Record<string, number> = {
   free: 1,
   Percuma: 1,
   Ultimate: Infinity,
-  Business: Infinity,
   Special: Infinity,
 };
 
@@ -970,7 +773,7 @@ export function usesSharedScanPool(planKey: string): boolean {
 
 // Imbasan PENYATA BANK dengan AI — eksklusif Ultimate sahaja.
 // Pakej lain masih boleh import penyata bank secara manual melalui fail CSV.
-const BANK_STATEMENT_PLANS = new Set(['Ultimate', 'Business']);
+const BANK_STATEMENT_PLANS = new Set(['Ultimate']);
 
 export function canScanBankStatement(planKey: string): boolean {
   return BANK_STATEMENT_PLANS.has(planKey);
