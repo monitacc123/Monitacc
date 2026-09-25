@@ -1,6 +1,7 @@
 export const CHART_OF_ACCOUNTS: Record<string, string> = {
   "CAPITAL": "1000/000",
   "RETAINED EARNING": "1050/000",
+  "ADVANCE DRAWING": "1060/000",
   "FIXED ASSETS": "2000/000",
   "MOTOR VEHICLES": "2000/100",
   "ACCUM. DEPRN - MOTOR VEHICLES": "2000/110",
@@ -120,7 +121,6 @@ export const CHART_OF_ACCOUNTS: Record<string, string> = {
   "OTHER INCOME": "5020/000",
   "STAM DUTY": "9061/000",
   "STAMP DUTY": "9061/000",
-  "PROVISION FOR TAXATION": "4080/000",
   "AMOUNT DUE TO DIRECTOR": "4090/000",
   "RENTAL OF SHOP": "9062/000",
   "SHOP RENTAL": "9062/000",
@@ -306,9 +306,10 @@ export const ALL_CATEGORIES = Array.from(new Set([
 //   'contra' -> Kontra-aset   (Kredit, cth susut nilai terkumpul — kurangkan aset)
 //   'liab'   -> Liabiliti     (Kredit)
 //   'equity' -> Ekuiti/Modal  (Kredit)
+//   'contraEquity' -> Kontra-ekuiti (Debit, cth ambilan pemilik — kurangkan ekuiti)
 //
 // `bsKey` memetakan kategori kepada baris Kunci Kira-Kira yang sedia ada.
-export type OpeningBalanceSide = 'asset' | 'contra' | 'liab' | 'equity';
+export type OpeningBalanceSide = 'asset' | 'contra' | 'liab' | 'equity' | 'contraEquity';
 
 export interface OpeningBalanceGroup {
   key: string;
@@ -390,11 +391,12 @@ export const OPENING_BALANCE_GROUPS: OpeningBalanceGroup[] = [
   {
     key: 'equity',
     label: 'Ekuiti / Modal',
-    hint: 'Modal pemilik dan untung terkumpul yang dibawa ke hadapan',
+    hint: 'Modal pemilik dan untung terkumpul yang dibawa ke hadapan. Ambilan dimasukkan sebagai nombor positif — sistem akan tolak daripada ekuiti',
     side: 'equity',
     categories: [
       'CAPITAL',
       'RETAINED EARNING',
+      'ADVANCE DRAWING',
     ],
   },
 ];
@@ -402,6 +404,12 @@ export const OPENING_BALANCE_GROUPS: OpeningBalanceGroup[] = [
 export const OPENING_BALANCE_CATEGORIES = OPENING_BALANCE_GROUPS.flatMap(g => g.categories);
 
 // Peta pantas kategori -> sebelah persamaan, untuk pengiraan laporan
-export const OPENING_BALANCE_SIDE: Record<string, OpeningBalanceSide> = Object.fromEntries(
-  OPENING_BALANCE_GROUPS.flatMap(g => g.categories.map(c => [c.toUpperCase(), g.side]))
-);
+// Ambilan duduk dalam kumpulan Ekuiti di borang, tetapi bakinya mengurangkan ekuiti.
+export const CONTRA_EQUITY_CATEGORIES = ['ADVANCE DRAWING'];
+
+export const OPENING_BALANCE_SIDE: Record<string, OpeningBalanceSide> = {
+  ...Object.fromEntries(
+    OPENING_BALANCE_GROUPS.flatMap(g => g.categories.map(c => [c.toUpperCase(), g.side]))
+  ),
+  ...Object.fromEntries(CONTRA_EQUITY_CATEGORIES.map(c => [c, 'contraEquity' as const])),
+};
