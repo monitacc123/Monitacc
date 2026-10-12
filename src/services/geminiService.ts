@@ -98,19 +98,20 @@ const kieModel = (model: string) => ({ model, url: `${KIE_BASE}/${model}/v1/chat
 
 // Models for analysis tasks (quality priority)
 const ANALYSIS_MODELS = [
-  kieModel("gpt-5-2"),
-  kieModel("gemini-3-5-flash-openai"),
   kieModel("gemini-3-6-flash-openai"),
-  kieModel("gemini-3-7-flash-openai"),
+  kieModel("gemini-3.1-pro"),
+  kieModel("gpt-5-2"),
+  kieModel("gemini-3-8-flash-openai"),
 ];
 
 // Models for scan/OCR tasks (speed priority)
 const SCAN_MODELS = [
-  kieModel("gemini-3-5-flash-openai"),
-  kieModel("gpt-5-2"),
   kieModel("gemini-3-6-flash-openai"),
-  kieModel("gemini-3-7-flash-openai"),
+  kieModel("gemini-3.1-pro"),
+  kieModel("gpt-5-2"),
+  kieModel("gemini-3-8-flash-openai"),
 ];
+
 
 /*
   "Pemutus litar": model yang baru gagal (timeout atau ralat pelayan)
