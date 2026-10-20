@@ -2,6 +2,7 @@ import { ALL_CATEGORIES } from "../constants/categories";
 import { extractTextFromPdf } from "./pdfExtractor";
 import { apiLogAiUsage, apiGetUserTokenUsage } from "./api";
 import { detectStatementPeriod, applyStatementYear } from "./statementPeriod";
+import { isTransientServerError, isDeadModelError } from "./aiErrors";
 
 /*
   Bahasa jawapan AI. Pengguna memilih bahasa dalam antara muka, dan pilihan itu
@@ -120,6 +121,10 @@ const SCAN_MODELS = [
   berpindah ke model yang sihat.
 */
 const MODEL_COOLDOWN_MS = 10 * 60 * 1000;
+// Model yang dibuang kie.ai (404/422) takkan pulih dalam 10 minit. Ia
+// direhatkan sepanjang hari kerja; kalau kie.ai memulihkannya, muat semula
+// halaman sudah cukup kerana peta ini hanya hidup dalam sesi pelayar.
+const DEAD_MODEL_COOLDOWN_MS = 8 * 60 * 60 * 1000;
 const modelGagalSehingga = new Map<string, number>();
 
 function modelSedangRehat(model: string): boolean {
@@ -214,24 +219,6 @@ const TRANSIENT_DELAY_MS = 800;
 // Cubaan semula hanya untuk ralat yang datang cepat (tersadung sekejap).
 const FAST_FAIL_MS = 10000;
 
-/*
-  Kenal pasti ralat pelayan sementara yang berbaloi dicuba semula.
-
-  kie.ai melaporkan 5xx dalam DUA bentuk berbeza:
-    - status HTTP sebenar      -> "API error 500: ..."
-    - HTTP 200 tetapi kod dalam badan JSON -> "Model error 500: ..."
-  Kedua-duanya dijadikan mesej Error oleh trySingleModel di atas.
-
-  Timeout SENGAJA tidak dianggap sementara: mencuba semula panggilan yang
-  sudah menunggu 45-90 saat hanya menggandakan masa menunggu pengguna.
-*/
-function isTransientServerError(err: any): boolean {
-  const msg = String(err?.message || "");
-  if (!msg.startsWith("API error ") && !msg.startsWith("Model error ")) return false;
-  const kod = parseInt(msg.split("error ")[1], 10);
-  return kod >= 500 && kod < 600;
-}
-
 async function chatCompletion(
   messages: { role: string; content: any }[],
   jsonMode = false,
@@ -269,7 +256,9 @@ async function chatCompletion(
         // rosak, bukan tersadung sekejap — mencuba semula cuma menggandakan
         // masa menunggu. Rehatkan dan terus ke model seterusnya.
         const bolehCubaLagi = cuba < TRANSIENT_RETRIES && isTransientServerError(err) && gagalCepat;
-        if (!bolehCubaLagi && (isTransientServerError(err) || String(err?.message).startsWith("Timeout"))) {
+        if (isDeadModelError(err)) {
+          modelGagalSehingga.set(modelEntry.model, Date.now() + DEAD_MODEL_COOLDOWN_MS);
+        } else if (!bolehCubaLagi && (isTransientServerError(err) || String(err?.message).startsWith("Timeout"))) {
           modelGagalSehingga.set(modelEntry.model, Date.now() + MODEL_COOLDOWN_MS);
         }
         console.warn(
