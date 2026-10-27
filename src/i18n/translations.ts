@@ -228,6 +228,10 @@ const ms: Dict = {
   'ledger.debit': 'Debit (RM)',
   'ledger.credit': 'Kredit (RM)',
   'ledger.balance': 'Baki',
+  'ledger.debit_label': 'Debit',
+  'ledger.credit_label': 'Kredit',
+  'ledger.dr': 'Dt',
+  'ledger.cr': 'Kt',
   'ledger.doc_no': 'No. Dokumen',
   'ledger.try_other': 'Cuba tukar tempoh atau kategori',
 
@@ -748,6 +752,10 @@ const en: Dict = {
   'ledger.debit': 'Debit (RM)',
   'ledger.credit': 'Credit (RM)',
   'ledger.balance': 'Balance',
+  'ledger.debit_label': 'Debit',
+  'ledger.credit_label': 'Credit',
+  'ledger.dr': 'Dr',
+  'ledger.cr': 'Cr',
   'ledger.doc_no': 'Document No.',
   'ledger.try_other': 'Try a different period or category',
 
@@ -1247,6 +1255,10 @@ const zh: Dict = {
   'ledger.debit': '借方（RM）',
   'ledger.credit': '贷方（RM）',
   'ledger.balance': '余额',
+  'ledger.debit_label': '借方',
+  'ledger.credit_label': '贷方',
+  'ledger.dr': '借',
+  'ledger.cr': '贷',
   'ledger.doc_no': '单据编号',
   'ledger.try_other': '请尝试其他期间或类别',
 
