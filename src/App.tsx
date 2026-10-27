@@ -5475,9 +5475,12 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
       return true;
     }).sort((a, b) => safeParseDate(b.date).getTime() - safeParseDate(a.date).getTime());
 
+  // Format lejar: duit keluar = Debit, duit masuk = Kredit. Baki = Debit − Kredit, ditanda Dt/Kt.
   const totalIncome = filtered.filter(r => r.type === 'income').reduce((sum, r) => sum + r.amount, 0);
   const totalExpense = filtered.filter(r => r.type === 'expense').reduce((sum, r) => sum + r.amount, 0);
-  const total = filtered.reduce((sum, r) => sum + r.amount, 0);
+  const balance = totalExpense - totalIncome;
+  const balanceSide = balance > 0 ? t('ledger.dr') : balance < 0 ? t('ledger.cr') : '';
+  const balanceText = `RM ${Math.abs(balance).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}${balanceSide ? ` ${balanceSide}` : ''}`;
 
   const periodLabel = timeFilter === 'monthly'
     ? `${months[selectedMonth]} ${selectedYear}`
@@ -5577,19 +5580,19 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-5 md:mb-8">
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('dash.money_in')}</p>
-            <p className="text-lg md:text-2xl font-bold text-emerald-600 font-display leading-tight">RM {totalIncome.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
-            <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'income').length} transaksi</p>
-          </div>
-          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
-            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('dash.money_out')}</p>
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('ledger.debit_label')}</p>
             <p className="text-lg md:text-2xl font-bold text-rose-500 font-display leading-tight">RM {totalExpense.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'expense').length} transaksi</p>
           </div>
-          <div className={`rounded-2xl border shadow-sm p-4 md:p-5 ${total >= 0 ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 md:p-5">
+            <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('ledger.credit_label')}</p>
+            <p className="text-lg md:text-2xl font-bold text-emerald-600 font-display leading-tight">RM {totalIncome.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+            <p className="text-[9px] text-slate-400 mt-1 font-medium">{filtered.filter(r => r.type === 'income').length} transaksi</p>
+          </div>
+          <div className="rounded-2xl border shadow-sm p-4 md:p-5 bg-slate-50 border-slate-200">
             <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">{t('ledger.balance')}</p>
-            <p className={`text-lg md:text-2xl font-bold font-display leading-tight ${total >= 0 ? 'text-emerald-700' : 'text-rose-600'}`}>
-              {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <p className={`text-lg md:text-2xl font-bold font-display leading-tight ${balance > 0 ? 'text-rose-600' : balance < 0 ? 'text-emerald-700' : 'text-slate-800'}`}>
+              {balanceText}
             </p>
             <p className="text-[9px] text-slate-400 mt-1 font-medium">{periodLabel}</p>
           </div>
@@ -5643,7 +5646,7 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                   </div>
                   <div className="text-right shrink-0">
                     <p className={`text-sm font-bold font-display ${record.type === 'income' ? 'text-emerald-600' : 'text-rose-500'}`}>
-                      {record.type === 'income' ? '+' : '-'}RM {record.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      RM {record.amount.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {record.type === 'income' ? t('ledger.cr') : t('ledger.dr')}
                     </p>
                     <div className="flex items-center justify-end gap-1 mt-1">
                       {record.source === 'record' && (
@@ -5772,8 +5775,8 @@ const LedgerView = ({ records, sales, user, initialCategory, initialMonth, initi
                   </tr>
                   <tr className="bg-slate-50">
                     <td colSpan={3} className="px-6 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider">{t('dash.net_balance')}</td>
-                    <td colSpan={2} className={`px-4 py-3 text-right text-sm font-bold ${total >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                      {total >= 0 ? '+' : ''}RM {total.toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <td colSpan={2} className={`px-4 py-3 text-right text-sm font-bold ${balance > 0 ? 'text-rose-500' : balance < 0 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                      {balanceText}
                     </td>
                     <td className="px-6 py-3" />
                   </tr>
